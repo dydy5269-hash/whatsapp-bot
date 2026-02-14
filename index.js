@@ -128,15 +128,16 @@ app.post("/webhook", async (req, res) => {
   } catch (error) {
     console.error(error);
     res.sendStatus(500);
-  }
+}
 });
 
-// start server
+// تشغيل السيرفر
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
     console.log("Server running on port " + PORT);
 });
+
 
 
 
