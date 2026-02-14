@@ -1,334 +1,348 @@
 const express = require("express");
 const axios = require("axios");
 const admin = require("firebase-admin");
-const { v4: uuidv4 } = require("uuid");
 
 const app = express();
 app.use(express.json());
 
 /*
-====================
-Firebase init
-====================
+=========================
+Firebase
+=========================
 */
 
-let serviceAccount;
+const decoded = Buffer.from(
+  process.env.FIREBASE_KEY,
+  "base64"
+).toString("utf8");
 
-try {
+const serviceAccount = JSON.parse(decoded);
 
-    const decoded = Buffer
-        .from(process.env.FIREBASE_KEY, "base64")
-        .toString("utf8");
-
-    serviceAccount = JSON.parse(decoded);
-
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-    });
-
-    console.log("Firebase connected");
-
-} catch (e) {
-
-    console.log("Firebase error:", e.message);
-}
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
 
 const db = admin.firestore();
 
 /*
-====================
+=========================
 WhatsApp config
-====================
+=========================
 */
 
 const TOKEN = process.env.WHATSAPP_TOKEN;
-const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+const PHONE_ID = process.env.PHONE_ID;
+
 
 /*
-====================
-Send text message
-====================
+=========================
+ارسال رسالة نص
+=========================
 */
 
-async function sendMessage(to, message) {
+async function sendText(to, text) {
 
-    await axios.post(
+  await axios.post(
+    `https://graph.facebook.com/v18.0/${PHONE_ID}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to,
+      text: { body: text }
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${TOKEN}`
+      }
+    }
+  );
 
-        `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-
-        {
-            messaging_product: "whatsapp",
-            to,
-            type: "text",
-            text: { body: message }
-        },
-
-        {
-            headers: {
-                Authorization: `Bearer ${TOKEN}`,
-                "Content-Type": "application/json"
-            }
-        }
-    );
 }
 
+
 /*
-====================
-Send buttons
-====================
+=========================
+ارسال ازرار
+=========================
 */
 
 async function sendButtons(to) {
 
-    await axios.post(
-
-        `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-
-        {
-            messaging_product: "whatsapp",
-            to,
-            type: "interactive",
-
-            interactive: {
-
-                type: "button",
-
-                body: {
-                    text: "اختر الخدمة المطلوبة"
-                },
-
-                action: {
-
-                    buttons: [
-
-                        {
-                            type: "reply",
-                            reply: {
-                                id: "electricity",
-                                title: "⚡ كهرباء"
-                            }
-                        },
-
-                        {
-                            type: "reply",
-                            reply: {
-                                id: "plumbing",
-                                title: "🚰 سباكة"
-                            }
-                        },
-
-                        {
-                            type: "reply",
-                            reply: {
-                                id: "ac",
-                                title: "❄️ تكييف"
-                            }
-                        }
-
-                    ]
-                }
-            }
+  await axios.post(
+    `https://graph.facebook.com/v18.0/${PHONE_ID}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to,
+      type: "interactive",
+      interactive: {
+        type: "button",
+        body: {
+          text: "اختر الخدمة"
         },
-
-        {
-            headers: {
-                Authorization: `Bearer ${TOKEN}`,
-                "Content-Type": "application/json"
+        action: {
+          buttons: [
+            {
+              type: "reply",
+              reply: {
+                id: "electricity",
+                title: "كهرباء ⚡"
+              }
+            },
+            {
+              type: "reply",
+              reply: {
+                id: "plumbing",
+                title: "سباكة 🚿"
+              }
+            },
+            {
+              type: "reply",
+              reply: {
+                id: "ac",
+                title: "تكييف ❄️"
+              }
             }
+          ]
         }
-    );
-}
-
-/*
-====================
-Get available technician
-====================
-*/
-
-async function findTechnician(service) {
-
-    const snapshot = await db
-        .collection("technicians")
-        .where("service", "==", service)
-        .where("status", "==", "available")
-        .limit(1)
-        .get();
-
-    if (snapshot.empty) return null;
-
-    return snapshot.docs[0];
-}
-
-/*
-====================
-Webhook verify
-====================
-*/
-
-app.get("/webhook", (req, res) => {
-
-    if (req.query["hub.verify_token"] === "taqa_verify") {
-
-        return res.send(req.query["hub.challenge"]);
+      }
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${TOKEN}`
+      }
     }
+  );
 
-    res.sendStatus(403);
-});
+}
+
 
 /*
-====================
-Webhook receive
-====================
+=========================
+ارسال للفني
+=========================
+*/
+
+async function sendTechnician(techPhone, orderId, location) {
+
+  await axios.post(
+    `https://graph.facebook.com/v18.0/${PHONE_ID}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to: techPhone,
+      type: "interactive",
+      interactive: {
+        type: "button",
+        body: {
+          text:
+            `طلب جديد\n\nالموقع:\n${location}`
+        },
+        action: {
+          buttons: [
+            {
+              type: "reply",
+              reply: {
+                id: `accept_${orderId}`,
+                title: "قبول"
+              }
+            },
+            {
+              type: "reply",
+              reply: {
+                id: `رفض_${orderId}`,
+                title: "رفض"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${TOKEN}`
+      }
+    }
+  );
+
+}
+
+
+/*
+=========================
+Webhook
+=========================
 */
 
 app.post("/webhook", async (req, res) => {
 
-    try {
+  try {
 
-        const msg =
-            req.body.entry?.[0]
-            ?.changes?.[0]
-            ?.value?.messages?.[0];
+    const msg =
+      req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
-        if (!msg) return res.sendStatus(200);
+    if (!msg) return res.sendStatus(200);
 
-        const from = msg.from;
+    const from = msg.from;
 
-        /*
-        ==================
-        First message
-        ==================
-        */
+    /*
+    =====================
+    ارسال القائمة
+    =====================
+    */
 
-        if (msg.type === "text") {
+    if (msg.text?.body === "مرحبا") {
 
-            await sendButtons(from);
-        }
+      await sendButtons(from);
 
-        /*
-        ==================
-        Service selected
-        ==================
-        */
+    }
 
-        if (msg.type === "interactive") {
+    /*
+    =====================
+    اختيار زر
+    =====================
+    */
 
-            const service =
-                msg.interactive.button_reply.id;
+    if (msg.type === "interactive") {
 
-            const technicianDoc =
-                await findTechnician(service);
+      const id =
+        msg.interactive.button_reply.id;
 
-            if (!technicianDoc) {
+      /*
+      =====================
+      اختيار الخدمة
+      =====================
+      */
 
-                await sendMessage(
-                    from,
-                    "لا يوجد فني متاح حالياً"
-                );
+      if (
+        id === "electricity" ||
+        id === "plumbing" ||
+        id === "ac"
+      ) {
 
-                return;
-            }
+        await sendText(
+          from,
+          "ارسل موقعك"
+        );
 
-            const technician =
-                technicianDoc.data();
+        await db.collection("temp")
+          .doc(from)
+          .set({
+            service: id
+          });
 
-            const orderId = uuidv4();
+      }
 
-            await db
-                .collection("orders")
-                .doc(orderId)
-                .set({
+      /*
+      =====================
+      قبول الفني
+      =====================
+      */
 
-                    id: orderId,
-                    customerPhone: from,
-                    technicianPhone: technician.phone,
-                    service,
-                    status: "pending",
-                    createdAt: new Date()
+      if (id.startsWith("accept_")) {
 
-                });
+        const orderId =
+          id.replace("accept_", "");
 
-            await sendMessage(
-                from,
-                "تم ارسال الفني"
-            );
+        const order =
+          await db.collection("orders")
+          .doc(orderId).get();
 
-            await sendMessage(
-                technician.phone,
-                `طلب جديد
+        const data = order.data();
 
-approve ${orderId}`
-            );
-        }
+        await db.collection("orders")
+          .doc(orderId)
+          .update({
+            status: "accepted"
+          });
 
-    } catch (e) {
+        await sendText(
+          data.customerPhone,
+          "تم قبول طلبك"
+        );
 
-        console.log(e.message);
+      }
+
+    }
+
+    /*
+    =====================
+    استقبال الموقع
+    =====================
+    */
+
+    if (msg.location) {
+
+      const temp =
+        await db.collection("temp")
+        .doc(from)
+        .get();
+
+      const service =
+        temp.data().service;
+
+      const location =
+        `https://maps.google.com/?q=${msg.location.latitude},${msg.location.longitude}`;
+
+      const orderRef =
+        await db.collection("orders")
+        .add({
+          customerPhone: from,
+          service,
+          location,
+          status: "pending"
+        });
+
+      await sendText(
+        from,
+        "تم ارسال الطلب"
+      );
+
+      /*
+      =====================
+      البحث عن الفني
+      =====================
+      */
+
+      const tech =
+        await db.collection("technicians")
+        .where("service","==",service)
+        .where("status","==","available")
+        .limit(1)
+        .get();
+
+      if (!tech.empty) {
+
+        const techPhone =
+          tech.docs[0].data().phone;
+
+        await sendTechnician(
+          techPhone,
+          orderRef.id,
+          location
+        );
+
+      }
+
     }
 
     res.sendStatus(200);
-});
 
-/*
-====================
-Technician commands
-====================
-*/
+  }
+  catch(err) {
 
-app.post("/tech", async (req, res) => {
-
-    const { phone, message } = req.body;
-
-    if (message.startsWith("approve")) {
-
-        const orderId = message.split(" ")[1];
-
-        const orderRef =
-            db.collection("orders").doc(orderId);
-
-        await orderRef.update({
-            status: "approved"
-        });
-
-        const order =
-            (await orderRef.get()).data();
-
-        await sendMessage(
-            order.customerPhone,
-            "الفني في الطريق"
-        );
-    }
-
-    if (message.startsWith("done")) {
-
-        const orderId = message.split(" ")[1];
-
-        const orderRef =
-            db.collection("orders").doc(orderId);
-
-        await orderRef.update({
-            status: "completed"
-        });
-
-        const order =
-            (await orderRef.get()).data();
-
-        await sendMessage(
-            order.customerPhone,
-            "تم الانتهاء"
-        );
-    }
+    console.log(err.message);
 
     res.sendStatus(200);
+
+  }
+
 });
+
 
 /*
-====================
-Start server
-====================
+=========================
+تشغيل
+=========================
 */
 
-app.listen(process.env.PORT || 3000, () => {
-
-    console.log("Server started");
-});
+app.listen(3000, () =>
+  console.log("Running V3")
+);
