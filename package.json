@@ -1,7 +1,7 @@
 {
   "name": "whatsapp-bot",
   "version": "1.0.0",
-  "description": "WhatsApp webhook bot",
+  "description": "WhatsApp bot with Firebase",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -9,6 +9,7 @@
   "dependencies": {
     "axios": "^1.6.0",
     "body-parser": "^1.20.2",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "firebase-admin": "^12.0.0"
   }
 }
