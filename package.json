@@ -1,7 +1,6 @@
 {
-  "name": "whatsapp-bot",
+  "name": "taqa-bot",
   "version": "1.0.0",
-  "description": "Taqa Services WhatsApp Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
