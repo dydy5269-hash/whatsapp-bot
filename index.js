@@ -6,8 +6,8 @@ const app = express();
 app.use(bodyParser.json());
 
 const VERIFY_TOKEN = "12345";
-const TOKEN = "PUT_YOUR_TOKEN_HERE";
-const PHONE_NUMBER_ID = "PUT_YOUR_PHONE_ID_HERE";
+const TOKEN = "EAANB4MVrO8QBQmtvGF5Nr2ZBG89TaVRKaCZAb6bChTMZCw9yRpx53oQKdeMmExhkA0QnoZCPJuyLZCoBOTmFazZAkraIE41doBDWKnxZAeZBsdYeu0KtxyW9EZCffPYWZA3hZBnbjFnPyVU8WLyZC4KGZCfX2TQQ6k3kJqsGyc93ssGFz7SUdJCmcI4SHWj3CFofFsOZBUSWHRq5kPkGT8TFmXuqnAhonj3dAnWNsO58fpS4cxa99ueneudLYhm2vCgZBZBZCW7QU8DGZC6dRlnnZBiOUTlxx6EQnMOMQZDZD";
+const PHONE_NUMBER_ID = "1373391824533735";
 
 // Webhook verification
 app.get("/webhook", (req, res) => {
@@ -59,3 +59,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log("Server running...");
 });
+
