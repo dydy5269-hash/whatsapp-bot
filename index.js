@@ -1,140 +1,269 @@
 const express = require("express");
-const admin = require("firebase-admin");
 const axios = require("axios");
+const admin = require("firebase-admin");
+const { v4: uuidv4 } = require("uuid");
 
 const app = express();
 app.use(express.json());
 
 /*
-=============================
-تحميل Firebase من Railway
-=============================
+==============================
+Firebase init from Railway ENV
+==============================
 */
 
 let serviceAccount;
 
 try {
-  if (!process.env.FIREBASE_KEY) {
-    throw new Error("FIREBASE_KEY not found");
-  }
 
-  const decoded = Buffer.from(process.env.FIREBASE_KEY, "base64").toString("utf8");
-  serviceAccount = JSON.parse(decoded);
+    if (!process.env.FIREBASE_KEY) {
+        throw new Error("FIREBASE_KEY not found");
+    }
 
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-  });
+    const decoded = Buffer.from(
+        process.env.FIREBASE_KEY,
+        "base64"
+    ).toString("utf8");
 
-  console.log("Firebase connected");
+    serviceAccount = JSON.parse(decoded);
 
-} catch (error) {
-  console.error("Firebase error:", error.message);
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+    });
+
+    console.log("Firebase connected");
+
+} catch (err) {
+
+    console.error("Firebase error:", err.message);
 }
 
 /*
-=============================
-Webhook verification
-=============================
+==============================
+CONFIG
+==============================
 */
 
-const VERIFY_TOKEN = "123456";
+const db = admin.firestore();
+
+const TOKEN = process.env.WHATSAPP_TOKEN;
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+
+const TECHNICIAN_PHONE = "96899258043"; // رقم الفني
+
+/*
+==============================
+Send WhatsApp Message
+==============================
+*/
+
+async function sendMessage(to, message) {
+
+    try {
+
+        await axios.post(
+            `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
+            {
+                messaging_product: "whatsapp",
+                to: to,
+                type: "text",
+                text: { body: message }
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${TOKEN}`,
+                    "Content-Type": "application/json"
+                }
+            }
+        );
+
+    } catch (err) {
+
+        console.log("Send error:", err.message);
+    }
+}
+
+/*
+==============================
+Webhook verify
+==============================
+*/
 
 app.get("/webhook", (req, res) => {
 
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
+    const VERIFY_TOKEN = "taqa_verify";
 
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("Webhook verified");
-    res.status(200).send(challenge);
-  } else {
-    res.sendStatus(403);
-  }
+    const mode = req.query["hub.mode"];
+    const token = req.query["hub.verify_token"];
+    const challenge = req.query["hub.challenge"];
 
+    if (mode && token === VERIFY_TOKEN) {
+
+        res.status(200).send(challenge);
+
+    } else {
+
+        res.sendStatus(403);
+    }
 });
 
 /*
-=============================
-Receive messages
-=============================
+==============================
+Webhook receive messages
+==============================
 */
 
 app.post("/webhook", async (req, res) => {
 
-  try {
+    try {
 
-    const body = req.body;
+        const entry = req.body.entry?.[0];
+        const changes = entry?.changes?.[0];
+        const value = changes?.value;
+        const messages = value?.messages;
 
-    if (
-      body.entry &&
-      body.entry[0].changes &&
-      body.entry[0].changes[0].value.messages
-    ) {
+        if (!messages) {
+            return res.sendStatus(200);
+        }
 
-      const message = body.entry[0].changes[0].value.messages[0];
-      const from = message.from;
-      const text = message.text.body;
+        const msg = messages[0];
+        const from = msg.from;
+        const text = msg.text?.body;
 
-      console.log("Message received:", text);
+        console.log("Message:", text);
 
-      // save to firebase
-      await admin.firestore().collection("messages").add({
-        from,
-        text,
-        createdAt: new Date(),
-      });
+        /*
+        =====================
+        Client requests service
+        =====================
+        */
 
-      // reply message
-      await sendMessage(from, "تم استلام رسالتك: " + text);
+        if (text === "1") {
 
+            const orderId = uuidv4();
+
+            await db.collection("orders").doc(orderId).set({
+
+                id: orderId,
+                customerPhone: from,
+                service: "electricity",
+                status: "pending",
+                createdAt: new Date()
+
+            });
+
+            await sendMessage(
+                from,
+                "تم استلام طلبك ✅ سيتم ارسال الفني"
+            );
+
+            await sendMessage(
+                TECHNICIAN_PHONE,
+                `طلب جديد ⚡
+
+رقم الطلب:
+${orderId}
+
+اكتب:
+approve ${orderId}
+للموافقة`
+            );
+        }
+
+        /*
+        =====================
+        Technician approves
+        =====================
+        */
+
+        if (text?.startsWith("approve")) {
+
+            const orderId = text.split(" ")[1];
+
+            await db.collection("orders")
+                .doc(orderId)
+                .update({
+
+                    status: "approved"
+                });
+
+            const order = await db.collection("orders")
+                .doc(orderId)
+                .get();
+
+            const customerPhone = order.data().customerPhone;
+
+            await sendMessage(
+                customerPhone,
+                "تم قبول طلبك 👨‍🔧 الفني في الطريق"
+            );
+
+            await sendMessage(
+                TECHNICIAN_PHONE,
+                "تم تسجيل الموافقة"
+            );
+        }
+
+        /*
+        =====================
+        Technician finishes
+        =====================
+        */
+
+        if (text?.startsWith("done")) {
+
+            const orderId = text.split(" ")[1];
+
+            await db.collection("orders")
+                .doc(orderId)
+                .update({
+
+                    status: "completed"
+                });
+
+            const order = await db.collection("orders")
+                .doc(orderId)
+                .get();
+
+            const customerPhone = order.data().customerPhone;
+
+            await sendMessage(
+                customerPhone,
+                "تم الانتهاء من الخدمة ✅\nقيم الخدمة من 1 إلى 5"
+            );
+        }
+
+        /*
+        =====================
+        Rating
+        =====================
+        */
+
+        if (["1", "2", "3", "4", "5"].includes(text)) {
+
+            await sendMessage(
+                from,
+                "شكراً لتقييمك ⭐"
+            );
+        }
+
+    } catch (err) {
+
+        console.log(err.message);
     }
 
     res.sendStatus(200);
-
-  } catch (error) {
-    console.error(error);
-    res.sendStatus(500);
-  }
-
 });
 
 /*
-=============================
-Send message function
-=============================
-*/
-
-const WHATSAPP_TOKEN = "EAANB4MVrO8QBQvgjC56EljrypSBxulTZA2XCYkEXIXFAiqH1ODahbxRFw4zI2AZBwTEBI4kP4YD9GN2NQqNZCF7WMKAcQZBZCItZBJSSDzpMbYDh1qlpR273q9DVZCE1gVlEbap7r4wibyvZBLoBCx23oWNKZCUCd5IsnWv4pr77EtRojDQZA8ZADxhemVPGmUts6ofwUWQJmVfjRQDWg7TBZATKBwgKMGHwciVz6rVrzawnEJNjf2Q5fBMBThUTnEtiy0ZAQi7JqiF6eExJ1wri8tnc8zE4ZB";
-const PHONE_NUMBER_ID = "962759303589757";
-
-async function sendMessage(to, text) {
-
-  await axios.post(
-    `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to: to,
-      text: { body: text },
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-    }
-  );
-
-}
-
-/*
-=============================
-Start server
-=============================
+==============================
+Server start
+==============================
 */
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
+
+    console.log("Server running on port", PORT);
 });
