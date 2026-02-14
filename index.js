@@ -1,105 +1,140 @@
 const express = require("express");
 const admin = require("firebase-admin");
+const axios = require("axios");
 
 const app = express();
 app.use(express.json());
 
 /*
-====================================
-تحميل مفتاح Firebase من Railway
-====================================
+=============================
+تحميل Firebase من Railway
+=============================
 */
 
 let serviceAccount;
 
 try {
-
   if (!process.env.FIREBASE_KEY) {
     throw new Error("FIREBASE_KEY not found");
   }
 
-  // فك Base64
   const decoded = Buffer.from(process.env.FIREBASE_KEY, "base64").toString("utf8");
-
   serviceAccount = JSON.parse(decoded);
 
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+    credential: admin.credential.cert(serviceAccount),
   });
 
-  console.log("✅ Firebase connected");
+  console.log("Firebase connected");
 
 } catch (error) {
-
-  console.log("❌ Firebase error:", error.message);
-  process.exit(1);
-
+  console.error("Firebase error:", error.message);
 }
 
-const db = admin.firestore();
+/*
+=============================
+Webhook verification
+=============================
+*/
+
+const VERIFY_TOKEN = "123456";
+
+app.get("/webhook", (req, res) => {
+
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode === "subscribe" && token === VERIFY_TOKEN) {
+    console.log("Webhook verified");
+    res.status(200).send(challenge);
+  } else {
+    res.sendStatus(403);
+  }
+
+});
 
 /*
-====================================
-Webhook
-====================================
+=============================
+Receive messages
+=============================
 */
 
 app.post("/webhook", async (req, res) => {
 
   try {
 
-    const message = req.body.message;
-    const from = req.body.from;
+    const body = req.body;
 
-    if (!message) {
-      return res.sendStatus(200);
-    }
+    if (
+      body.entry &&
+      body.entry[0].changes &&
+      body.entry[0].changes[0].value.messages
+    ) {
 
-    console.log("Message:", message);
+      const message = body.entry[0].changes[0].value.messages[0];
+      const from = message.from;
+      const text = message.text.body;
 
-    /*
-    ===========================
-    طلب خدمة كهرباء
-    ===========================
-    */
+      console.log("Message received:", text);
 
-    if (message === "كهرباء") {
-
-      await db.collection("orders").add({
-
-        customerPhone: from,
-        service: "electricity",
-        status: "pending",
-        createdAt: new Date()
-
+      // save to firebase
+      await admin.firestore().collection("messages").add({
+        from,
+        text,
+        createdAt: new Date(),
       });
 
-      console.log("Order saved");
+      // reply message
+      await sendMessage(from, "تم استلام رسالتك: " + text);
 
     }
 
     res.sendStatus(200);
 
   } catch (error) {
-
-    console.log("Webhook error:", error);
-
+    console.error(error);
     res.sendStatus(500);
-
   }
 
 });
 
 /*
-====================================
-تشغيل السيرفر
-====================================
+=============================
+Send message function
+=============================
+*/
+
+const WHATSAPP_TOKEN = "EAANB4MVrO8QBQvgjC56EljrypSBxulTZA2XCYkEXIXFAiqH1ODahbxRFw4zI2AZBwTEBI4kP4YD9GN2NQqNZCF7WMKAcQZBZCItZBJSSDzpMbYDh1qlpR273q9DVZCE1gVlEbap7r4wibyvZBLoBCx23oWNKZCUCd5IsnWv4pr77EtRojDQZA8ZADxhemVPGmUts6ofwUWQJmVfjRQDWg7TBZATKBwgKMGHwciVz6rVrzawnEJNjf2Q5fBMBThUTnEtiy0ZAQi7JqiF6eExJ1wri8tnc8zE4ZB";
+const PHONE_NUMBER_ID = "962759303589757";
+
+async function sendMessage(to, text) {
+
+  await axios.post(
+    `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to: to,
+      text: { body: text },
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+}
+
+/*
+=============================
+Start server
+=============================
 */
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-
   console.log("Server running on port", PORT);
-
 });
