@@ -41,15 +41,14 @@ app.post("/webhook", async (req, res) => {
 
             // القائمة الرئيسية
             if (text === "مرحبا" || text === "hi" || text === "hello") {
-                reply =
-`مرحبا بك في طاقة للخدمات الهندسية 🔧
+                reply = `مرحبا بك في طاقة للخدمات الهندسية ✨
 
 اختر رقم الخدمة:
 
 1️⃣ طلب خدمة
 2️⃣ عرض الأسعار
 3️⃣ موقعنا
-4️⃣ التواصل مع الدعم`;
+4️⃣ تواصل مع الدعم`;
             }
 
             else if (text === "1") {
@@ -137,6 +136,7 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log("Server running on port " + PORT);
 });
+
 
 
 
