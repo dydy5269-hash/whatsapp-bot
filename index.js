@@ -6,406 +6,366 @@ const app = express();
 app.use(express.json());
 
 /*
-========================
-الإعدادات
-========================
+==============================
+Firebase initialization
+==============================
 */
 
-const VERIFY_TOKEN = "123456";
+let serviceAccount;
 
-const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
-const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+try {
 
-/*
-========================
-Firebase
-========================
-*/
+    if (!process.env.FIREBASE_KEY) {
+        throw new Error("FIREBASE_KEY not found");
+    }
 
-const decoded = Buffer.from(
-  process.env.FIREBASE_KEY,
-  "base64"
-).toString("utf8");
+    const decoded = Buffer.from(
+        process.env.FIREBASE_KEY,
+        "base64"
+    ).toString("utf8");
 
-const serviceAccount = JSON.parse(decoded);
+    serviceAccount = JSON.parse(decoded);
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+    });
+
+    console.log("Firebase connected");
+
+} catch (error) {
+
+    console.log("Firebase error:", error.message);
+
+}
 
 const db = admin.firestore();
 
-console.log("Firebase ready");
+/*
+==============================
+Load WhatsApp settings
+==============================
+*/
+
+let WHATSAPP_TOKEN = "";
+let PHONE_NUMBER_ID = "";
+let VERIFY_TOKEN = "123456";
+
+async function loadSettings() {
+
+    const doc = await db.collection("settings")
+        .doc("whatsapp")
+        .get();
+
+    if (doc.exists) {
+
+        const data = doc.data();
+
+        WHATSAPP_TOKEN = data.token;
+        PHONE_NUMBER_ID = data.phone_number;
+        VERIFY_TOKEN = data.verify_token;
+
+        console.log("WhatsApp settings loaded");
+
+    }
+
+}
+
+loadSettings();
 
 /*
-========================
-Webhook Verify
-========================
+==============================
+Send WhatsApp message
+==============================
+*/
+
+async function sendMessage(to, text) {
+
+    await axios.post(
+        `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
+        {
+            messaging_product: "whatsapp",
+            to: to,
+            type: "text",
+            text: {
+                body: text
+            }
+        },
+        {
+            headers: {
+                Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+                "Content-Type": "application/json"
+            }
+        }
+    );
+
+}
+
+/*
+==============================
+Send services list
+==============================
+*/
+
+async function sendServices(to) {
+
+    const snapshot = await db.collection("services")
+        .where("active", "==", true)
+        .get();
+
+    let text = "اختر الخدمة المطلوبة:\n\n";
+
+    snapshot.forEach(doc => {
+
+        const s = doc.data();
+
+        text += `${s.emoji} ${s.name}\n`;
+
+    });
+
+    await sendMessage(to, text);
+
+}
+
+/*
+==============================
+Find technician
+==============================
+*/
+
+async function findTechnician(service) {
+
+    const snapshot = await db.collection("technicians")
+        .where("service", "==", service)
+        .where("active", "==", true)
+        .limit(1)
+        .get();
+
+    if (snapshot.empty) return null;
+
+    return snapshot.docs[0];
+
+}
+
+/*
+==============================
+Create order
+==============================
+*/
+
+async function createOrder(userPhone, serviceId) {
+
+    const order = {
+
+        userPhone,
+        serviceId,
+        status: "pending",
+        createdAt: new Date()
+
+    };
+
+    const ref = await db.collection("orders").add(order);
+
+    return ref.id;
+
+}
+
+/*
+==============================
+Send order to technician
+==============================
+*/
+
+async function sendOrderToTechnician(orderId, technicianDoc, userPhone, serviceId) {
+
+    const tech = technicianDoc.data();
+
+    const text =
+        `طلب جديد\n\n` +
+        `الخدمة: ${serviceId}\n` +
+        `العميل: ${userPhone}\n\n` +
+        `اكتب:\n` +
+        `قبول ${orderId}\n` +
+        `او\n` +
+        `رفض ${orderId}`;
+
+    await sendMessage(tech.phone, text);
+
+}
+
+/*
+==============================
+Handle technician response
+==============================
+*/
+
+async function handleTechnicianResponse(from, message) {
+
+    if (message.startsWith("قبول")) {
+
+        const orderId = message.split(" ")[1];
+
+        await db.collection("orders")
+            .doc(orderId)
+            .update({
+                status: "accepted",
+                technician: from
+            });
+
+        const order = await db.collection("orders")
+            .doc(orderId)
+            .get();
+
+        await sendMessage(
+            order.data().userPhone,
+            "تم قبول طلبك وجاري التوجه إليك"
+        );
+
+    }
+
+    if (message.startsWith("رفض")) {
+
+        const orderId = message.split(" ")[1];
+
+        await db.collection("orders")
+            .doc(orderId)
+            .update({
+                status: "rejected"
+            });
+
+        const order = await db.collection("orders")
+            .doc(orderId)
+            .get();
+
+        await sendMessage(
+            order.data().userPhone,
+            "تم رفض الطلب وسيتم محاولة إرسال فني آخر"
+        );
+
+    }
+
+}
+
+/*
+==============================
+Webhook verify
+==============================
 */
 
 app.get("/webhook", (req, res) => {
 
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
+    const mode = req.query["hub.mode"];
+    const token = req.query["hub.verify_token"];
+    const challenge = req.query["hub.challenge"];
 
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
+    if (mode === "subscribe" && token === VERIFY_TOKEN) {
 
-    res.status(200).send(challenge);
+        res.send(challenge);
 
-  } else {
+    } else {
 
-    res.sendStatus(403);
+        res.sendStatus(403);
 
-  }
+    }
 
 });
 
 /*
-========================
-Webhook Receive
-========================
+==============================
+Webhook receive messages
+==============================
 */
 
 app.post("/webhook", async (req, res) => {
 
-  try {
+    try {
 
-    const message =
-      req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+        const entry = req.body.entry?.[0];
+        const changes = entry?.changes?.[0];
+        const message = changes?.value?.messages?.[0];
 
-    if (!message) return res.sendStatus(200);
+        if (!message) return res.sendStatus(200);
 
-    const from = message.from;
+        const from = message.from;
+        const text = message.text?.body;
 
-    /*
-    نص
-    */
+        console.log("Message:", text);
 
-    if (message.type === "text") {
+        if (text === "مرحبا") {
 
-      const text = message.text.body;
+            await sendServices(from);
 
-      if (text === "مرحبا") {
+            return res.sendStatus(200);
 
-        await sendMenu(from);
+        }
 
-      }
+        const services = await db.collection("services").get();
+
+        let selectedService = null;
+
+        services.forEach(doc => {
+
+            if (text.includes(doc.data().name)) {
+
+                selectedService = doc.id;
+
+            }
+
+        });
+
+        if (selectedService) {
+
+            const orderId = await createOrder(from, selectedService);
+
+            const technician = await findTechnician(selectedService);
+
+            if (!technician) {
+
+                await sendMessage(from, "لا يوجد فني متاح حالياً");
+
+                return res.sendStatus(200);
+
+            }
+
+            await sendOrderToTechnician(
+                orderId,
+                technician,
+                from,
+                selectedService
+            );
+
+            await sendMessage(
+                from,
+                "تم إرسال الطلب للفني"
+            );
+
+            return res.sendStatus(200);
+
+        }
+
+        await handleTechnicianResponse(from, text);
+
+        res.sendStatus(200);
+
+    } catch (error) {
+
+        console.log(error);
+
+        res.sendStatus(500);
 
     }
-
-    /*
-    ضغط زر
-    */
-
-    if (message.type === "interactive") {
-
-      const button =
-        message.interactive.button_reply.id;
-
-      await handleButtons(from, button);
-
-    }
-
-    res.sendStatus(200);
-
-  } catch (e) {
-
-    console.log(e);
-
-    res.sendStatus(200);
-
-  }
 
 });
 
 /*
-========================
-قائمة الخدمات
-========================
+==============================
+Start server
+==============================
 */
 
-async function sendMenu(user) {
+const PORT = process.env.PORT || 3000;
 
-  await axios.post(
-    `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to: user,
-      type: "interactive",
-      interactive: {
-        type: "button",
-        body: {
-          text: "اختر الخدمة"
-        },
-        action: {
-          buttons: [
+app.listen(PORT, () => {
 
-            {
-              type: "reply",
-              reply: {
-                id: "electric",
-                title: "كهرباء ⚡"
-              }
-            },
-
-            {
-              type: "reply",
-              reply: {
-                id: "plumbing",
-                title: "سباكة 🚰"
-              }
-            }
-
-          ]
-        }
-      }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        "Content-Type": "application/json"
-      }
-    }
-  );
-
-}
-
-/*
-========================
-معالجة الأزرار
-========================
-*/
-
-async function handleButtons(phone, id) {
-
-  /*
-  قبول الطلب
-  */
-
-  if (id.startsWith("accept_")) {
-
-    const orderId = id.replace("accept_", "");
-
-    const order = await db
-      .collection("orders")
-      .doc(orderId)
-      .get();
-
-    const data = order.data();
-
-    await order.ref.update({
-
-      status: "accepted"
-
-    });
-
-    await sendText(
-      data.user,
-      "تم قبول طلبك من الفني"
-    );
-
-    await sendText(
-      phone,
-      "تم قبول الطلب"
-    );
-
-    return;
-
-  }
-
-  /*
-  رفض الطلب
-  */
-
-  if (id.startsWith("reject_")) {
-
-    const orderId = id.replace("reject_", "");
-
-    const order = await db
-      .collection("orders")
-      .doc(orderId)
-      .get();
-
-    const data = order.data();
-
-    await order.ref.update({
-
-      status: "rejected"
-
-    });
-
-    await sendText(
-      data.user,
-      "تم رفض الطلب"
-    );
-
-    await sendText(
-      phone,
-      "تم رفض الطلب"
-    );
-
-    return;
-
-  }
-
-  /*
-  طلب خدمة
-  */
-
-  const techSnapshot = await db
-    .collection("technicians")
-    .where("service", "==", id)
-    .where("available", "==", true)
-    .limit(1)
-    .get();
-
-  if (techSnapshot.empty) {
-
-    await sendText(phone,
-      "لا يوجد فني متاح");
-
-    return;
-
-  }
-
-  const tech = techSnapshot.docs[0].data();
-
-  /*
-  إنشاء الطلب
-  */
-
-  const orderRef = await db
-    .collection("orders")
-    .add({
-
-      user: phone,
-      technician: tech.phone,
-      service: id,
-      status: "pending",
-      time: Date.now()
-
-    });
-
-  /*
-  إرسال للفني مع أزرار
-  */
-
-  await sendTechnicianButtons(
-    tech.phone,
-    orderRef.id,
-    id,
-    phone
-  );
-
-  await sendText(
-    phone,
-    "تم إرسال الطلب للفني"
-  );
-
-}
-
-/*
-========================
-إرسال أزرار للفني
-========================
-*/
-
-async function sendTechnicianButtons(
-  techPhone,
-  orderId,
-  service,
-  userPhone
-) {
-
-  await axios.post(
-    `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to: techPhone,
-      type: "interactive",
-      interactive: {
-
-        type: "button",
-
-        body: {
-          text:
-`طلب جديد
-
-الخدمة: ${service}
-العميل: ${userPhone}`
-        },
-
-        action: {
-
-          buttons: [
-
-            {
-              type: "reply",
-              reply: {
-                id: "accept_" + orderId,
-                title: "قبول"
-              }
-            },
-
-            {
-              type: "reply",
-              reply: {
-                id: "reject_" + orderId,
-                title: "رفض"
-              }
-            }
-
-          ]
-
-        }
-
-      }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        "Content-Type": "application/json"
-      }
-    }
-  );
-
-}
-
-/*
-========================
-رسالة نص
-========================
-*/
-
-async function sendText(to, text) {
-
-  await axios.post(
-    `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to: to,
-      type: "text",
-      text: { body: text }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        "Content-Type": "application/json"
-      }
-    }
-  );
-
-}
-
-/*
-========================
-تشغيل
-========================
-*/
-
-app.listen(process.env.PORT || 3000, () => {
-
-  console.log("Running V4");
+    console.log("Server running on port", PORT);
 
 });
