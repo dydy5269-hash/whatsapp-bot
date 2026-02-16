@@ -6,9 +6,9 @@ const app = express();
 app.use(express.json());
 
 /*
-==================================
-Firebase init from Railway ENV
-==================================
+================================
+Firebase Init
+================================
 */
 
 let serviceAccount;
@@ -18,269 +18,597 @@ try {
     throw new Error("FIREBASE_KEY not found");
   }
 
-  const decoded = Buffer.from(process.env.FIREBASE_KEY, "base64").toString("utf8");
+  const decoded = Buffer.from(
+    process.env.FIREBASE_KEY,
+    "base64"
+  ).toString("utf8");
+
   serviceAccount = JSON.parse(decoded);
 
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+    credential: admin.credential.cert(serviceAccount),
   });
 
   console.log("Firebase connected");
-
-} catch (err) {
-  console.error("Firebase error:", err.message);
+} catch (e) {
+  console.error(e);
 }
 
 const db = admin.firestore();
 
 /*
-==================================
-WhatsApp settings
-==================================
+================================
+WhatsApp Config
+================================
 */
 
-const TOKEN = process.env.WHATSAPP_TOKEN;
-const PHONE_ID = process.env.PHONE_ID;
+const TOKEN =
+  "const express = require("express");
+const admin = require("firebase-admin");
+const axios = require("axios");
 
-const VERIFY_TOKEN = "123456";
+const app = express();
+app.use(express.json());
 
 /*
-==================================
-Webhook verify
-==================================
+================================
+Firebase Init
+================================
+*/
+
+let serviceAccount;
+
+try {
+  if (!process.env.FIREBASE_KEY) {
+    throw new Error("FIREBASE_KEY not found");
+  }
+
+  const decoded = Buffer.from(
+    process.env.FIREBASE_KEY,
+    "base64"
+  ).toString("utf8");
+
+  serviceAccount = JSON.parse(decoded);
+
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+
+  console.log("Firebase connected");
+} catch (e) {
+  console.error(e);
+}
+
+const db = admin.firestore();
+
+/*
+================================
+WhatsApp Config
+================================
+*/
+
+const TOKEN =
+  "EAANB4MVrO8QBQvKHzzVrrZCk4O3OQtyaKocjygpJCAzgKNqVSwlK3PWTihv0LjRvdtPDcUeLrg8KKHWdmFJzzwo6M3z96kGSqLmsqIGW3GMu5z7eslQ2nxCpfoqxPwllmi6RRxYAkJ8fy6rRS0ArGyhIj74rWjv6TgGgNhC9a8GKTsZAfUeWm5NIttJHXsKnUlgitb1JyMmQZAqFGngEtppBIp16qSG6eujn61nZCG8hbetzlZCuwfZBnZCSrCoB0L6sNHaJGjGHVEqrwyZBOqMO75iZA5wZDZD";
+
+const PHONE_NUMBER_ID =
+  "962759303589757";
+
+/*
+================================
+Send WhatsApp Message
+================================
+*/
+
+async function sendWhatsApp(to, text) {
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to: to,
+        text: { body: text },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  } catch (e) {
+    console.log("Send error", e.response?.data);
+  }
+}
+
+/*
+================================
+Webhook Verify
+================================
 */
 
 app.get("/webhook", (req, res) => {
+  const VERIFY_TOKEN = "123456";
 
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("Webhook verified");
-    res.status(200).send(challenge);
+  if (mode && token === VERIFY_TOKEN) {
+    res.send(challenge);
   } else {
     res.sendStatus(403);
   }
-
 });
 
 /*
-==================================
-Receive WhatsApp messages
-==================================
+================================
+Webhook Receive
+================================
 */
 
 app.post("/webhook", async (req, res) => {
-
   try {
-
     const entry = req.body.entry?.[0];
-    const change = entry?.changes?.[0];
-    const message = change?.value?.messages?.[0];
+    const changes = entry?.changes?.[0];
+    const message = changes?.value?.messages?.[0];
 
     if (!message) {
       return res.sendStatus(200);
     }
 
     const from = message.from;
-    const text = message.text?.body || "";
+    const text = message.text?.body;
 
-    console.log("Message:", text);
+    console.log("Message:", from, text);
 
-    if (text === "مرحبا") {
-
-      await sendMenu(from);
-
-    } else {
-
-      await createRequest(from, text);
-
-    }
+    await handleUserMessage(from, text);
 
     res.sendStatus(200);
-
-  } catch (err) {
-    console.log(err);
+  } catch (e) {
+    console.log(e);
     res.sendStatus(500);
   }
-
 });
 
 /*
-==================================
-Send menu
-==================================
+================================
+Handle Message Logic
+================================
 */
 
-async function sendMenu(to) {
+async function handleUserMessage(phone, text) {
+  text = text.trim();
 
-  await axios.post(
-    `https://graph.facebook.com/v22.0/${PHONE_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to: to,
-      type: "text",
-      text: {
-        body:
-          "اختر الخدمة:\n\n" +
-          "كهرباء ⚡\n" +
-          "سباكة 🚿\n" +
-          "تكييف ❄️"
-      }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${TOKEN}`,
-        "Content-Type": "application/json"
-      }
+  // مرحبا
+  if (text === "مرحبا") {
+    await sendWhatsApp(
+      phone,
+      "اختر الخدمة:\n\nكهرباء\nسباكة\nتكييف"
+    );
+    return;
+  }
+
+  // check services
+  const services = await db
+    .collection("services")
+    .where("active", "==", true)
+    .get();
+
+  let found = null;
+
+  services.forEach((doc) => {
+    if (doc.data().name === text) {
+      found = doc.data();
     }
-  );
-
-}
-
-/*
-==================================
-Create request
-==================================
-*/
-
-async function createRequest(userPhone, service) {
-
-  const ref = await db.collection("requests").add({
-    phone: userPhone,
-    service: service,
-    status: "pending",
-    createdAt: Date.now()
   });
 
-  await sendText(userPhone, "تم استلام طلبك ✅");
+  if (!found) return;
 
-}
+  // create request
+  const requestRef = await db.collection("requests").add({
+    phone: phone,
+    service: text,
+    status: "pending",
+    createdAt: Date.now(),
+  });
 
-/*
-==================================
-Send text
-==================================
-*/
+  // find technician
+  const techSnap = await db
+    .collection("technicians")
+    .where("service", "==", text)
+    .where("active", "==", true)
+    .limit(1)
+    .get();
 
-async function sendText(to, text) {
+  if (techSnap.empty) {
+    await sendWhatsApp(
+      phone,
+      "لا يوجد فني متاح حالياً"
+    );
+    return;
+  }
 
-  await axios.post(
-    `https://graph.facebook.com/v22.0/${PHONE_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to,
-      type: "text",
-      text: { body: text }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${TOKEN}`,
-        "Content-Type": "application/json"
-      }
-    }
+  const tech = techSnap.docs[0];
+
+  await requestRef.update({
+    technicianId: tech.id,
+  });
+
+  const techData = tech.data();
+
+  await sendWhatsApp(
+    techData.phone,
+    `طلب جديد\n\nالخدمة: ${text}\nالعميل: ${phone}\n\nاكتب:\nقبول\nاو\nرفض`
   );
 
+  await sendWhatsApp(
+    phone,
+    "تم إرسال الطلب للفني"
+  );
 }
 
 /*
-==================================
-Dashboard page
-==================================
+================================
+Technician Reply
+================================
+*/
+
+app.post("/technician-reply", async (req, res) => {
+  const phone = req.body.phone;
+  const text = req.body.text;
+
+  const techSnap = await db
+    .collection("technicians")
+    .where("phone", "==", phone)
+    .limit(1)
+    .get();
+
+  if (techSnap.empty) return res.send("no tech");
+
+  const techId = techSnap.docs[0].id;
+
+  const requestSnap = await db
+    .collection("requests")
+    .where("technicianId", "==", techId)
+    .where("status", "==", "pending")
+    .limit(1)
+    .get();
+
+  if (requestSnap.empty) return res.send("no request");
+
+  const request = requestSnap.docs[0];
+
+  if (text === "قبول") {
+    await request.ref.update({
+      status: "accepted",
+    });
+
+    await sendWhatsApp(
+      request.data().phone,
+      "تم قبول طلبك من الفني"
+    );
+  }
+
+  if (text === "رفض") {
+    await request.ref.update({
+      status: "رفض",
+    });
+
+    await sendWhatsApp(
+      request.data().phone,
+      "تم رفض الطلب"
+    );
+  }
+
+  res.send("ok");
+}
+
+/*
+================================
+Dashboard
+================================
 */
 
 app.get("/dashboard", async (req, res) => {
-
-  const snapshot = await db
-    .collection("requests")
-    .orderBy("createdAt", "desc")
-    .get();
+  const snap = await db.collection("requests").get();
 
   let html = `
-  <html>
-  <head>
-  <title>لوحة التحكم</title>
-  </head>
-  <body>
-  <h2>الطلبات</h2>
-  <table border="1" cellpadding="10">
+  <h1>لوحة التحكم</h1>
+  <table border="1">
   <tr>
   <th>الهاتف</th>
   <th>الخدمة</th>
   <th>الحالة</th>
-  <th>تغيير الحالة</th>
   </tr>
   `;
 
-  snapshot.forEach(doc => {
-
-    const data = doc.data();
+  snap.forEach((doc) => {
+    const d = doc.data();
 
     html += `
     <tr>
-    <td>${data.phone}</td>
-    <td>${data.service}</td>
-    <td>${data.status}</td>
-    <td>
-      <a href="/accept/${doc.id}">قبول</a> |
-      <a href="/reject/${doc.id}">رفض</a>
-    </td>
+    <td>${d.phone}</td>
+    <td>${d.service}</td>
+    <td>${d.status}</td>
     </tr>
     `;
-
   });
 
-  html += "</table></body></html>";
+  html += "</table>";
 
   res.send(html);
-
 });
 
 /*
-==================================
-Accept request
-==================================
-*/
-
-app.get("/accept/:id", async (req, res) => {
-
-  const id = req.params.id;
-
-  await db.collection("requests").doc(id).update({
-    status: "accepted"
-  });
-
-  res.redirect("/dashboard");
-
-});
-
-/*
-==================================
-Reject request
-==================================
-*/
-
-app.get("/reject/:id", async (req, res) => {
-
-  const id = req.params.id;
-
-  await db.collection("requests").doc(id).update({
-    status: "rejected"
-  });
-
-  res.redirect("/dashboard");
-
-});
-
-/*
-==================================
-Start server
-==================================
+================================
+Start Server
+================================
 */
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
+  console.log("Server running");
+});
+";
+
+const PHONE_NUMBER_ID =
+  "PUT_YOUR_PHONE_NUMBER_ID_HERE";
+
+/*
+================================
+Send WhatsApp Message
+================================
+*/
+
+async function sendWhatsApp(to, text) {
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to: to,
+        text: { body: text },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  } catch (e) {
+    console.log("Send error", e.response?.data);
+  }
+}
+
+/*
+================================
+Webhook Verify
+================================
+*/
+
+app.get("/webhook", (req, res) => {
+  const VERIFY_TOKEN = "123456";
+
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode && token === VERIFY_TOKEN) {
+    res.send(challenge);
+  } else {
+    res.sendStatus(403);
+  }
+});
+
+/*
+================================
+Webhook Receive
+================================
+*/
+
+app.post("/webhook", async (req, res) => {
+  try {
+    const entry = req.body.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const message = changes?.value?.messages?.[0];
+
+    if (!message) {
+      return res.sendStatus(200);
+    }
+
+    const from = message.from;
+    const text = message.text?.body;
+
+    console.log("Message:", from, text);
+
+    await handleUserMessage(from, text);
+
+    res.sendStatus(200);
+  } catch (e) {
+    console.log(e);
+    res.sendStatus(500);
+  }
+});
+
+/*
+================================
+Handle Message Logic
+================================
+*/
+
+async function handleUserMessage(phone, text) {
+  text = text.trim();
+
+  // مرحبا
+  if (text === "مرحبا") {
+    await sendWhatsApp(
+      phone,
+      "اختر الخدمة:\n\nكهرباء\nسباكة\nتكييف"
+    );
+    return;
+  }
+
+  // check services
+  const services = await db
+    .collection("services")
+    .where("active", "==", true)
+    .get();
+
+  let found = null;
+
+  services.forEach((doc) => {
+    if (doc.data().name === text) {
+      found = doc.data();
+    }
+  });
+
+  if (!found) return;
+
+  // create request
+  const requestRef = await db.collection("requests").add({
+    phone: phone,
+    service: text,
+    status: "pending",
+    createdAt: Date.now(),
+  });
+
+  // find technician
+  const techSnap = await db
+    .collection("technicians")
+    .where("service", "==", text)
+    .where("active", "==", true)
+    .limit(1)
+    .get();
+
+  if (techSnap.empty) {
+    await sendWhatsApp(
+      phone,
+      "لا يوجد فني متاح حالياً"
+    );
+    return;
+  }
+
+  const tech = techSnap.docs[0];
+
+  await requestRef.update({
+    technicianId: tech.id,
+  });
+
+  const techData = tech.data();
+
+  await sendWhatsApp(
+    techData.phone,
+    `طلب جديد\n\nالخدمة: ${text}\nالعميل: ${phone}\n\nاكتب:\nقبول\nاو\nرفض`
+  );
+
+  await sendWhatsApp(
+    phone,
+    "تم إرسال الطلب للفني"
+  );
+}
+
+/*
+================================
+Technician Reply
+================================
+*/
+
+app.post("/technician-reply", async (req, res) => {
+  const phone = req.body.phone;
+  const text = req.body.text;
+
+  const techSnap = await db
+    .collection("technicians")
+    .where("phone", "==", phone)
+    .limit(1)
+    .get();
+
+  if (techSnap.empty) return res.send("no tech");
+
+  const techId = techSnap.docs[0].id;
+
+  const requestSnap = await db
+    .collection("requests")
+    .where("technicianId", "==", techId)
+    .where("status", "==", "pending")
+    .limit(1)
+    .get();
+
+  if (requestSnap.empty) return res.send("no request");
+
+  const request = requestSnap.docs[0];
+
+  if (text === "قبول") {
+    await request.ref.update({
+      status: "accepted",
+    });
+
+    await sendWhatsApp(
+      request.data().phone,
+      "تم قبول طلبك من الفني"
+    );
+  }
+
+  if (text === "رفض") {
+    await request.ref.update({
+      status: "رفض",
+    });
+
+    await sendWhatsApp(
+      request.data().phone,
+      "تم رفض الطلب"
+    );
+  }
+
+  res.send("ok");
+}
+
+/*
+================================
+Dashboard
+================================
+*/
+
+app.get("/dashboard", async (req, res) => {
+  const snap = await db.collection("requests").get();
+
+  let html = `
+  <h1>لوحة التحكم</h1>
+  <table border="1">
+  <tr>
+  <th>الهاتف</th>
+  <th>الخدمة</th>
+  <th>الحالة</th>
+  </tr>
+  `;
+
+  snap.forEach((doc) => {
+    const d = doc.data();
+
+    html += `
+    <tr>
+    <td>${d.phone}</td>
+    <td>${d.service}</td>
+    <td>${d.status}</td>
+    </tr>
+    `;
+  });
+
+  html += "</table>";
+
+  res.send(html);
+});
+
+/*
+================================
+Start Server
+================================
+*/
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log("Server running");
 });
