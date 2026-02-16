@@ -43,10 +43,10 @@ WhatsApp Config
 */
 
 const TOKEN =
-  "EAANB4MVrO8QBQvKHzzVrrZCk4O3OQtyaKocjygpJCAzgKNqVSwlK3PWTihv0LjRvdtPDcUeLrg8KKHWdmFJzzwo6M3z96kGSqLmsqIGW3GMu5z7eslQ2nxCpfoqxPwllmi6RRxYAkJ8fy6rRS0ArGyhIj74rWjv6TgGgNhC9a8GKTsZAfUeWm5NIttJHXsKnUlgitb1JyMmQZAqFGngEtppBIp16qSG6eujn61nZCG8hbetzlZCuwfZBnZCSrCoB0L6sNHaJGjGHVEqrwyZBOqMO75iZA5wZDZD";
+  "PUT_YOUR_TOKEN_HERE";
 
 const PHONE_NUMBER_ID =
-  "962759303589757";
+  "PUT_YOUR_PHONE_NUMBER_ID_HERE";
 
 /*
 ================================
