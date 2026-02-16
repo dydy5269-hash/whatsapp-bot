@@ -1,297 +1,285 @@
+// ================================
+// WhatsApp Bot v5 FINAL
+// Firebase + Dashboard + Orders
+// ================================
+
 const express = require("express");
-const admin = require("firebase-admin");
 const axios = require("axios");
+const admin = require("firebase-admin");
 
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-/*
-================================
-Firebase Init
-================================
-*/
+// ================================
+// ENV VARIABLES
+// ================================
 
-let serviceAccount;
+const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+const FIREBASE_KEY = process.env.FIREBASE_KEY;
 
-try {
-  if (!process.env.FIREBASE_KEY) {
-    throw new Error("FIREBASE_KEY not found");
-  }
+// ================================
+// CHECK VARIABLES
+// ================================
 
-  const decoded = Buffer.from(
-    process.env.FIREBASE_KEY,
-    "base64"
-  ).toString("utf8");
+if (!VERIFY_TOKEN) throw new Error("VERIFY_TOKEN missing");
+if (!WHATSAPP_TOKEN) throw new Error("WHATSAPP_TOKEN missing");
+if (!PHONE_NUMBER_ID) throw new Error("PHONE_NUMBER_ID missing");
+if (!FIREBASE_KEY) throw new Error("FIREBASE_KEY missing");
 
-  serviceAccount = JSON.parse(decoded);
+// ================================
+// FIREBASE INIT
+// ================================
 
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-  });
+const serviceAccount = JSON.parse(
+  Buffer.from(FIREBASE_KEY, "base64").toString("utf8")
+);
 
-  console.log("Firebase connected");
-} catch (e) {
-  console.error(e);
-}
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 
 const db = admin.firestore();
 
-/*
-================================
-WhatsApp Config
-================================
-*/
+console.log("Firebase connected");
 
-// WhatsApp config
-const TOKEN = process.env.WHATSAPP_TOKEN;
-const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
-const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+// ================================
+// SEND WHATSAPP MESSAGE
+// ================================
 
-if (!TOKEN) {
-  console.error("WHATSAPP_TOKEN missing");
-}
-
-if (!PHONE_NUMBER_ID) {
-  console.error("PHONE_NUMBER_ID missing");
-}
-
-
-/*
-================================
-Send WhatsApp Message
-================================
-*/
-
-async function sendWhatsApp(to, text) {
-  try {
-    await axios.post(
-      `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-      {
-        messaging_product: "whatsapp",
-        to: to,
-        text: { body: text },
+async function sendWhatsApp(to, message) {
+  await axios.post(
+    `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to: to,
+      type: "text",
+      text: { body: message },
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json",
       },
-      {
-        headers: {
-          Authorization: `Bearer ${TOKEN}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-  } catch (e) {
-    console.log("Send error", e.response?.data);
-  }
+    }
+  );
 }
 
-/*
-================================
-Webhook Verify
-================================
-*/
+// ================================
+// SEND SERVICES LIST
+// ================================
+
+async function sendServices(to) {
+  const snapshot = await db.collection("services").get();
+
+  if (snapshot.empty) {
+    await sendWhatsApp(to, "لا توجد خدمات حاليا");
+    return;
+  }
+
+  let msg = "اختر الخدمة:\n\n";
+
+  snapshot.forEach(doc => {
+    const s = doc.data();
+    msg += `${s.name}\n`;
+  });
+
+  await sendWhatsApp(to, msg);
+}
+
+// ================================
+// FIND TECHNICIAN
+// ================================
+
+async function findTechnician(serviceName) {
+  const snapshot = await db.collection("technicians")
+    .where("service", "==", serviceName)
+    .get();
+
+  if (snapshot.empty) return null;
+
+  return snapshot.docs[0].data();
+}
+
+// ================================
+// CREATE ORDER
+// ================================
+
+async function createOrder(userPhone, serviceName) {
+
+  const tech = await findTechnician(serviceName);
+
+  if (!tech) {
+    await sendWhatsApp(userPhone, "لا يوجد فني متاح حاليا");
+    return;
+  }
+
+  const orderRef = await db.collection("orders").add({
+    userPhone,
+    technicianPhone: tech.phone,
+    service: serviceName,
+    status: "pending",
+    createdAt: new Date()
+  });
+
+  await sendWhatsApp(userPhone,
+    "تم إرسال طلبك، بانتظار موافقة الفني"
+  );
+
+  await sendWhatsApp(tech.phone,
+    `طلب جديد:\nالخدمة: ${serviceName}\nالعميل: ${userPhone}\n\nاكتب:\naccept ${orderRef.id}\nأو\nreject ${orderRef.id}`
+  );
+}
+
+// ================================
+// ACCEPT ORDER
+// ================================
+
+async function acceptOrder(orderId, techPhone) {
+
+  const ref = db.collection("orders").doc(orderId);
+  const doc = await ref.get();
+
+  if (!doc.exists) return;
+
+  const order = doc.data();
+
+  if (order.technicianPhone !== techPhone) return;
+
+  await ref.update({
+    status: "accepted"
+  });
+
+  await sendWhatsApp(order.userPhone,
+    "تم قبول طلبك، الفني في الطريق"
+  );
+}
+
+// ================================
+// REJECT ORDER
+// ================================
+
+async function rejectOrder(orderId, techPhone) {
+
+  const ref = db.collection("orders").doc(orderId);
+  const doc = await ref.get();
+
+  if (!doc.exists) return;
+
+  const order = doc.data();
+
+  if (order.technicianPhone !== techPhone) return;
+
+  await ref.update({
+    status: "rejected"
+  });
+
+  await sendWhatsApp(order.userPhone,
+    "تم رفض الطلب"
+  );
+}
+
+// ================================
+// WEBHOOK VERIFY
+// ================================
 
 app.get("/webhook", (req, res) => {
-  const VERIFY_TOKEN = "123456";
 
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  if (mode && token === VERIFY_TOKEN) {
+  if (mode === "subscribe" && token === VERIFY_TOKEN) {
     res.send(challenge);
   } else {
     res.sendStatus(403);
   }
+
 });
 
-/*
-================================
-Webhook Receive
-================================
-*/
+// ================================
+// WEBHOOK RECEIVE
+// ================================
 
 app.post("/webhook", async (req, res) => {
-  try {
-    const entry = req.body.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const message = changes?.value?.messages?.[0];
 
-    if (!message) {
-      return res.sendStatus(200);
+  try {
+
+    const msg =
+      req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+
+    if (!msg) return res.sendStatus(200);
+
+    const from = msg.from;
+    const text = msg.text?.body?.toLowerCase();
+
+    console.log("Message:", text);
+
+    if (text === "مرحبا") {
+      await sendServices(from);
     }
 
-    const from = message.from;
-    const text = message.text?.body;
+    else if (text.startsWith("accept")) {
 
-    console.log("Message:", from, text);
+      const orderId = text.split(" ")[1];
+      await acceptOrder(orderId, from);
 
-    await handleUserMessage(from, text);
+    }
+
+    else if (text.startsWith("reject")) {
+
+      const orderId = text.split(" ")[1];
+      await rejectOrder(orderId, from);
+
+    }
+
+    else {
+
+      await createOrder(from, text);
+
+    }
 
     res.sendStatus(200);
+
   } catch (e) {
-    console.log(e);
+
+    console.error(e);
     res.sendStatus(500);
+
   }
+
 });
 
-/*
-================================
-Handle Message Logic
-================================
-*/
-
-async function handleUserMessage(phone, text) {
-  text = text.trim();
-
-  // مرحبا
-  if (text === "مرحبا") {
-    await sendWhatsApp(
-      phone,
-      "اختر الخدمة:\n\nكهرباء\nسباكة\nتكييف"
-    );
-    return;
-  }
-
-  // check services
-  const services = await db
-    .collection("services")
-    .where("active", "==", true)
-    .get();
-
-  let found = null;
-
-  services.forEach((doc) => {
-    if (doc.data().name === text) {
-      found = doc.data();
-    }
-  });
-
-  if (!found) return;
-
-  // create request
-  const requestRef = await db.collection("requests").add({
-    phone: phone,
-    service: text,
-    status: "pending",
-    createdAt: Date.now(),
-  });
-
-  // find technician
-  const techSnap = await db
-    .collection("technicians")
-    .where("service", "==", text)
-    .where("active", "==", true)
-    .limit(1)
-    .get();
-
-  if (techSnap.empty) {
-    await sendWhatsApp(
-      phone,
-      "لا يوجد فني متاح حالياً"
-    );
-    return;
-  }
-
-  const tech = techSnap.docs[0];
-
-  await requestRef.update({
-    technicianId: tech.id,
-  });
-
-  const techData = tech.data();
-
-  await sendWhatsApp(
-    techData.phone,
-    `طلب جديد\n\nالخدمة: ${text}\nالعميل: ${phone}\n\nاكتب:\nقبول\nاو\nرفض`
-  );
-
-  await sendWhatsApp(
-    phone,
-    "تم إرسال الطلب للفني"
-  );
-}
-
-/*
-================================
-Technician Reply
-================================
-*/
-
-app.post("/technician-reply", async (req, res) => {
-  const phone = req.body.phone;
-  const text = req.body.text;
-
-  const techSnap = await db
-    .collection("technicians")
-    .where("phone", "==", phone)
-    .limit(1)
-    .get();
-
-  if (techSnap.empty) return res.send("no tech");
-
-  const techId = techSnap.docs[0].id;
-
-  const requestSnap = await db
-    .collection("requests")
-    .where("technicianId", "==", techId)
-    .where("status", "==", "pending")
-    .limit(1)
-    .get();
-
-  if (requestSnap.empty) return res.send("no request");
-
-  const request = requestSnap.docs[0];
-
-  if (text === "قبول") {
-    await request.ref.update({
-      status: "accepted",
-    });
-
-    await sendWhatsApp(
-      request.data().phone,
-      "تم قبول طلبك من الفني"
-    );
-  }
-
-  if (text === "رفض") {
-    await request.ref.update({
-      status: "رفض",
-    });
-
-    await sendWhatsApp(
-      request.data().phone,
-      "تم رفض الطلب"
-    );
-  }
-
-  res.send("ok");
-}
-
-/*
-================================
-Dashboard
-================================
-*/
+// ================================
+// DASHBOARD
+// ================================
 
 app.get("/dashboard", async (req, res) => {
-  const snap = await db.collection("requests").get();
+
+  const snapshot = await db.collection("orders").get();
 
   let html = `
-  <h1>لوحة التحكم</h1>
-  <table border="1">
+  <h2>لوحة التحكم</h2>
+  <table border="1" cellpadding="10">
   <tr>
-  <th>الهاتف</th>
   <th>الخدمة</th>
+  <th>العميل</th>
+  <th>الفني</th>
   <th>الحالة</th>
   </tr>
   `;
 
-  snap.forEach((doc) => {
+  snapshot.forEach(doc => {
+
     const d = doc.data();
 
     html += `
     <tr>
-    <td>${d.phone}</td>
     <td>${d.service}</td>
+    <td>${d.userPhone}</td>
+    <td>${d.technicianPhone}</td>
     <td>${d.status}</td>
     </tr>
     `;
@@ -300,17 +288,15 @@ app.get("/dashboard", async (req, res) => {
   html += "</table>";
 
   res.send(html);
+
 });
 
-/*
-================================
-Start Server
-================================
-*/
+// ================================
+// START SERVER
+// ================================
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+  console.log("Server running on port", PORT);
 });
-
