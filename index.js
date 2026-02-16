@@ -42,11 +42,19 @@ WhatsApp Config
 ================================
 */
 
-const TOKEN =
-  "PUT_YOUR_TOKEN_HERE";
+// WhatsApp config
+const TOKEN = process.env.WHATSAPP_TOKEN;
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
-const PHONE_NUMBER_ID =
-  "PUT_YOUR_PHONE_NUMBER_ID_HERE";
+if (!TOKEN) {
+  console.error("WHATSAPP_TOKEN missing");
+}
+
+if (!PHONE_NUMBER_ID) {
+  console.error("PHONE_NUMBER_ID missing");
+}
+
 
 /*
 ================================
@@ -303,5 +311,6 @@ Start Server
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log("Server running");
+  console.log("Server running on port " + PORT);
 });
+
