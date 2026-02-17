@@ -1,54 +1,33 @@
 const express = require("express");
-const admin = require("firebase-admin");
+const bodyParser = require("body-parser");
 const axios = require("axios");
+const admin = require("firebase-admin");
 const path = require("path");
 
 const app = express();
-app.use(express.json());
 
-/* ================================
-   Firebase Setup
-================================ */
+app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, "public")));
 
-let serviceAccount;
+// ================= FIREBASE =================
 
-try {
-  const decoded = Buffer.from(process.env.FIREBASE_KEY, "base64").toString("utf8");
-  serviceAccount = JSON.parse(decoded);
+const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
 
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-  });
-
-  console.log("Firebase connected");
-
-} catch (e) {
-  console.error("Firebase error:", e);
-}
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 
 const db = admin.firestore();
 
-/* ================================
-   WhatsApp Variables
-================================ */
+console.log("Firebase connected");
 
-const TOKEN = process.env.WHATSAPP_TOKEN;
-const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+// ================= WHATSAPP VARS =================
+
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
-/* ================================
-   Serve Dashboard
-================================ */
-
-app.use(express.static(path.join(__dirname, "public")));
-
-app.get("/", (req, res) => {
-  res.send("WhatsApp Bot Running");
-});
-
-/* ================================
-   Webhook Verify
-================================ */
+// ================= WEBHOOK VERIFY =================
 
 app.get("/webhook", (req, res) => {
 
@@ -57,85 +36,69 @@ app.get("/webhook", (req, res) => {
   const challenge = req.query["hub.challenge"];
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
+
     console.log("Webhook verified");
+
     res.status(200).send(challenge);
+
   } else {
+
     res.sendStatus(403);
+
   }
+
 });
 
-/* ================================
-   Webhook Receive Message
-================================ */
+// ================= RECEIVE MESSAGE =================
 
 app.post("/webhook", async (req, res) => {
 
   try {
 
-    const message =
-      req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    const entry = req.body.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const message = changes?.value?.messages?.[0];
 
-    if (!message) return res.sendStatus(200);
+    if (!message) {
+      return res.sendStatus(200);
+    }
 
     const from = message.from;
-    const text = message.text?.body;
+    const text = message.text?.body || "";
 
     console.log("Message:", text);
 
-    if (text === "مرحبا") {
+    // Save order to Firebase
+    const orderRef = await db.collection("orders").add({
 
-      const servicesSnapshot = await db.collection("services").get();
+      phone: from,
+      text: text,
+      status: "pending",
+      createdAt: new Date(),
 
-      let list = "";
+    });
 
-      servicesSnapshot.forEach(doc => {
-        list += "• " + doc.data().name + "\n";
-      });
+    // send confirmation
+    await sendMessage(from,
+      "✅ تم استلام طلبك بنجاح\n" +
+      "رقم الطلب: " + orderRef.id
+    );
 
-      await sendMessage(from, "اختر الخدمة:\n\n" + list);
-
-    } else {
-
-      const techSnapshot = await db
-        .collection("technicians")
-        .where("service", "==", text)
-        .where("available", "==", true)
-        .get();
-
-      if (techSnapshot.empty) {
-
-        await sendMessage(from, "لا يوجد فني متاح حالياً");
-
-      } else {
-
-        const tech = techSnapshot.docs[0].data();
-
-        await db.collection("orders").add({
-          user: from,
-          service: text,
-          technician: tech.name,
-          status: "pending",
-          time: Date.now()
-        });
-
-        await sendMessage(from, "تم إرسال الطلب");
-
-        await sendMessage(tech.phone, "طلب جديد: " + text);
-      }
-    }
+    // send to technician
+    await notifyTechnicians(orderRef.id, text, from);
 
     res.sendStatus(200);
 
-  } catch (e) {
+  } catch (error) {
 
-    console.error(e);
+    console.error(error);
     res.sendStatus(500);
+
   }
+
 });
 
-/* ================================
-   Send Message
-================================ */
+// ================= SEND MESSAGE =================
 
 async function sendMessage(to, text) {
 
@@ -148,28 +111,128 @@ async function sendMessage(to, text) {
     },
     {
       headers: {
-        Authorization: `Bearer ${TOKEN}`,
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
         "Content-Type": "application/json"
       }
     }
   );
+
 }
 
-/* ================================
-   IMPORTANT FOR RAILWAY
-================================ */
+// ================= NOTIFY TECHNICIANS =================
 
-const express = require("express");
-const app = express();
+async function notifyTechnicians(orderId, serviceText, customerPhone) {
 
-app.use(express.json());
+  const snapshot = await db.collection("technicians").get();
+
+  snapshot.forEach(async (doc) => {
+
+    const tech = doc.data();
+
+    await sendMessage(
+      tech.phone,
+      "🔧 طلب جديد\n\n" +
+      "الخدمة: " + serviceText + "\n" +
+      "رقم العميل: " + customerPhone + "\n\n" +
+      "للقبول ارسل:\n" +
+      "accept " + orderId + "\n\n" +
+      "للرفض ارسل:\n" +
+      "reject " + orderId
+    );
+
+  });
+
+}
+
+// ================= DASHBOARD API =================
+
+// get services
+app.get("/api/services", async (req, res) => {
+
+  const snapshot = await db.collection("services").get();
+
+  let list = [];
+
+  snapshot.forEach(doc => {
+    list.push({ id: doc.id, ...doc.data() });
+  });
+
+  res.json(list);
+
+});
+
+// add service
+app.post("/api/services", async (req, res) => {
+
+  const { name } = req.body;
+
+  await db.collection("services").add({
+    name
+  });
+
+  res.json({ success: true });
+
+});
+
+// get technicians
+app.get("/api/technicians", async (req, res) => {
+
+  const snapshot = await db.collection("technicians").get();
+
+  let list = [];
+
+  snapshot.forEach(doc => {
+    list.push({ id: doc.id, ...doc.data() });
+  });
+
+  res.json(list);
+
+});
+
+// add technician
+app.post("/api/technicians", async (req, res) => {
+
+  const { name, phone, service } = req.body;
+
+  await db.collection("technicians").add({
+    name,
+    phone,
+    service
+  });
+
+  res.json({ success: true });
+
+});
+
+// get orders
+app.get("/api/orders", async (req, res) => {
+
+  const snapshot = await db.collection("orders")
+    .orderBy("createdAt", "desc")
+    .get();
+
+  let list = [];
+
+  snapshot.forEach(doc => {
+    list.push({ id: doc.id, ...doc.data() });
+  });
+
+  res.json(list);
+
+});
+
+// ================= DASHBOARD PAGE =================
+
+app.get("/dashboard", (req, res) => {
+  res.sendFile(path.join(__dirname, "public/dashboard.html"));
+});
+
+// ================= START SERVER =================
 
 const PORT = process.env.PORT || 8080;
 
-app.get("/", (req, res) => {
-  res.send("Bot is running");
-});
-
 app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+
+  console.log("Server running on port", PORT);
+
 });
