@@ -1,12 +1,14 @@
 const express = require("express");
 const admin = require("firebase-admin");
 const axios = require("axios");
+const path = require("path");
 
 const app = express();
 app.use(express.json());
-app.use(express.static("public"));
 
-/* Firebase init */
+/* ================================
+   Firebase Setup
+================================ */
 
 let serviceAccount;
 
@@ -19,47 +21,61 @@ try {
   });
 
   console.log("Firebase connected");
+
 } catch (e) {
-  console.log("Firebase error", e);
+  console.error("Firebase error:", e);
 }
 
 const db = admin.firestore();
 
-/* WhatsApp config */
+/* ================================
+   WhatsApp Variables
+================================ */
 
 const TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
-/* webhook verify */
+/* ================================
+   Serve Dashboard
+================================ */
+
+app.use(express.static(path.join(__dirname, "public")));
+
+app.get("/", (req, res) => {
+  res.send("WhatsApp Bot Running");
+});
+
+/* ================================
+   Webhook Verify
+================================ */
 
 app.get("/webhook", (req, res) => {
-
-  const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    res.send(challenge);
+    console.log("Webhook verified");
+    res.status(200).send(challenge);
   } else {
     res.sendStatus(403);
   }
 });
 
-/* receive messages */
+/* ================================
+   Webhook Receive Message
+================================ */
 
 app.post("/webhook", async (req, res) => {
 
   try {
 
-    const entry = req.body.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const message = changes?.value?.messages?.[0];
+    const message =
+      req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
-    if (!message) {
-      return res.sendStatus(200);
-    }
+    if (!message) return res.sendStatus(200);
 
     const from = message.from;
     const text = message.text?.body;
@@ -70,41 +86,41 @@ app.post("/webhook", async (req, res) => {
 
       const servicesSnapshot = await db.collection("services").get();
 
-      let services = [];
+      let list = "";
 
       servicesSnapshot.forEach(doc => {
-        services.push(doc.data().name);
+        list += "• " + doc.data().name + "\n";
       });
 
-      await sendList(from, services);
+      await sendMessage(from, "اختر الخدمة:\n\n" + list);
 
     } else {
 
       const techSnapshot = await db
         .collection("technicians")
         .where("service", "==", text)
+        .where("available", "==", true)
         .get();
 
       if (techSnapshot.empty) {
 
-        await sendText(from, "لا يوجد فني متاح حالياً");
+        await sendMessage(from, "لا يوجد فني متاح حالياً");
 
       } else {
 
         const tech = techSnapshot.docs[0].data();
 
         await db.collection("orders").add({
-
-          phone: from,
+          user: from,
           service: text,
           technician: tech.name,
-          technicianPhone: tech.phone,
           status: "pending",
-          createdAt: new Date()
-
+          time: Date.now()
         });
 
-        await sendText(from, "تم ارسال طلبك بنجاح");
+        await sendMessage(from, "تم إرسال الطلب");
+
+        await sendMessage(tech.phone, "طلب جديد: " + text);
       }
     }
 
@@ -112,22 +128,23 @@ app.post("/webhook", async (req, res) => {
 
   } catch (e) {
 
-    console.log(e);
+    console.error(e);
     res.sendStatus(500);
   }
-
 });
 
-/* send text */
+/* ================================
+   Send Message
+================================ */
 
-async function sendText(to, body) {
+async function sendMessage(to, text) {
 
   await axios.post(
     `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
     {
       messaging_product: "whatsapp",
-      to,
-      text: { body }
+      to: to,
+      text: { body: text }
     },
     {
       headers: {
@@ -138,47 +155,9 @@ async function sendText(to, body) {
   );
 }
 
-/* send list */
-
-async function sendList(to, services) {
-
-  const rows = services.map(service => ({
-    id: service,
-    title: service
-  }));
-
-  await axios.post(
-    `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to,
-      type: "interactive",
-      interactive: {
-        type: "list",
-        body: {
-          text: "اختر الخدمة"
-        },
-        action: {
-          button: "عرض",
-          sections: [
-            {
-              title: "الخدمات",
-              rows
-            }
-          ]
-        }
-      }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${TOKEN}`,
-        "Content-Type": "application/json"
-      }
-    }
-  );
-}
-
-/* start server */
+/* ================================
+   IMPORTANT FOR RAILWAY
+================================ */
 
 const PORT = process.env.PORT || 3000;
 
