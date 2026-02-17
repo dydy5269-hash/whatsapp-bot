@@ -1,37 +1,36 @@
-// ================================
-// WhatsApp Bot v5 FINAL
-// Firebase + Dashboard + Orders
-// ================================
+// =====================================
+// WhatsApp Service System - FINAL v6
+// Firebase + Dashboard + Full Control
+// =====================================
 
 const express = require("express");
 const axios = require("axios");
 const admin = require("firebase-admin");
+const path = require("path");
 
 const app = express();
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static("public"));
 
-// ================================
+// =====================================
 // ENV VARIABLES
-// ================================
+// =====================================
 
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const FIREBASE_KEY = process.env.FIREBASE_KEY;
 
-// ================================
-// CHECK VARIABLES
-// ================================
-
 if (!VERIFY_TOKEN) throw new Error("VERIFY_TOKEN missing");
 if (!WHATSAPP_TOKEN) throw new Error("WHATSAPP_TOKEN missing");
 if (!PHONE_NUMBER_ID) throw new Error("PHONE_NUMBER_ID missing");
 if (!FIREBASE_KEY) throw new Error("FIREBASE_KEY missing");
 
-// ================================
+// =====================================
 // FIREBASE INIT
-// ================================
+// =====================================
 
 const serviceAccount = JSON.parse(
   Buffer.from(FIREBASE_KEY, "base64").toString("utf8")
@@ -45,145 +44,35 @@ const db = admin.firestore();
 
 console.log("Firebase connected");
 
-// ================================
+// =====================================
 // SEND WHATSAPP MESSAGE
-// ================================
+// =====================================
 
 async function sendWhatsApp(to, message) {
-  await axios.post(
-    `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to: to,
-      type: "text",
-      text: { body: message },
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        "Content-Type": "application/json",
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to: to,
+        type: "text",
+        text: { body: message },
       },
-    }
-  );
-}
-
-// ================================
-// SEND SERVICES LIST
-// ================================
-
-async function sendServices(to) {
-  const snapshot = await db.collection("services").get();
-
-  if (snapshot.empty) {
-    await sendWhatsApp(to, "لا توجد خدمات حاليا");
-    return;
+      {
+        headers: {
+          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  } catch (error) {
+    console.log("WhatsApp send error:", error.response?.data || error.message);
   }
-
-  let msg = "اختر الخدمة:\n\n";
-
-  snapshot.forEach(doc => {
-    const s = doc.data();
-    msg += `${s.name}\n`;
-  });
-
-  await sendWhatsApp(to, msg);
 }
 
-// ================================
-// FIND TECHNICIAN
-// ================================
-
-async function findTechnician(serviceName) {
-  const snapshot = await db.collection("technicians")
-    .where("service", "==", serviceName)
-    .get();
-
-  if (snapshot.empty) return null;
-
-  return snapshot.docs[0].data();
-}
-
-// ================================
-// CREATE ORDER
-// ================================
-
-async function createOrder(userPhone, serviceName) {
-
-  const tech = await findTechnician(serviceName);
-
-  if (!tech) {
-    await sendWhatsApp(userPhone, "لا يوجد فني متاح حاليا");
-    return;
-  }
-
-  const orderRef = await db.collection("orders").add({
-    userPhone,
-    technicianPhone: tech.phone,
-    service: serviceName,
-    status: "pending",
-    createdAt: new Date()
-  });
-
-  await sendWhatsApp(userPhone,
-    "تم إرسال طلبك، بانتظار موافقة الفني"
-  );
-
-  await sendWhatsApp(tech.phone,
-    `طلب جديد:\nالخدمة: ${serviceName}\nالعميل: ${userPhone}\n\nاكتب:\naccept ${orderRef.id}\nأو\nreject ${orderRef.id}`
-  );
-}
-
-// ================================
-// ACCEPT ORDER
-// ================================
-
-async function acceptOrder(orderId, techPhone) {
-
-  const ref = db.collection("orders").doc(orderId);
-  const doc = await ref.get();
-
-  if (!doc.exists) return;
-
-  const order = doc.data();
-
-  if (order.technicianPhone !== techPhone) return;
-
-  await ref.update({
-    status: "accepted"
-  });
-
-  await sendWhatsApp(order.userPhone,
-    "تم قبول طلبك، الفني في الطريق"
-  );
-}
-
-// ================================
-// REJECT ORDER
-// ================================
-
-async function rejectOrder(orderId, techPhone) {
-
-  const ref = db.collection("orders").doc(orderId);
-  const doc = await ref.get();
-
-  if (!doc.exists) return;
-
-  const order = doc.data();
-
-  if (order.technicianPhone !== techPhone) return;
-
-  await ref.update({
-    status: "rejected"
-  });
-
-  await sendWhatsApp(order.userPhone,
-    "تم رفض الطلب"
-  );
-}
-
-// ================================
+// =====================================
 // WEBHOOK VERIFY
-// ================================
+// =====================================
 
 app.get("/webhook", (req, res) => {
 
@@ -192,50 +81,52 @@ app.get("/webhook", (req, res) => {
   const challenge = req.query["hub.challenge"];
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    res.send(challenge);
+    res.status(200).send(challenge);
   } else {
     res.sendStatus(403);
   }
 
 });
 
-// ================================
+// =====================================
 // WEBHOOK RECEIVE
-// ================================
+// =====================================
 
 app.post("/webhook", async (req, res) => {
 
   try {
 
-    const msg =
+    const message =
       req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
-    if (!msg) return res.sendStatus(200);
+    if (!message) return res.sendStatus(200);
 
-    const from = msg.from;
-    const text = msg.text?.body?.toLowerCase();
+    const from = message.from;
+    const text = message.text?.body?.trim();
 
-    console.log("Message:", text);
+    console.log("Message received:", text);
 
     if (text === "مرحبا") {
-      await sendServices(from);
-    }
 
-    else if (text.startsWith("accept")) {
+      const servicesSnap = await db.collection("services").get();
 
-      const orderId = text.split(" ")[1];
-      await acceptOrder(orderId, from);
+      if (servicesSnap.empty) {
 
-    }
+        await sendWhatsApp(from, "لا توجد خدمات حاليا");
 
-    else if (text.startsWith("reject")) {
+      } else {
 
-      const orderId = text.split(" ")[1];
-      await rejectOrder(orderId, from);
+        let msg = "اختر الخدمة:\n\n";
 
-    }
+        servicesSnap.forEach(doc => {
+          msg += `${doc.data().name}\n`;
+        });
 
-    else {
+        await sendWhatsApp(from, msg);
+
+      }
+
+    } else {
 
       await createOrder(from, text);
 
@@ -243,57 +134,192 @@ app.post("/webhook", async (req, res) => {
 
     res.sendStatus(200);
 
-  } catch (e) {
+  } catch (error) {
 
-    console.error(e);
+    console.log(error);
     res.sendStatus(500);
 
   }
 
 });
 
-// ================================
-// DASHBOARD
-// ================================
+// =====================================
+// CREATE ORDER
+// =====================================
 
-app.get("/dashboard", async (req, res) => {
+async function createOrder(userPhone, serviceName) {
 
-  const snapshot = await db.collection("orders").get();
+  const techSnap = await db
+    .collection("technicians")
+    .where("service", "==", serviceName)
+    .where("available", "==", true)
+    .limit(1)
+    .get();
 
-  let html = `
-  <h2>لوحة التحكم</h2>
-  <table border="1" cellpadding="10">
-  <tr>
-  <th>الخدمة</th>
-  <th>العميل</th>
-  <th>الفني</th>
-  <th>الحالة</th>
-  </tr>
-  `;
+  let technician = null;
 
-  snapshot.forEach(doc => {
+  if (!techSnap.empty) {
 
-    const d = doc.data();
+    technician = techSnap.docs[0].data();
 
-    html += `
-    <tr>
-    <td>${d.service}</td>
-    <td>${d.userPhone}</td>
-    <td>${d.technicianPhone}</td>
-    <td>${d.status}</td>
-    </tr>
-    `;
+    await sendWhatsApp(
+      technician.phone,
+      `طلب جديد\nالخدمة: ${serviceName}\nالعميل: ${userPhone}`
+    );
+
+  }
+
+  await db.collection("orders").add({
+
+    phone: userPhone,
+    service: serviceName,
+    technician: technician?.name || null,
+    technicianPhone: technician?.phone || null,
+    status: technician ? "assigned" : "pending",
+    createdAt: new Date(),
+
   });
 
-  html += "</table>";
+  await sendWhatsApp(
+    userPhone,
+    technician
+      ? "تم إرسال الطلب للفني"
+      : "تم استلام الطلب، سيتم تعيين فني قريباً"
+  );
 
-  res.send(html);
+}
+
+// =====================================
+// DASHBOARD ROUTES
+// =====================================
+
+// services
+
+app.get("/api/services", async (req, res) => {
+
+  const snap = await db.collection("services").get();
+
+  const data = snap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+
+  res.json(data);
 
 });
 
-// ================================
+app.post("/api/services", async (req, res) => {
+
+  const { name } = req.body;
+
+  await db.collection("services").add({
+    name,
+    createdAt: new Date()
+  });
+
+  res.sendStatus(200);
+
+});
+
+// technicians
+
+app.get("/api/technicians", async (req, res) => {
+
+  const snap = await db.collection("technicians").get();
+
+  const data = snap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+
+  res.json(data);
+
+});
+
+app.post("/api/technicians", async (req, res) => {
+
+  const { name, phone, service } = req.body;
+
+  await db.collection("technicians").add({
+    name,
+    phone,
+    service,
+    available: true,
+    createdAt: new Date()
+  });
+
+  res.sendStatus(200);
+
+});
+
+// orders
+
+app.get("/api/orders", async (req, res) => {
+
+  const snap = await db.collection("orders")
+    .orderBy("createdAt", "desc")
+    .get();
+
+  const data = snap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+
+  res.json(data);
+
+});
+
+// UPDATE ORDER STATUS
+
+app.put("/api/orders/:id", async (req, res) => {
+
+  try {
+
+    const id = req.params.id;
+    const status = req.body.status;
+
+    const ref = db.collection("orders").doc(id);
+    const doc = await ref.get();
+
+    if (!doc.exists)
+      return res.status(404).send("Not found");
+
+    const order = doc.data();
+
+    await ref.update({ status });
+
+    if (status === "accepted") {
+
+      await sendWhatsApp(
+        order.phone,
+        "تم قبول طلبك ✅ الفني في الطريق"
+      );
+
+    }
+
+    if (status === "rejected") {
+
+      await sendWhatsApp(
+        order.phone,
+        "تم رفض الطلب ❌"
+      );
+
+    }
+
+    res.sendStatus(200);
+
+  } catch (e) {
+
+    console.log(e);
+    res.sendStatus(500);
+
+  }
+
+});
+
+// =====================================
 // START SERVER
-// ================================
+// =====================================
 
 const PORT = process.env.PORT || 3000;
 
