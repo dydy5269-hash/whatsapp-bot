@@ -1,220 +1,74 @@
 <!DOCTYPE html>
 <html lang="ar">
 <head>
+
 <meta charset="UTF-8">
 <title>لوحة التحكم</title>
 
-<style>
+<link rel="stylesheet" href="style.css">
 
-body{
-font-family:Arial;
-background:#0f172a;
-color:white;
-padding:20px;
-}
-
-h1{
-margin-bottom:20px;
-}
-
-.card{
-background:#1e293b;
-padding:15px;
-margin-bottom:20px;
-border-radius:10px;
-}
-
-input,button{
-padding:10px;
-margin:5px;
-border-radius:5px;
-border:none;
-}
-
-button{
-background:#22c55e;
-color:white;
-cursor:pointer;
-}
-
-table{
-width:100%;
-margin-top:10px;
-border-collapse:collapse;
-}
-
-td,th{
-padding:10px;
-border-bottom:1px solid #334155;
-}
-
-.accept{
-background:#22c55e;
-}
-
-.reject{
-background:#ef4444;
-}
-
-</style>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
 </head>
+
 <body>
 
 <h1>لوحة التحكم</h1>
 
 <div class="card">
 
-<h3>اضافة خدمة</h3>
+<p>عدد الفنيين: <span id="techCount">0</span></p>
 
-<input id="serviceName" placeholder="اسم الخدمة">
+<p>عدد الخدمات: <span id="serviceCount">0</span></p>
 
-<button onclick="addService()">اضافة</button>
+<p>عدد الطلبات: <span id="orderCount">0</span></p>
 
-</div>
-
-<div class="card">
-
-<h3>اضافة فني</h3>
-
-<input id="techName" placeholder="اسم الفني">
-
-<input id="techPhone" placeholder="رقم الفني">
-
-<input id="techService" placeholder="الخدمة">
-
-<button onclick="addTech()">اضافة</button>
+<p>عدد قطع الغيار: <span id="partsCount">0</span></p>
 
 </div>
 
-<div class="card">
+<br>
 
-<h3>الطلبات</h3>
-
-<table>
-
-<thead>
-
-<tr>
-
-<th>الهاتف</th>
-<th>الخدمة</th>
-<th>الحالة</th>
-<th>تغيير</th>
-
-</tr>
-
-</thead>
-
-<tbody id="orders"></tbody>
-
-</table>
-
-</div>
+<a href="services.html">الخدمات</a>
+<br>
+<a href="technicians.html">الفنيين</a>
+<br>
+<a href="orders.html">الطلبات</a>
+<br>
+<a href="parts.html">قطع الغيار</a>
 
 <script>
 
-async function loadOrders(){
+const firebaseConfig = {
 
-const res = await fetch("/api/orders");
+apiKey: "PUT_API_KEY",
+authDomain: "PUT_DOMAIN",
+projectId: "PUT_PROJECT_ID"
 
-const data = await res.json();
+};
 
-let html="";
+firebase.initializeApp(firebaseConfig);
 
-data.forEach(o=>{
+const db = firebase.firestore();
 
-html+=`
-<tr>
+async function loadStats(){
 
-<td>${o.phone}</td>
+techCount.innerText =
+(await db.collection("technicians").get()).size;
 
-<td>${o.service}</td>
+serviceCount.innerText =
+(await db.collection("services").get()).size;
 
-<td>${o.status}</td>
+orderCount.innerText =
+(await db.collection("orders").get()).size;
 
-<td>
-
-<button class="accept" onclick="update('${o.id}','accepted')">قبول</button>
-
-<button class="reject" onclick="update('${o.id}','rejected')">رفض</button>
-
-</td>
-
-</tr>
-`;
-
-});
-
-document.getElementById("orders").innerHTML=html;
+partsCount.innerText =
+(await db.collection("parts").get()).size;
 
 }
 
-async function update(id,status){
-
-await fetch("/api/orders/"+id,{
-
-method:"PUT",
-
-headers:{
-"Content-Type":"application/json"
-},
-
-body:JSON.stringify({status})
-
-});
-
-loadOrders();
-
-}
-
-async function addService(){
-
-const name=document.getElementById("serviceName").value;
-
-await fetch("/api/services",{
-
-method:"POST",
-
-headers:{
-"Content-Type":"application/json"
-},
-
-body:JSON.stringify({name})
-
-});
-
-alert("تمت الاضافة");
-
-}
-
-async function addTech(){
-
-await fetch("/api/technicians",{
-
-method:"POST",
-
-headers:{
-"Content-Type":"application/json"
-},
-
-body:JSON.stringify({
-
-name:techName.value,
-phone:techPhone.value,
-service:techService.value
-
-})
-
-});
-
-alert("تمت الاضافة");
-
-}
-
-loadOrders();
-
-setInterval(loadOrders,3000);
+loadStats();
 
 </script>
 
