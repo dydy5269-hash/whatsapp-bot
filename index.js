@@ -1,156 +1,188 @@
 const express = require("express");
-const bodyParser = require("body-parser");
-const fetch = require("node-fetch");
-const path = require("path");
+const axios = require("axios");
+const admin = require("firebase-admin");
 
 const app = express();
+app.use(express.json());
+app.use(express.static("public"));
 
-app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, "public")));
+/* ==========================
+   ENV VARIABLES
+========================== */
 
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
-const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
+const ACCESS_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
-const PORT = process.env.PORT || 3000;
+const FIREBASE_KEY = process.env.FIREBASE_KEY;
 
-console.log("SYSTEM READY");
+/* ==========================
+   FIREBASE INIT (FIXED)
+========================== */
 
-// الصفحة الرئيسية
-app.get("/", (req, res) => {
-    res.send("WhatsApp System Running");
-});
-
-
-// ========================
-// Webhook verification
-// ========================
-app.get("/webhook", (req, res) => {
-
-    const mode = req.query["hub.mode"];
-    const token = req.query["hub.verify_token"];
-    const challenge = req.query["hub.challenge"];
-
-    if (mode === "subscribe" && token === VERIFY_TOKEN) {
-
-        console.log("WEBHOOK VERIFIED");
-        return res.status(200).send(challenge);
-
-    } else {
-
-        return res.sendStatus(403);
-
-    }
-
-});
-
-
-// ========================
-// Receive WhatsApp messages
-// ========================
-app.post("/webhook", async (req, res) => {
-
-    try {
-
-        const body = req.body;
-
-        if (
-            body.object &&
-            body.entry &&
-            body.entry[0].changes &&
-            body.entry[0].changes[0].value.messages
-        ) {
-
-            const message =
-                body.entry[0].changes[0].value.messages[0];
-
-            const from = message.from;
-            const msgText = message.text?.body || "";
-
-            console.log("NEW MESSAGE:", msgText);
-            console.log("FROM:", from);
-
-            // رد تلقائي
-            await sendWhatsAppMessage(
-                from,
-                "مرحبا 👋\nتم استلام طلبك بنجاح.\nسيتم الرد عليك قريباً."
-            );
-
-        }
-
-        res.sendStatus(200);
-
-    } catch (error) {
-
-        console.log("ERROR:", error);
-        res.sendStatus(500);
-
-    }
-
-});
-
-
-// ========================
-// Send WhatsApp message
-// ========================
-async function sendWhatsAppMessage(to, message) {
-
-    try {
-
-        const url =
-            "https://graph.facebook.com/v18.0/" +
-            PHONE_NUMBER_ID +
-            "/messages";
-
-        const response = await fetch(url, {
-
-            method: "POST",
-
-            headers: {
-                "Authorization": `Bearer ${WHATSAPP_TOKEN}`,
-                "Content-Type": "application/json"
-            },
-
-            body: JSON.stringify({
-
-                messaging_product: "whatsapp",
-                to: to,
-                type: "text",
-                text: {
-                    body: message
-                }
-
-            })
-
-        });
-
-        const data = await response.json();
-
-        console.log("MESSAGE SENT:", data);
-
-    } catch (error) {
-
-        console.log("SEND ERROR:", error);
-
-    }
-
+if (!FIREBASE_KEY) {
+  console.error("FIREBASE_KEY missing");
+  process.exit(1);
 }
 
-
-// ========================
-// API test route
-// ========================
-app.get("/test", (req, res) => {
-
-    res.send("System is working");
-
+admin.initializeApp({
+  credential: admin.credential.cert(JSON.parse(FIREBASE_KEY))
 });
 
+const db = admin.firestore();
 
-// ========================
-// Start server
-// ========================
+/* ==========================
+   WEBHOOK VERIFICATION
+========================== */
+
+app.get("/webhook", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode === "subscribe" && token === VERIFY_TOKEN) {
+    console.log("Webhook Verified");
+    return res.status(200).send(challenge);
+  }
+
+  return res.sendStatus(403);
+});
+
+/* ==========================
+   RECEIVE WHATSAPP MESSAGE
+========================== */
+
+app.post("/webhook", async (req, res) => {
+  try {
+    const message =
+      req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+
+    if (!message) return res.sendStatus(200);
+
+    const customerPhone = message.from;
+    const text = message.text?.body || "طلب بدون نص";
+
+    console.log("Incoming:", text);
+
+    const orderRef = await db.collection("orders").add({
+      customerPhone,
+      text,
+      status: "pending",
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    await assignOrder(orderRef.id, customerPhone, text);
+
+    res.sendStatus(200);
+
+  } catch (err) {
+    console.error("Webhook Error:", err.response?.data || err.message);
+    res.sendStatus(500);
+  }
+});
+
+/* ==========================
+   ASSIGN ORDER
+========================== */
+
+async function assignOrder(orderId, customerPhone, text) {
+  const snapshot = await db.collection("technicians")
+    .where("balance", ">", 0)
+    .limit(1)
+    .get();
+
+  if (snapshot.empty) {
+    await sendMessage(customerPhone, "لا يوجد فني متاح حالياً ❌");
+    return;
+  }
+
+  const techDoc = snapshot.docs[0];
+  const tech = techDoc.data();
+  const techId = techDoc.id;
+
+  await db.collection("technicians")
+    .doc(techId)
+    .update({ balance: tech.balance - 1 });
+
+  await db.collection("orders")
+    .doc(orderId)
+    .update({
+      technicianId: techId,
+      technicianPhone: tech.phone,
+      status: "assigned"
+    });
+
+  await sendMessage(
+    tech.phone,
+    `🚨 طلب جديد\n\nالعميل: ${customerPhone}\nالوصف: ${text}`
+  );
+
+  await sendMessage(
+    customerPhone,
+    "✅ تم تعيين فني لطلبك"
+  );
+}
+
+/* ==========================
+   SEND MESSAGE (SAFE)
+========================== */
+
+async function sendMessage(to, text) {
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to,
+        type: "text",
+        text: { body: text }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${ACCESS_TOKEN}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+  } catch (err) {
+    console.error("Send Error:", err.response?.data || err.message);
+  }
+}
+
+/* ==========================
+   API ROUTES
+========================== */
+
+app.get("/api/orders", async (req, res) => {
+  const snapshot = await db.collection("orders").get();
+  res.json(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+});
+
+app.get("/api/technicians", async (req, res) => {
+  const snapshot = await db.collection("technicians").get();
+  res.json(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+});
+
+app.post("/api/technicians", async (req, res) => {
+  await db.collection("technicians").add(req.body);
+  res.sendStatus(200);
+});
+
+app.post("/api/services", async (req, res) => {
+  await db.collection("services").add(req.body);
+  res.sendStatus(200);
+});
+
+app.post("/api/parts", async (req, res) => {
+  await db.collection("parts").add(req.body);
+  res.sendStatus(200);
+});
+
+/* ==========================
+   START SERVER
+========================== */
+
+const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, () => {
-
-    console.log("SERVER RUNNING ON PORT:", PORT);
-
+  console.log("SYSTEM READY ON PORT", PORT);
 });
