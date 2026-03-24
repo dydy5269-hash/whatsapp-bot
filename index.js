@@ -53,44 +53,70 @@ app.post("/webhook", async (req, res) => {
 
       // 🔥 رد الفني (قبول/رفض)
       if (techState[from]) {
-        const orderId = techState[from].orderId;
+        const state = techState[from];
+        const orderId = state.orderId;
 
         if (userText === "1") {
           await db.collection("orders").doc(orderId).update({
             status: "accepted",
+            technician: from,
           });
 
           const order = await db.collection("orders").doc(orderId).get();
           const data = order.data();
 
+          const techName = state.techName;
+
+          // 🔥 إرسال للعميل بيانات الفني
           await sendMessage(
             data.phone,
-            "تم قبول طلبك من الفني ✅\nسيتم التواصل معك قريباً"
+            `تم قبول طلبك ✅\n\n👨‍🔧 الفني: ${techName}\n📞 الرقم: ${from}`
           );
 
           reply = "تم قبول الطلب ✅";
           delete techState[from];
-        } else if (userText === "2") {
-          await db.collection("orders").doc(orderId).update({
-            status: "rejected",
-          });
+        }
 
-          const order = await db.collection("orders").doc(orderId).get();
-          const data = order.data();
+        else if (userText === "2") {
+          const nextIndex = state.techIndex + 1;
 
-          await sendMessage(
-            data.phone,
-            "تم رفض الطلب 😔\nسيتم البحث عن فني آخر"
-          );
+          if (nextIndex < state.techs.length) {
+            const nextTech = state.techs[nextIndex];
 
-          reply = "تم رفض الطلب ❌";
+            techState[nextTech.phone] = {
+              orderId: state.orderId,
+              techIndex: nextIndex,
+              techs: state.techs,
+              techName: nextTech.name,
+            };
+
+            await sendMessage(
+              nextTech.phone,
+              `طلب جديد 🔥\nالخدمة: ${nextTech.service}\n\n1️⃣ قبول\n2️⃣ رفض`
+            );
+
+            reply = "تم تحويل الطلب لفني آخر 🔁";
+          } else {
+            const order = await db.collection("orders").doc(orderId).get();
+            const data = order.data();
+
+            await sendMessage(
+              data.phone,
+              "تم رفض الطلب من جميع الفنيين ❌"
+            );
+
+            reply = "تم إنهاء الطلب ❌";
+          }
+
           delete techState[from];
-        } else {
-          reply = "اختر:\n1️⃣ قبول\n2️⃣ رفض";
+        }
+
+        else {
+          reply = "1️⃣ قبول\n2️⃣ رفض";
         }
       }
 
-      // 🔄 رجوع
+      // رجوع
       else if (userText === "0") {
         userState[from] = { step: "choose_service" };
         reply = mainMenu;
@@ -141,14 +167,21 @@ app.post("/webhook", async (req, res) => {
             .collection("technicians")
             .where("service", "==", service)
             .where("active", "==", true)
-            .limit(1)
             .get();
 
           if (!techSnapshot.empty) {
-            const tech = techSnapshot.docs[0].data();
+            const techs = techSnapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data(),
+            }));
+
+            const tech = techs[0];
 
             techState[tech.phone] = {
               orderId: orderRef.id,
+              techIndex: 0,
+              techs: techs,
+              techName: tech.name,
             };
 
             await sendMessage(
@@ -183,7 +216,7 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-// 🔥 دالة إرسال
+// إرسال رسالة
 async function sendMessage(to, text) {
   await fetch(
     `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
