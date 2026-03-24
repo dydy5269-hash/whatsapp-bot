@@ -4,6 +4,7 @@ import admin from "firebase-admin";
 
 const app = express();
 app.use(express.json());
+app.use(express.static("public"));
 
 admin.initializeApp({
   credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_KEY))
