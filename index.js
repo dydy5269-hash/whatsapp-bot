@@ -6,7 +6,6 @@ const app = express();
 
 app.use(express.json());
 
-// 🔥 Firebase
 const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
 
 admin.initializeApp({
@@ -15,8 +14,10 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-// 🧠 تخزين مؤقت
 const userState = {};
+
+const mainMenu =
+  "أهلاً 👋\nاختر الخدمة:\n1️⃣ كهرباء\n2️⃣ سباكة\n3️⃣ تكييف\n\n0️⃣ رجوع للقائمة";
 
 app.get("/", (req, res) => {
   res.send("Server is working 🔥");
@@ -50,14 +51,19 @@ app.post("/webhook", async (req, res) => {
 
       let reply = "";
 
+      // 🔄 رجوع للقائمة
+      if (userText === "0") {
+        userState[from] = { step: "choose_service" };
+        reply = mainMenu;
+      }
+
       // بداية
-      if (!userState[from]) {
+      else if (!userState[from]) {
         if (userText === "مرحبا") {
           userState[from] = { step: "choose_service" };
-          reply =
-            "أهلاً 👋\nاختر الخدمة:\n1️⃣ كهرباء\n2️⃣ سباكة\n3️⃣ تكييف";
+          reply = mainMenu;
         } else {
-          reply = "اكتب مرحبا 👋";
+          reply = "اكتب مرحبا 👋 أو 0 للقائمة";
         }
       }
 
@@ -65,47 +71,42 @@ app.post("/webhook", async (req, res) => {
       else if (userState[from].step === "choose_service") {
         if (userText === "1") {
           userState[from] = { step: "location", service: "كهرباء" };
-          reply = "أرسل موقعك 📍";
+          reply = "أرسل موقعك 📍\n\n0️⃣ رجوع";
         } else if (userText === "2") {
           userState[from] = { step: "location", service: "سباكة" };
-          reply = "أرسل موقعك 📍";
+          reply = "أرسل موقعك 📍\n\n0️⃣ رجوع";
         } else if (userText === "3") {
           userState[from] = { step: "location", service: "تكييف" };
-          reply = "أرسل موقعك 📍";
+          reply = "أرسل موقعك 📍\n\n0️⃣ رجوع";
         } else {
-          reply = "اختر رقم صحيح (1 أو 2 أو 3)";
+          reply = mainMenu;
         }
       }
 
-      // استقبال الموقع + حفظ الطلب + إرسال للفني 🔥
+      // الموقع + الطلب
       else if (userState[from].step === "location") {
         if (location) {
           const lat = location.latitude;
           const lng = location.longitude;
-
           const service = userState[from].service;
 
-          // 🔥 حفظ الطلب
-          const orderRef = await db.collection("orders").add({
+          await db.collection("orders").add({
             phone: from,
-            service: service,
+            service,
             location: { lat, lng },
             status: "new",
             createdAt: new Date(),
           });
 
-          // 🔥 جلب فني متاح
           const techSnapshot = await db
             .collection("technicians")
             .where("service", "==", service)
             .where("active", "==", true)
-            .limit(1)
             .get();
 
           if (!techSnapshot.empty) {
             const tech = techSnapshot.docs[0].data();
 
-            // 🔥 إرسال الطلب للفني
             await fetch(
               `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
               {
@@ -120,27 +121,31 @@ app.post("/webhook", async (req, res) => {
                   text: {
                     body:
                       `طلب جديد 🔥\nالخدمة: ${service}\n` +
-                      `موقع العميل:\nhttps://maps.google.com/?q=${lat},${lng}`,
+                      `الموقع:\nhttps://maps.google.com/?q=${lat},${lng}`,
                   },
                 }),
               }
             );
 
-            reply =
-              `تم إرسال طلبك للفني ✅\nالخدمة: ${service}\nسيتم التواصل معك قريباً`;
+            reply = "تم إرسال الطلب للفني ✅";
           } else {
-            reply = "لا يوجد فني متاح حالياً 😔";
+            reply =
+              "لا يوجد فني متاح حالياً 😔\n\n" +
+              "تأكد:\n" +
+              "1- فيه فني بنفس الخدمة\n" +
+              "2- active = true\n\n" +
+              "0️⃣ رجوع للقائمة";
           }
 
           userState[from] = { step: "done" };
         } else {
-          reply = "أرسل موقعك باستخدام زر 📍";
+          reply = "أرسل موقعك 📍\n\n0️⃣ رجوع";
         }
       }
 
       // بعد الانتهاء
-      else if (userState[from].step === "done") {
-        reply = "طلبك مسجل بالفعل ✅";
+      else {
+        reply = "طلبك مسجل ✅\n\n0️⃣ طلب جديد";
       }
 
       await fetch(
@@ -162,7 +167,7 @@ app.post("/webhook", async (req, res) => {
 
     res.sendStatus(200);
   } catch (error) {
-    console.error("Error:", error);
+    console.error(error);
     res.sendStatus(500);
   }
 });
