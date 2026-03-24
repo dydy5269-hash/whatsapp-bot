@@ -3,7 +3,6 @@ import fetch from "node-fetch";
 import admin from "firebase-admin";
 
 const app = express();
-
 app.use(express.json());
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
@@ -15,6 +14,7 @@ admin.initializeApp({
 const db = admin.firestore();
 
 const userState = {};
+const techState = {};
 
 const mainMenu =
   "أهلاً 👋\nاختر الخدمة:\n1️⃣ كهرباء\n2️⃣ سباكة\n3️⃣ تكييف\n\n0️⃣ رجوع للقائمة";
@@ -51,8 +51,47 @@ app.post("/webhook", async (req, res) => {
 
       let reply = "";
 
-      // 🔄 رجوع للقائمة
-      if (userText === "0") {
+      // 🔥 رد الفني (قبول/رفض)
+      if (techState[from]) {
+        const orderId = techState[from].orderId;
+
+        if (userText === "1") {
+          await db.collection("orders").doc(orderId).update({
+            status: "accepted",
+          });
+
+          const order = await db.collection("orders").doc(orderId).get();
+          const data = order.data();
+
+          await sendMessage(
+            data.phone,
+            "تم قبول طلبك من الفني ✅\nسيتم التواصل معك قريباً"
+          );
+
+          reply = "تم قبول الطلب ✅";
+          delete techState[from];
+        } else if (userText === "2") {
+          await db.collection("orders").doc(orderId).update({
+            status: "rejected",
+          });
+
+          const order = await db.collection("orders").doc(orderId).get();
+          const data = order.data();
+
+          await sendMessage(
+            data.phone,
+            "تم رفض الطلب 😔\nسيتم البحث عن فني آخر"
+          );
+
+          reply = "تم رفض الطلب ❌";
+          delete techState[from];
+        } else {
+          reply = "اختر:\n1️⃣ قبول\n2️⃣ رفض";
+        }
+      }
+
+      // 🔄 رجوع
+      else if (userText === "0") {
         userState[from] = { step: "choose_service" };
         reply = mainMenu;
       }
@@ -63,7 +102,7 @@ app.post("/webhook", async (req, res) => {
           userState[from] = { step: "choose_service" };
           reply = mainMenu;
         } else {
-          reply = "اكتب مرحبا 👋 أو 0 للقائمة";
+          reply = "اكتب مرحبا 👋 أو 0";
         }
       }
 
@@ -71,30 +110,30 @@ app.post("/webhook", async (req, res) => {
       else if (userState[from].step === "choose_service") {
         if (userText === "1") {
           userState[from] = { step: "location", service: "كهرباء" };
-          reply = "أرسل موقعك 📍\n\n0️⃣ رجوع";
+          reply = "أرسل موقعك 📍\n0️⃣ رجوع";
         } else if (userText === "2") {
           userState[from] = { step: "location", service: "سباكة" };
-          reply = "أرسل موقعك 📍\n\n0️⃣ رجوع";
+          reply = "أرسل موقعك 📍\n0️⃣ رجوع";
         } else if (userText === "3") {
           userState[from] = { step: "location", service: "تكييف" };
-          reply = "أرسل موقعك 📍\n\n0️⃣ رجوع";
+          reply = "أرسل موقعك 📍\n0️⃣ رجوع";
         } else {
           reply = mainMenu;
         }
       }
 
-      // الموقع + الطلب
+      // الموقع + إرسال للفني
       else if (userState[from].step === "location") {
         if (location) {
           const lat = location.latitude;
           const lng = location.longitude;
           const service = userState[from].service;
 
-          await db.collection("orders").add({
+          const orderRef = await db.collection("orders").add({
             phone: from,
             service,
             location: { lat, lng },
-            status: "new",
+            status: "pending",
             createdAt: new Date(),
           });
 
@@ -102,67 +141,39 @@ app.post("/webhook", async (req, res) => {
             .collection("technicians")
             .where("service", "==", service)
             .where("active", "==", true)
+            .limit(1)
             .get();
 
           if (!techSnapshot.empty) {
             const tech = techSnapshot.docs[0].data();
 
-            await fetch(
-              `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  messaging_product: "whatsapp",
-                  to: tech.phone,
-                  text: {
-                    body:
-                      `طلب جديد 🔥\nالخدمة: ${service}\n` +
-                      `الموقع:\nhttps://maps.google.com/?q=${lat},${lng}`,
-                  },
-                }),
-              }
+            techState[tech.phone] = {
+              orderId: orderRef.id,
+            };
+
+            await sendMessage(
+              tech.phone,
+              `طلب جديد 🔥\nالخدمة: ${service}\n` +
+                `الموقع:\nhttps://maps.google.com/?q=${lat},${lng}\n\n` +
+                "1️⃣ قبول\n2️⃣ رفض"
             );
 
             reply = "تم إرسال الطلب للفني ✅";
           } else {
-            reply =
-              "لا يوجد فني متاح حالياً 😔\n\n" +
-              "تأكد:\n" +
-              "1- فيه فني بنفس الخدمة\n" +
-              "2- active = true\n\n" +
-              "0️⃣ رجوع للقائمة";
+            reply = "لا يوجد فني متاح 😔";
           }
 
           userState[from] = { step: "done" };
         } else {
-          reply = "أرسل موقعك 📍\n\n0️⃣ رجوع";
+          reply = "أرسل موقعك 📍";
         }
       }
 
-      // بعد الانتهاء
       else {
-        reply = "طلبك مسجل ✅\n\n0️⃣ طلب جديد";
+        reply = "طلبك مسجل ✅\n0️⃣ طلب جديد";
       }
 
-      await fetch(
-        `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            messaging_product: "whatsapp",
-            to: from,
-            text: { body: reply },
-          }),
-        }
-      );
+      await sendMessage(from, reply);
     }
 
     res.sendStatus(200);
@@ -171,6 +182,25 @@ app.post("/webhook", async (req, res) => {
     res.sendStatus(500);
   }
 });
+
+// 🔥 دالة إرسال
+async function sendMessage(to, text) {
+  await fetch(
+    `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: to,
+        text: { body: text },
+      }),
+    }
+  );
+}
 
 const PORT = process.env.PORT || 8080;
 
