@@ -3,72 +3,44 @@ import fetch from "node-fetch";
 import admin from "firebase-admin";
 
 const app = express();
+
+// مهم جداً
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
+// اختبار السيرفر
+app.get("/", (req, res) => {
+  res.send("Server is working ✅");
+});
+
+// Firebase
 admin.initializeApp({
   credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_KEY))
 });
 
 const db = admin.firestore();
 
-const users = {};
-
-async function getServices() {
-  const snapshot = await db.collection("services")
-    .where("active", "==", true)
-    .orderBy("order")
-    .get();
-
-  return snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  }));
-}
-
-async function getTechnician(serviceId) {
-  const snapshot = await db.collection("technicians")
-    .where("service", "==", serviceId)
-    .where("active", "==", true)
-    .limit(1)
-    .get();
-
-  if (snapshot.empty) return null;
-
-  return snapshot.docs[0].data();
-}
-
-async function sendMessage(to, text) {
-  await fetch(`https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: to,
-      text: { body: text }
-    })
-  });
-}
-
+// webhook verification
 app.get("/webhook", (req, res) => {
-  const verify_token = process.env.VERIFY_TOKEN;
+  const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  if (mode && token === verify_token) {
+  if (mode && token === VERIFY_TOKEN) {
     return res.status(200).send(challenge);
   } else {
     return res.sendStatus(403);
   }
 });
 
+// webhook receive
 app.post("/webhook", async (req, res) => {
   try {
+    console.log("🔥 Incoming webhook:", JSON.stringify(req.body));
+
     const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
     if (!message) return res.sendStatus(200);
@@ -76,77 +48,29 @@ app.post("/webhook", async (req, res) => {
     const from = message.from;
     const text = message.text?.body;
 
-    if (!users[from]) users[from] = { step: "start" };
-
-    let step = users[from].step;
-
-    if (step === "start") {
-      const services = await getServices();
-
-      if (!services.length) {
-        await sendMessage(from, "❌ لا يوجد خدمات حالياً");
-        return res.sendStatus(200);
-      }
-
-      let menu = "مرحبا بك في روية طاقة ⚡\nاختر الخدمة:\n\n";
-
-      services.forEach((s, i) => {
-        menu += `${i + 1}️⃣ ${s.name}\n`;
-      });
-
-      users[from] = {
-        step: "service",
-        services
-      };
-
-      await sendMessage(from, menu);
-    }
-
-    else if (step === "service") {
-      const services = users[from].services;
-      const selected = services[text - 1];
-
-      if (!selected) {
-        await sendMessage(from, "❌ اختر رقم صحيح");
-        return res.sendStatus(200);
-      }
-
-      users[from].selectedService = selected;
-      users[from].step = "confirm";
-
-      await sendMessage(from, `تم اختيار: ${selected.name}\n\nأرسل موقعك أو اكتب نعم للتأكيد`);
-    }
-
-    else if (step === "confirm") {
-      const tech = await getTechnician(users[from].selectedService.id);
-
-      if (!tech) {
-        await sendMessage(from, "❌ لا يوجد فني متاح حالياً");
-        users[from] = { step: "start" };
-        return res.sendStatus(200);
-      }
-
-      await db.collection("orders").add({
-        user: from,
-        service: users[from].selectedService.name,
-        technician: tech.name,
-        status: "pending",
-        createdAt: new Date()
-      });
-
-      await sendMessage(tech.phone, `طلب جديد 🔥\nالخدمة: ${users[from].selectedService.name}\nرقم العميل: ${from}`);
-
-      await sendMessage(from, "✅ تم إرسال الطلب للفني، سيتم التواصل معك قريباً");
-
-      users[from] = { step: "start" };
-    }
+    await fetch(`https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: from,
+        text: { body: "تم الاستلام ✅" }
+      })
+    });
 
     res.sendStatus(200);
-  } catch (e) {
-    console.error(e);
+  } catch (err) {
+    console.error("❌ ERROR:", err);
     res.sendStatus(500);
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Server running on port " + PORT));
+// PORT مهم
+const PORT = process.env.PORT || 8080;
+
+app.listen(PORT, () => {
+  console.log("🚀 Server running on port " + PORT);
+});
