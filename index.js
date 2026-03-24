@@ -1,10 +1,21 @@
 import express from "express";
 import fetch from "node-fetch";
+import admin from "firebase-admin";
 
 const app = express();
 
 app.use(express.json());
 
+// 🔥 Firebase
+const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
+const db = admin.firestore();
+
+// 🧠 تخزين مؤقت
 const userState = {};
 
 app.get("/", (req, res) => {
@@ -66,28 +77,35 @@ app.post("/webhook", async (req, res) => {
         }
       }
 
-      // استقبال الموقع
+      // استقبال الموقع + حفظ الطلب 🔥
       else if (userState[from].step === "location") {
         if (location) {
           const lat = location.latitude;
           const lng = location.longitude;
 
-          userState[from] = {
-            step: "done",
-            service: userState[from].service,
+          const service = userState[from].service;
+
+          // 🔥 حفظ في Firebase
+          await db.collection("orders").add({
+            phone: from,
+            service: service,
             location: { lat, lng },
-          };
+            status: "new",
+            createdAt: new Date(),
+          });
+
+          userState[from] = { step: "done" };
 
           reply =
-            `تم استلام موقعك 📍\nالخدمة: ${userState[from].service}\nجارٍ تنفيذ الطلب... ✅`;
+            `تم استلام طلبك ✅\nالخدمة: ${service}\nسيتم التواصل معك قريباً`;
         } else {
-          reply = "من فضلك أرسل موقعك باستخدام زر الموقع 📍";
+          reply = "أرسل موقعك باستخدام زر 📍";
         }
       }
 
       // بعد الانتهاء
       else if (userState[from].step === "done") {
-        reply = "تم استلام طلبك مسبقاً ✅";
+        reply = "طلبك مسجل بالفعل ✅";
       }
 
       await fetch(
@@ -109,7 +127,7 @@ app.post("/webhook", async (req, res) => {
 
     res.sendStatus(200);
   } catch (error) {
-    console.error(error);
+    console.error("Error:", error);
     res.sendStatus(500);
   }
 });
