@@ -17,21 +17,20 @@ const userState = {};
 const techState = {};
 
 const mainMenu =
-  "أهلاً 👋\nاختر الخدمة:\n1️⃣ كهرباء\n2️⃣ سباكة\n3️⃣ تكييف\n\n0️⃣ رجوع للقائمة";
+  "أهلاً 👋\nاختر الخدمة:\n1️⃣ كهرباء\n2️⃣ سباكة\n3️⃣ تكييف\n\n0️⃣ رجوع";
 
 app.get("/", (req, res) => {
-  res.send("Server is working 🔥");
+  res.send("Server running 🔥");
 });
 
 app.get("/webhook", (req, res) => {
   const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
-
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    res.status(200).send(challenge);
+  if (
+    req.query["hub.mode"] === "subscribe" &&
+    req.query["hub.verify_token"] === VERIFY_TOKEN
+  ) {
+    res.send(req.query["hub.challenge"]);
   } else {
     res.sendStatus(403);
   }
@@ -39,184 +38,188 @@ app.get("/webhook", (req, res) => {
 
 app.post("/webhook", async (req, res) => {
   try {
-    const body = req.body;
+    const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    if (!msg) return res.sendStatus(200);
 
-    const message =
-      body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    const from = msg.from;
+    const text = msg.text?.body?.toLowerCase();
+    const location = msg.location;
 
-    if (message) {
-      const from = message.from;
-      const userText = message.text?.body?.toLowerCase();
-      const location = message.location;
+    let reply = "";
 
-      let reply = "";
+    // ===== الفني =====
+    if (techState[from]) {
+      const state = techState[from];
+      const orderRef = db.collection("orders").doc(state.orderId);
 
-      // 🔥 رد الفني (قبول/رفض)
-      if (techState[from]) {
-        const state = techState[from];
-        const orderId = state.orderId;
+      if (text === "1") {
+        // قبول
+        await orderRef.update({
+          status: "accepted",
+          technician: from,
+        });
 
-        if (userText === "1") {
-          await db.collection("orders").doc(orderId).update({
-            status: "accepted",
-            technician: from,
-          });
+        const order = (await orderRef.get()).data();
 
-          const order = await db.collection("orders").doc(orderId).get();
-          const data = order.data();
+        await sendMessage(
+          order.phone,
+          `تم قبول الطلب ✅\n👨‍🔧 ${state.techName}\n📞 ${from}`
+        );
 
-          const techName = state.techName;
+        reply = "تم القبول ✅";
+        delete techState[from];
+      }
 
-          // 🔥 إرسال للعميل بيانات الفني
+      else if (text === "2") {
+        // رفض → تحويل
+        const nextIndex = state.techIndex + 1;
+
+        if (nextIndex < state.techs.length) {
+          const nextTech = state.techs[nextIndex];
+
+          techState[nextTech.phone] = {
+            ...state,
+            techIndex: nextIndex,
+            techName: nextTech.name,
+          };
+
           await sendMessage(
-            data.phone,
-            `تم قبول طلبك ✅\n\n👨‍🔧 الفني: ${techName}\n📞 الرقم: ${from}`
+            nextTech.phone,
+            "طلب جديد 🔥\n1️⃣ قبول\n2️⃣ رفض"
           );
 
-          reply = "تم قبول الطلب ✅";
-          delete techState[from];
-        }
-
-        else if (userText === "2") {
-          const nextIndex = state.techIndex + 1;
-
-          if (nextIndex < state.techs.length) {
-            const nextTech = state.techs[nextIndex];
-
-            techState[nextTech.phone] = {
-              orderId: state.orderId,
-              techIndex: nextIndex,
-              techs: state.techs,
-              techName: nextTech.name,
-            };
-
-            await sendMessage(
-              nextTech.phone,
-              `طلب جديد 🔥\nالخدمة: ${nextTech.service}\n\n1️⃣ قبول\n2️⃣ رفض`
-            );
-
-            reply = "تم تحويل الطلب لفني آخر 🔁";
-          } else {
-            const order = await db.collection("orders").doc(orderId).get();
-            const data = order.data();
-
-            await sendMessage(
-              data.phone,
-              "تم رفض الطلب من جميع الفنيين ❌"
-            );
-
-            reply = "تم إنهاء الطلب ❌";
-          }
-
-          delete techState[from];
-        }
-
-        else {
-          reply = "1️⃣ قبول\n2️⃣ رفض";
-        }
-      }
-
-      // رجوع
-      else if (userText === "0") {
-        userState[from] = { step: "choose_service" };
-        reply = mainMenu;
-      }
-
-      // بداية
-      else if (!userState[from]) {
-        if (userText === "مرحبا") {
-          userState[from] = { step: "choose_service" };
-          reply = mainMenu;
+          reply = "تم التحويل 🔁";
         } else {
-          reply = "اكتب مرحبا 👋 أو 0";
+          const order = (await orderRef.get()).data();
+          await sendMessage(order.phone, "❌ تم رفض الطلب من الجميع");
+
+          reply = "انتهى ❌";
         }
+
+        delete techState[from];
       }
 
-      // اختيار الخدمة
-      else if (userState[from].step === "choose_service") {
-        if (userText === "1") {
-          userState[from] = { step: "location", service: "كهرباء" };
-          reply = "أرسل موقعك 📍\n0️⃣ رجوع";
-        } else if (userText === "2") {
-          userState[from] = { step: "location", service: "سباكة" };
-          reply = "أرسل موقعك 📍\n0️⃣ رجوع";
-        } else if (userText === "3") {
-          userState[from] = { step: "location", service: "تكييف" };
-          reply = "أرسل موقعك 📍\n0️⃣ رجوع";
-        } else {
-          reply = mainMenu;
-        }
+      else if (text === "start") {
+        await orderRef.update({ status: "started" });
+        const order = (await orderRef.get()).data();
+
+        await sendMessage(order.phone, "🚧 الفني بدأ العمل");
+        reply = "تم بدء العمل";
       }
 
-      // الموقع + إرسال للفني
-      else if (userState[from].step === "location") {
-        if (location) {
-          const lat = location.latitude;
-          const lng = location.longitude;
-          const service = userState[from].service;
+      else if (text === "done") {
+        await orderRef.update({ status: "completed" });
+        const order = (await orderRef.get()).data();
 
-          const orderRef = await db.collection("orders").add({
-            phone: from,
-            service,
-            location: { lat, lng },
-            status: "pending",
-            createdAt: new Date(),
-          });
+        await sendMessage(order.phone, "✅ تم إنهاء العمل\nقيّم من 1 إلى 5");
+        techState[from].step = "rate_client";
 
-          const techSnapshot = await db
-            .collection("technicians")
-            .where("service", "==", service)
-            .where("active", "==", true)
-            .get();
+        reply = "تم الإنهاء";
+      }
 
-          if (!techSnapshot.empty) {
-            const techs = techSnapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data(),
-            }));
-
-            const tech = techs[0];
-
-            techState[tech.phone] = {
-              orderId: orderRef.id,
-              techIndex: 0,
-              techs: techs,
-              techName: tech.name,
-            };
-
-            await sendMessage(
-              tech.phone,
-              `طلب جديد 🔥\nالخدمة: ${service}\n` +
-                `الموقع:\nhttps://maps.google.com/?q=${lat},${lng}\n\n` +
-                "1️⃣ قبول\n2️⃣ رفض"
-            );
-
-            reply = "تم إرسال الطلب للفني ✅";
-          } else {
-            reply = "لا يوجد فني متاح 😔";
-          }
-
-          userState[from] = { step: "done" };
-        } else {
-          reply = "أرسل موقعك 📍";
-        }
+      else if (state.step === "rate_client") {
+        await orderRef.update({ techRating: text });
+        reply = "تم تقييم العميل ⭐";
+        delete techState[from];
       }
 
       else {
-        reply = "طلبك مسجل ✅\n0️⃣ طلب جديد";
+        reply = "1 قبول\n2 رفض\nstart بدء\ndone إنهاء";
       }
-
-      await sendMessage(from, reply);
     }
 
+    // ===== العميل =====
+    else if (userState[from]?.step === "rate") {
+      const orderId = userState[from].orderId;
+
+      await db.collection("orders").doc(orderId).update({
+        clientRating: text,
+      });
+
+      reply = "شكراً لتقييمك ⭐";
+      delete userState[from];
+    }
+
+    else if (text === "0") {
+      userState[from] = { step: "choose" };
+      reply = mainMenu;
+    }
+
+    else if (!userState[from]) {
+      if (text === "مرحبا") {
+        userState[from] = { step: "choose" };
+        reply = mainMenu;
+      } else {
+        reply = "اكتب مرحبا 👋";
+      }
+    }
+
+    else if (userState[from].step === "choose") {
+      const map = { "1": "كهرباء", "2": "سباكة", "3": "تكييف" };
+
+      if (map[text]) {
+        userState[from] = { step: "location", service: map[text] };
+        reply = "أرسل موقعك 📍";
+      } else {
+        reply = mainMenu;
+      }
+    }
+
+    else if (userState[from].step === "location") {
+      if (location) {
+        const service = userState[from].service;
+
+        const orderRef = await db.collection("orders").add({
+          phone: from,
+          service,
+          location,
+          status: "pending",
+          createdAt: new Date(),
+        });
+
+        const techsSnap = await db
+          .collection("technicians")
+          .where("service", "==", service)
+          .where("active", "==", true)
+          .get();
+
+        if (!techsSnap.empty) {
+          const techs = techsSnap.docs.map(d => d.data());
+          const tech = techs[0];
+
+          techState[tech.phone] = {
+            orderId: orderRef.id,
+            techIndex: 0,
+            techs,
+            techName: tech.name,
+          };
+
+          await sendMessage(
+            tech.phone,
+            "طلب جديد 🔥\n1️⃣ قبول\n2️⃣ رفض"
+          );
+
+          reply = "تم إرسال الطلب ✅";
+        } else {
+          reply = "❌ لا يوجد فني";
+        }
+
+        userState[from] = { step: "done", orderId: orderRef.id };
+      }
+    }
+
+    else if (userState[from].step === "done") {
+      reply = "طلبك قيد التنفيذ 🔄";
+    }
+
+    await sendMessage(from, reply);
     res.sendStatus(200);
-  } catch (error) {
-    console.error(error);
+  } catch (e) {
+    console.error(e);
     res.sendStatus(500);
   }
 });
 
-// إرسال رسالة
 async function sendMessage(to, text) {
   await fetch(
     `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
@@ -228,15 +231,11 @@ async function sendMessage(to, text) {
       },
       body: JSON.stringify({
         messaging_product: "whatsapp",
-        to: to,
+        to,
         text: { body: text },
       }),
     }
   );
 }
 
-const PORT = process.env.PORT || 8080;
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(process.env.PORT || 8080);
