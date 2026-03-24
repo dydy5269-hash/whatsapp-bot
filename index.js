@@ -25,6 +25,18 @@ async function getServices() {
   }));
 }
 
+async function getTechnician(serviceId) {
+  const snapshot = await db.collection("technicians")
+    .where("service", "==", serviceId)
+    .where("active", "==", true)
+    .limit(1)
+    .get();
+
+  if (snapshot.empty) return null;
+
+  return snapshot.docs[0].data();
+}
+
 async function sendMessage(to, text) {
   await fetch(`https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`, {
     method: "POST",
@@ -70,6 +82,11 @@ app.post("/webhook", async (req, res) => {
     if (step === "start") {
       const services = await getServices();
 
+      if (!services.length) {
+        await sendMessage(from, "❌ لا يوجد خدمات حالياً");
+        return res.sendStatus(200);
+      }
+
       let menu = "مرحبا بك في روية طاقة ⚡\nاختر الخدمة:\n\n";
 
       services.forEach((s, i) => {
@@ -100,14 +117,25 @@ app.post("/webhook", async (req, res) => {
     }
 
     else if (step === "confirm") {
+      const tech = await getTechnician(users[from].selectedService.id);
+
+      if (!tech) {
+        await sendMessage(from, "❌ لا يوجد فني متاح حالياً");
+        users[from] = { step: "start" };
+        return res.sendStatus(200);
+      }
+
       await db.collection("orders").add({
         user: from,
         service: users[from].selectedService.name,
+        technician: tech.name,
         status: "pending",
         createdAt: new Date()
       });
 
-      await sendMessage(from, "✅ تم استلام طلبك، سيتم التواصل معك قريباً");
+      await sendMessage(tech.phone, `طلب جديد 🔥\nالخدمة: ${users[from].selectedService.name}\nرقم العميل: ${from}`);
+
+      await sendMessage(from, "✅ تم إرسال الطلب للفني، سيتم التواصل معك قريباً");
 
       users[from] = { step: "start" };
     }
