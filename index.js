@@ -77,7 +77,7 @@ app.post("/webhook", async (req, res) => {
         }
       }
 
-      // استقبال الموقع + حفظ الطلب 🔥
+      // استقبال الموقع + حفظ الطلب + إرسال للفني 🔥
       else if (userState[from].step === "location") {
         if (location) {
           const lat = location.latitude;
@@ -85,8 +85,8 @@ app.post("/webhook", async (req, res) => {
 
           const service = userState[from].service;
 
-          // 🔥 حفظ في Firebase
-          await db.collection("orders").add({
+          // 🔥 حفظ الطلب
+          const orderRef = await db.collection("orders").add({
             phone: from,
             service: service,
             location: { lat, lng },
@@ -94,10 +94,45 @@ app.post("/webhook", async (req, res) => {
             createdAt: new Date(),
           });
 
-          userState[from] = { step: "done" };
+          // 🔥 جلب فني متاح
+          const techSnapshot = await db
+            .collection("technicians")
+            .where("service", "==", service)
+            .where("active", "==", true)
+            .limit(1)
+            .get();
 
-          reply =
-            `تم استلام طلبك ✅\nالخدمة: ${service}\nسيتم التواصل معك قريباً`;
+          if (!techSnapshot.empty) {
+            const tech = techSnapshot.docs[0].data();
+
+            // 🔥 إرسال الطلب للفني
+            await fetch(
+              `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  messaging_product: "whatsapp",
+                  to: tech.phone,
+                  text: {
+                    body:
+                      `طلب جديد 🔥\nالخدمة: ${service}\n` +
+                      `موقع العميل:\nhttps://maps.google.com/?q=${lat},${lng}`,
+                  },
+                }),
+              }
+            );
+
+            reply =
+              `تم إرسال طلبك للفني ✅\nالخدمة: ${service}\nسيتم التواصل معك قريباً`;
+          } else {
+            reply = "لا يوجد فني متاح حالياً 😔";
+          }
+
+          userState[from] = { step: "done" };
         } else {
           reply = "أرسل موقعك باستخدام زر 📍";
         }
