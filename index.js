@@ -37,25 +37,33 @@ app.post("/webhook", async (req, res) => {
       let reply = "";
 
       if (userText === "مرحبا") {
-        reply = "أهلاً 👋";
-      } else if (userText === "كيفك") {
-        reply = "تمام الحمدلله 🙏";
+        reply =
+          "أهلاً 👋\nاختر الخدمة:\n1️⃣ كهرباء\n2️⃣ سباكة\n3️⃣ تكييف";
+      } else if (userText === "1") {
+        reply = "تم اختيار خدمة الكهرباء ⚡";
+      } else if (userText === "2") {
+        reply = "تم اختيار خدمة السباكة 🚿";
+      } else if (userText === "3") {
+        reply = "تم اختيار خدمة التكييف ❄️";
       } else {
         reply = "اكتب مرحبا 👋";
       }
 
-      await fetch(`https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          to: from,
-          text: { body: reply },
-        }),
-      });
+      await fetch(
+        `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            messaging_product: "whatsapp",
+            to: from,
+            text: { body: reply },
+          }),
+        }
+      );
     }
 
     res.sendStatus(200);
