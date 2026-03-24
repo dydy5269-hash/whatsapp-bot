@@ -5,6 +5,9 @@ const app = express();
 
 app.use(express.json());
 
+// 🧠 تخزين مؤقت بسيط
+const userState = {};
+
 app.get("/", (req, res) => {
   res.send("Server is working 🔥");
 });
@@ -36,17 +39,37 @@ app.post("/webhook", async (req, res) => {
 
       let reply = "";
 
-      if (userText === "مرحبا") {
-        reply =
-          "أهلاً 👋\nاختر الخدمة:\n1️⃣ كهرباء\n2️⃣ سباكة\n3️⃣ تكييف";
-      } else if (userText === "1") {
-        reply = "تم اختيار خدمة الكهرباء ⚡";
-      } else if (userText === "2") {
-        reply = "تم اختيار خدمة السباكة 🚿";
-      } else if (userText === "3") {
-        reply = "تم اختيار خدمة التكييف ❄️";
-      } else {
-        reply = "اكتب مرحبا 👋";
+      // 📌 إذا أول مرة
+      if (!userState[from]) {
+        if (userText === "مرحبا") {
+          userState[from] = { step: "choose_service" };
+
+          reply =
+            "أهلاً 👋\nاختر الخدمة:\n1️⃣ كهرباء\n2️⃣ سباكة\n3️⃣ تكييف";
+        } else {
+          reply = "اكتب مرحبا 👋";
+        }
+      }
+
+      // 📌 اختيار الخدمة
+      else if (userState[from].step === "choose_service") {
+        if (userText === "1") {
+          userState[from] = { step: "done", service: "كهرباء" };
+          reply = "تم اختيار خدمة الكهرباء ⚡";
+        } else if (userText === "2") {
+          userState[from] = { step: "done", service: "سباكة" };
+          reply = "تم اختيار خدمة السباكة 🚿";
+        } else if (userText === "3") {
+          userState[from] = { step: "done", service: "تكييف" };
+          reply = "تم اختيار خدمة التكييف ❄️";
+        } else {
+          reply = "اختر رقم صحيح (1 أو 2 أو 3)";
+        }
+      }
+
+      // 📌 بعد الاختيار
+      else if (userState[from].step === "done") {
+        reply = `تم تسجيل طلبك (${userState[from].service}) ✅`;
       }
 
       await fetch(
