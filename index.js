@@ -5,7 +5,6 @@ const app = express();
 
 app.use(express.json());
 
-// 🧠 تخزين مؤقت بسيط
 const userState = {};
 
 app.get("/", (req, res) => {
@@ -36,14 +35,14 @@ app.post("/webhook", async (req, res) => {
     if (message) {
       const from = message.from;
       const userText = message.text?.body?.toLowerCase();
+      const location = message.location;
 
       let reply = "";
 
-      // 📌 إذا أول مرة
+      // بداية
       if (!userState[from]) {
         if (userText === "مرحبا") {
           userState[from] = { step: "choose_service" };
-
           reply =
             "أهلاً 👋\nاختر الخدمة:\n1️⃣ كهرباء\n2️⃣ سباكة\n3️⃣ تكييف";
         } else {
@@ -51,25 +50,44 @@ app.post("/webhook", async (req, res) => {
         }
       }
 
-      // 📌 اختيار الخدمة
+      // اختيار الخدمة
       else if (userState[from].step === "choose_service") {
         if (userText === "1") {
-          userState[from] = { step: "done", service: "كهرباء" };
-          reply = "تم اختيار خدمة الكهرباء ⚡";
+          userState[from] = { step: "location", service: "كهرباء" };
+          reply = "أرسل موقعك 📍";
         } else if (userText === "2") {
-          userState[from] = { step: "done", service: "سباكة" };
-          reply = "تم اختيار خدمة السباكة 🚿";
+          userState[from] = { step: "location", service: "سباكة" };
+          reply = "أرسل موقعك 📍";
         } else if (userText === "3") {
-          userState[from] = { step: "done", service: "تكييف" };
-          reply = "تم اختيار خدمة التكييف ❄️";
+          userState[from] = { step: "location", service: "تكييف" };
+          reply = "أرسل موقعك 📍";
         } else {
           reply = "اختر رقم صحيح (1 أو 2 أو 3)";
         }
       }
 
-      // 📌 بعد الاختيار
+      // استقبال الموقع
+      else if (userState[from].step === "location") {
+        if (location) {
+          const lat = location.latitude;
+          const lng = location.longitude;
+
+          userState[from] = {
+            step: "done",
+            service: userState[from].service,
+            location: { lat, lng },
+          };
+
+          reply =
+            `تم استلام موقعك 📍\nالخدمة: ${userState[from].service}\nجارٍ تنفيذ الطلب... ✅`;
+        } else {
+          reply = "من فضلك أرسل موقعك باستخدام زر الموقع 📍";
+        }
+      }
+
+      // بعد الانتهاء
       else if (userState[from].step === "done") {
-        reply = `تم تسجيل طلبك (${userState[from].service}) ✅`;
+        reply = "تم استلام طلبك مسبقاً ✅";
       }
 
       await fetch(
