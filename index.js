@@ -19,6 +19,8 @@ const techState = {};
 const mainMenu =
   "أهلاً 👋\nاختر الخدمة:\n1️⃣ كهرباء\n2️⃣ سباكة\n3️⃣ تكييف\n\n0️⃣ رجوع";
 
+// ================= ROUTES =================
+
 app.get("/", (req, res) => {
   res.send("Server running 🔥");
 });
@@ -36,6 +38,8 @@ app.get("/webhook", (req, res) => {
   }
 });
 
+// ================= MAIN LOGIC =================
+
 app.post("/webhook", async (req, res) => {
   try {
     const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
@@ -47,31 +51,32 @@ app.post("/webhook", async (req, res) => {
 
     let reply = "";
 
-    // ===== الفني =====
-    if (techState[from]) {
+    // ================= الفني =================
+    if (
+      techState[from] &&
+      (text === "1" || text === "2" || text === "start" || text === "done")
+    ) {
       const state = techState[from];
       const orderRef = db.collection("orders").doc(state.orderId);
 
       if (text === "1") {
-        // قبول
         await orderRef.update({
           status: "accepted",
           technician: from,
+          technicianName: state.techName,
         });
 
         const order = (await orderRef.get()).data();
 
         await sendMessage(
           order.phone,
-          `تم قبول الطلب ✅\n👨‍🔧 ${state.techName}\n📞 ${from}`
+          `تم قبول طلبك ✅\n👨‍🔧 ${state.techName}\n📞 ${from}\n\nاكتب: حالة`
         );
 
         reply = "تم القبول ✅";
-        delete techState[from];
       }
 
       else if (text === "2") {
-        // رفض → تحويل
         const nextIndex = state.techIndex + 1;
 
         if (nextIndex < state.techs.length) {
@@ -83,17 +88,13 @@ app.post("/webhook", async (req, res) => {
             techName: nextTech.name,
           };
 
-          await sendMessage(
-            nextTech.phone,
-            "طلب جديد 🔥\n1️⃣ قبول\n2️⃣ رفض"
-          );
+          await sendMessage(nextTech.phone, "طلب جديد 🔥\n1 قبول\n2 رفض");
 
           reply = "تم التحويل 🔁";
         } else {
           const order = (await orderRef.get()).data();
           await sendMessage(order.phone, "❌ تم رفض الطلب من الجميع");
-
-          reply = "انتهى ❌";
+          reply = "انتهى";
         }
 
         delete techState[from];
@@ -104,54 +105,64 @@ app.post("/webhook", async (req, res) => {
         const order = (await orderRef.get()).data();
 
         await sendMessage(order.phone, "🚧 الفني بدأ العمل");
-        reply = "تم بدء العمل";
+        reply = "تم البدء";
       }
 
       else if (text === "done") {
         await orderRef.update({ status: "completed" });
         const order = (await orderRef.get()).data();
 
-        await sendMessage(order.phone, "✅ تم إنهاء العمل\nقيّم من 1 إلى 5");
-        techState[from].step = "rate_client";
+        await sendMessage(order.phone, "✅ تم الانتهاء\nقيّم من 1 إلى 5");
 
-        reply = "تم الإنهاء";
-      }
+        userState[order.phone] = {
+          step: "rate",
+          orderId: state.orderId,
+        };
 
-      else if (state.step === "rate_client") {
-        await orderRef.update({ techRating: text });
-        reply = "تم تقييم العميل ⭐";
         delete techState[from];
-      }
-
-      else {
-        reply = "1 قبول\n2 رفض\nstart بدء\ndone إنهاء";
+        reply = "تم الإنهاء";
       }
     }
 
-    // ===== العميل =====
-    else if (userState[from]?.step === "rate") {
-      const orderId = userState[from].orderId;
+    // ================= العميل =================
 
-      await db.collection("orders").doc(orderId).update({
-        clientRating: text,
+    else if (userState[from]?.step === "rate") {
+      await db.collection("orders").doc(userState[from].orderId).update({
+        clientRating: Number(text),
       });
 
       reply = "شكراً لتقييمك ⭐";
       delete userState[from];
     }
 
-    else if (text === "0") {
+    else if (text === "حالة") {
+      const snap = await db
+        .collection("orders")
+        .where("phone", "==", from)
+        .orderBy("createdAt", "desc")
+        .limit(1)
+        .get();
+
+      if (!snap.empty) {
+        const order = snap.docs[0].data();
+
+        reply =
+          `📊 حالة الطلب:\n` +
+          `الخدمة: ${order.service}\n` +
+          `الحالة: ${order.status}\n` +
+          `الفني: ${order.technicianName || "لم يتم التعيين"}`;
+      } else {
+        reply = "لا يوجد طلب";
+      }
+    }
+
+    else if (text === "0" || text === "مرحبا") {
       userState[from] = { step: "choose" };
       reply = mainMenu;
     }
 
     else if (!userState[from]) {
-      if (text === "مرحبا") {
-        userState[from] = { step: "choose" };
-        reply = mainMenu;
-      } else {
-        reply = "اكتب مرحبا 👋";
-      }
+      reply = "اكتب مرحبا 👋";
     }
 
     else if (userState[from].step === "choose") {
@@ -177,14 +188,25 @@ app.post("/webhook", async (req, res) => {
           createdAt: new Date(),
         });
 
+        // ===== فلترة الفنيين حسب التقييم =====
         const techsSnap = await db
           .collection("technicians")
           .where("service", "==", service)
           .where("active", "==", true)
           .get();
 
-        if (!techsSnap.empty) {
-          const techs = techsSnap.docs.map(d => d.data());
+        const techs = [];
+
+        for (let doc of techsSnap.docs) {
+          const data = doc.data();
+          const rating = data.rating || 5;
+
+          if (rating >= 3) {
+            techs.push(data);
+          }
+        }
+
+        if (techs.length > 0) {
           const tech = techs[0];
 
           techState[tech.phone] = {
@@ -196,29 +218,37 @@ app.post("/webhook", async (req, res) => {
 
           await sendMessage(
             tech.phone,
-            "طلب جديد 🔥\n1️⃣ قبول\n2️⃣ رفض"
+            "طلب جديد 🔥\n1 قبول\n2 رفض"
           );
 
           reply = "تم إرسال الطلب ✅";
         } else {
-          reply = "❌ لا يوجد فني";
+          reply = "❌ لا يوجد فني مناسب (التقييم ضعيف)";
         }
 
-        userState[from] = { step: "done", orderId: orderRef.id };
+        userState[from] = { step: "done" };
       }
     }
 
     else if (userState[from].step === "done") {
-      reply = "طلبك قيد التنفيذ 🔄";
+      if (text === "0") {
+        userState[from] = { step: "choose" };
+        reply = mainMenu;
+      } else {
+        reply = "طلبك قيد التنفيذ 🔄\nاكتب: حالة";
+      }
     }
 
     await sendMessage(from, reply);
     res.sendStatus(200);
+
   } catch (e) {
     console.error(e);
     res.sendStatus(500);
   }
 });
+
+// ================= SEND =================
 
 async function sendMessage(to, text) {
   await fetch(
