@@ -22,11 +22,20 @@
       border-radius: 10px;
     }
 
-    .status {
-      color: #00ffcc;
+    button {
+      margin: 5px;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
     }
+
+    .accept { background: green; color: white; }
+    .start { background: orange; color: white; }
+    .done { background: blue; color: white; }
   </style>
 </head>
+
 <body>
 
 <h2>📊 الطلبات</h2>
@@ -35,9 +44,9 @@
 
 <script>
   const firebaseConfig = {
-    apiKey: "AIzaSyAJAJe3NgjQIeNihq0pTreixKhdQaGxvrE",
-    authDomain: "taqa-services.firebaseapp.com",
-    projectId: "taqa-services",
+    apiKey: "PUT_API_KEY",
+    authDomain: "PUT_AUTH_DOMAIN",
+    projectId: "PUT_PROJECT_ID",
   };
 
   const app = firebase.initializeApp(firebaseConfig);
@@ -59,13 +68,23 @@
         div.innerHTML = `
           <b>📞 العميل:</b> ${data.phone}<br>
           <b>🔧 الخدمة:</b> ${data.service}<br>
-          <b class="status">📊 الحالة:</b> ${data.status}<br>
-          <b>👨‍🔧 الفني:</b> ${data.technicianName || "..." }
+          <b>📊 الحالة:</b> ${data.status}<br>
+          <b>👨‍🔧 الفني:</b> ${data.technicianName || "..."}<br><br>
+
+          <button class="accept" onclick="updateStatus('${doc.id}', 'accepted')">قبول</button>
+          <button class="start" onclick="updateStatus('${doc.id}', 'started')">بدء</button>
+          <button class="done" onclick="updateStatus('${doc.id}', 'completed')">إنهاء</button>
         `;
 
         container.appendChild(div);
       });
     });
+
+  function updateStatus(id, status) {
+    db.collection("orders").doc(id).update({
+      status: status
+    });
+  }
 </script>
 
 </body>
