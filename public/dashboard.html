@@ -1,75 +1,71 @@
 <!DOCTYPE html>
 <html lang="ar">
 <head>
+  <meta charset="UTF-8" />
+  <title>لوحة الطلبات</title>
 
-<meta charset="UTF-8">
-<title>لوحة التحكم</title>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js"></script>
 
-<link rel="stylesheet" href="style.css">
+  <style>
+    body {
+      font-family: Arial;
+      background: #111;
+      color: white;
+      padding: 20px;
+    }
 
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    .card {
+      background: #222;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-radius: 10px;
+    }
 
+    .status {
+      color: #00ffcc;
+    }
+  </style>
 </head>
-
 <body>
 
-<h1>لوحة التحكم</h1>
+<h2>📊 الطلبات</h2>
 
-<div class="card">
-
-<p>عدد الفنيين: <span id="techCount">0</span></p>
-
-<p>عدد الخدمات: <span id="serviceCount">0</span></p>
-
-<p>عدد الطلبات: <span id="orderCount">0</span></p>
-
-<p>عدد قطع الغيار: <span id="partsCount">0</span></p>
-
-</div>
-
-<br>
-
-<a href="services.html">الخدمات</a>
-<br>
-<a href="technicians.html">الفنيين</a>
-<br>
-<a href="orders.html">الطلبات</a>
-<br>
-<a href="parts.html">قطع الغيار</a>
+<div id="orders"></div>
 
 <script>
+  const firebaseConfig = {
+    apiKey: "PUT_API_KEY",
+    authDomain: "PUT_AUTH_DOMAIN",
+    projectId: "PUT_PROJECT_ID",
+  };
 
-const firebaseConfig = {
+  const app = firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
 
-apiKey: "PUT_API_KEY",
-authDomain: "PUT_DOMAIN",
-projectId: "PUT_PROJECT_ID"
+  const container = document.getElementById("orders");
 
-};
+  db.collection("orders")
+    .orderBy("createdAt", "desc")
+    .onSnapshot(snapshot => {
+      container.innerHTML = "";
 
-firebase.initializeApp(firebaseConfig);
+      snapshot.forEach(doc => {
+        const data = doc.data();
 
-const db = firebase.firestore();
+        const div = document.createElement("div");
+        div.className = "card";
 
-async function loadStats(){
+        div.innerHTML = `
+          <b>📞 العميل:</b> ${data.phone}<br>
+          <b>🔧 الخدمة:</b> ${data.service}<br>
+          <b class="status">📊 الحالة:</b> ${data.status}<br>
+          <b>👨‍🔧 الفني:</b> ${data.technicianName || "..." }
+        `;
 
-techCount.innerText =
-(await db.collection("technicians").get()).size;
-
-serviceCount.innerText =
-(await db.collection("services").get()).size;
-
-orderCount.innerText =
-(await db.collection("orders").get()).size;
-
-partsCount.innerText =
-(await db.collection("parts").get()).size;
-
-}
-
-loadStats();
-
+        container.appendChild(div);
+      });
+    });
 </script>
 
 </body>
