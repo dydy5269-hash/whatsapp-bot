@@ -38,6 +38,14 @@ async function sendMessage(to, text) {
   );
 }
 
+// ---------- VERIFY ----------
+app.get("/webhook", (req, res) => {
+  if (req.query["hub.verify_token"] === VERIFY_TOKEN) {
+    return res.send(req.query["hub.challenge"]);
+  }
+  return res.sendStatus(403);
+});
+
 // ---------- GET TECH ----------
 async function getTechnician(phone) {
   const snap = await db
@@ -61,14 +69,6 @@ async function findAvailableTech(service) {
   return null;
 }
 
-// ---------- VERIFY ----------
-app.get("/webhook", (req, res) => {
-  if (req.query["hub.verify_token"] === VERIFY_TOKEN) {
-    return res.send(req.query["hub.challenge"]);
-  }
-  return res.sendStatus(403);
-});
-
 // ---------- WEBHOOK ----------
 app.post("/webhook", async (req, res) => {
   try {
@@ -78,99 +78,115 @@ app.post("/webhook", async (req, res) => {
     const from = msg.from;
     const text = msg.text?.body || "";
 
-    // =========================
-    // 🔥 FIX: TECH REPLY أول شي
-    // =========================
+    // ================= TECH REPLY =================
     if (userState[from] === "tech_reply") {
       const data = userData[from];
       const client = data?.client;
-      const techData = data?.tech;
+      const tech = data?.tech;
       const location = data?.location;
 
-      if (client && techData) {
-        if (text === "1") {
-          // 👤 للعميل
-          await sendMessage(
-            client,
-            `✅ تم قبول طلبك
+      if (text === "1") {
+        await sendMessage(
+          client,
+          `🚀 تم تأكيد طلبك
 
-👨‍🔧 الفني: ${techData.name}
-🔧 الخدمة: ${techData.service}
-⭐ التقييم: ${techData.rating}
+👨‍🔧 الفني: ${tech.name}
+📞 ${tech.phone}
+⭐ ${tech.rating}
 
-📞 سيتواصل معك قريباً`
-          );
+⏳ الفني في طريقه إليك`
+        );
 
-          // 👨‍🔧 للفني
-          await sendMessage(
-            from,
-            `📍 بيانات العميل
+        await sendMessage(
+          from,
+          `📥 تفاصيل الطلب
 
-📞 الرقم: ${client}
-📌 الموقع:
-https://maps.google.com/?q=${location.latitude},${location.longitude}`
-          );
+👤 العميل: ${client}
+📞 ${client}
 
-        } else if (text === "2") {
-          await sendMessage(client, "❌ تم رفض الطلب");
-        }
+🔧 ${data.service}
+📍 https://maps.google.com/?q=${location.latitude},${location.longitude}`
+        );
 
+        userState[from] = "working";
+        userState[client] = "waiting_service";
+      } else {
+        await sendMessage(client, "❌ تم رفض الطلب");
         userState[from] = null;
-        userData[from] = null;
       }
 
       return res.sendStatus(200);
     }
 
-    // =========================
-    // CHECK TECH (بعد الرد فقط)
-    // =========================
+    // ================= FINISH SERVICE =================
+    if (userState[from] === "working" && text === "تم") {
+      const client = userData[from]?.client;
+
+      await sendMessage(client, `✅ تم إنهاء الخدمة
+
+🙏 نأمل تقييم الخدمة
+
+⭐ من 1 إلى 5`);
+
+      userState[client] = "rating";
+      userState[from] = null;
+
+      return res.sendStatus(200);
+    }
+
+    // ================= RATING =================
+    if (userState[from] === "rating") {
+      await sendMessage(
+        from,
+        `💙 شكراً لتقييمك
+
+نتطلع لخدمتك مرة أخرى 🙏`
+      );
+
+      userState[from] = "main_menu";
+      return res.sendStatus(200);
+    }
+
+    // ================= CHECK TECH =================
     const tech = await getTechnician(from);
 
-    if (tech) {
-      // ❗ مهم: لا تعرض الحساب إذا كان عنده طلب
-      if (userState[from]) {
-        return res.sendStatus(200);
-      }
-
+    if (tech && !userState[from]) {
       userState[from] = "tech_menu";
 
       await sendMessage(
         from,
         `👨‍🔧 حسابك
 
-👤 الاسم: ${tech.name}
-🔧 الخدمة: ${tech.service}
-⭐ التقييم: ${tech.rating}
-
-📌 أنت فني`
+👤 ${tech.name}
+🔧 ${tech.service}
+⭐ ${tech.rating}`
       );
 
       return res.sendStatus(200);
     }
 
-    // ===== RESET =====
-    if (text === "مرحبا") userState[from] = "menu";
-
-    // ===== MENU =====
-    if (!userState[from] || userState[from] === "menu") {
-      userState[from] = "choose_service";
+    // ================= START =================
+    if (!userState[from] || text === "مرحبا") {
+      userState[from] = "main_menu";
 
       await sendMessage(
         from,
-        `👋 أهلاً بك في رؤية طاقة
+        `👋 مرحباً بكم في *شركة رؤية طاقة للخدمات الهندسية* ⚡
 
-اختر الخدمة:
+🔧 خدماتنا:
+
 1️⃣ كهرباء
 2️⃣ سباكة
-3️⃣ تكييف`
+3️⃣ تكييف
+
+📩 اختر رقم الخدمة`
       );
 
       return res.sendStatus(200);
     }
 
-    // ===== SERVICE =====
-    if (userState[from] === "choose_service") {
+    // ================= MAIN MENU =================
+    if (userState[from] === "main_menu") {
       const map = {
         "1": "كهرباء",
         "2": "سباكة",
@@ -179,21 +195,78 @@ https://maps.google.com/?q=${location.latitude},${location.longitude}`
 
       const service = map[text];
 
-      if (!service) {
-        await sendMessage(from, "❌ اختيار غير صحيح");
-        return res.sendStatus(200);
-      }
+      if (!service) return res.sendStatus(200);
 
       userData[from] = { service };
-      userState[from] = "location";
+      userState[from] = "service_type";
 
-      await sendMessage(from, "📍 أرسل موقعك");
+      await sendMessage(
+        from,
+        `⚡ قسم ${service}
+
+1️⃣ تركيب
+2️⃣ تصليح
+3️⃣ قطع غيار
+0️⃣ رجوع`
+      );
+
       return res.sendStatus(200);
     }
 
-    // ===== LOCATION =====
-    if (userState[from] === "location") {
+    // ================= SERVICE TYPE =================
+    if (userState[from] === "service_type") {
+      if (text === "0") {
+        userState[from] = "main_menu";
+        return res.sendStatus(200);
+      }
 
+      const map = {
+        "1": "تركيب",
+        "2": "تصليح",
+        "3": "قطع غيار"
+      };
+
+      const type = map[text];
+      if (!type) return res.sendStatus(200);
+
+      userData[from].type = type;
+      userState[from] = "confirm";
+
+      await sendMessage(
+        from,
+        `🧾 تفاصيل الطلب
+
+🔧 ${type} ${userData[from].service}
+💰 السعر: 10 ريال
+
+1️⃣ تأكيد
+2️⃣ إلغاء`
+      );
+
+      return res.sendStatus(200);
+    }
+
+    // ================= CONFIRM =================
+    if (userState[from] === "confirm") {
+      if (text === "2") {
+        userState[from] = "main_menu";
+        return res.sendStatus(200);
+      }
+
+      if (text === "1") {
+        userState[from] = "location";
+
+        await sendMessage(
+          from,
+          `📍 أرسل موقعك عبر الواتساب`
+        );
+      }
+
+      return res.sendStatus(200);
+    }
+
+    // ================= LOCATION =================
+    if (userState[from] === "location") {
       if (!msg.location) {
         await sendMessage(
           from,
@@ -204,35 +277,42 @@ https://maps.google.com/?q=${location.latitude},${location.longitude}`
 
       userData[from].location = msg.location;
 
-      const availableTech = await findAvailableTech(
-        userData[from].service
-      );
+      const tech = await findAvailableTech(userData[from].service);
 
-      if (!availableTech) {
-        await sendMessage(from, "😔 لا يوجد فني حالياً");
-        userState[from] = null;
+      if (!tech) {
+        await sendMessage(
+          from,
+          `🚫 لا يوجد فني حالياً
+
+1️⃣ انتظار
+2️⃣ إلغاء`
+        );
+
+        userState[from] = "waiting";
         return res.sendStatus(200);
       }
 
       await sendMessage(
-        availableTech.phone,
-        `📢 طلب جديد
+        tech.phone,
+        `📥 طلب جديد
 
-🔧 ${userData[from].service}
-💰 السعر: 10 ريال
+👤 ${from}
+🔧 ${userData[from].type} ${userData[from].service}
+📍 موقع متوفر
 
 1️⃣ قبول
 2️⃣ رفض`
       );
 
-      userState[availableTech.phone] = "tech_reply";
-      userData[availableTech.phone] = {
+      userState[tech.phone] = "tech_reply";
+      userData[tech.phone] = {
         client: from,
-        tech: availableTech,
+        tech,
+        service: `${userData[from].type} ${userData[from].service}`,
         location: msg.location
       };
 
-      await sendMessage(from, "✅ تم إرسال طلبك");
+      await sendMessage(from, "🚀 تم إرسال طلبك");
 
       userState[from] = null;
 
@@ -240,9 +320,8 @@ https://maps.google.com/?q=${location.latitude},${location.longitude}`
     }
 
     return res.sendStatus(200);
-
-  } catch (err) {
-    console.log(err);
+  } catch (e) {
+    console.log(e);
     return res.sendStatus(200);
   }
 });
