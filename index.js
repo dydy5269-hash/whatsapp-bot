@@ -98,10 +98,10 @@ app.post("/webhook", async (req, res) => {
   "👤 الاسم: " + tech.name + "\n" +
   "🔧 الخدمة: " + tech.service + "\n" +
   "💰 الرصيد: " + tech.balance + "\n" +
-  "⭐ التقييم: " + tech.rating
+  "⭐ التقييم: " + tech.rating + "\n\n" +
+  "📌 أنت مسجل كفني\n" +
+  "سيتم إرسال الطلبات لك تلقائياً"
 );
-        انت مسجل كفني سيتمارسال الطلبات لك تلقائيا
-    );
     return res.sendStatus(200);
     }
   }
