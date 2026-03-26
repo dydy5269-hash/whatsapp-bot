@@ -44,35 +44,25 @@ async function sendMessage(to, text) {
 
 // ---------- GET TECH ----------
 async function getTechnician(phone) {
-  try {
-    const snap = await db
-      .collection("technicians")
-      .where("phone", "in", [phone, "+" + phone])
-      .get();
+  const snap = await db
+    .collection("technicians")
+    .where("phone", "in", [phone, "+" + phone])
+    .get();
 
-    if (!snap.empty) return snap.docs[0].data();
-    return null;
-  } catch (e) {
-    console.log("FIREBASE ERROR:", e);
-    return null;
-  }
+  if (!snap.empty) return snap.docs[0].data();
+  return null;
 }
 
 // ---------- FIND TECH ----------
 async function findAvailableTech(service) {
-  try {
-    const snap = await db
-      .collection("technicians")
-      .where("service", "==", service)
-      .where("active", "==", true)
-      .get();
+  const snap = await db
+    .collection("technicians")
+    .where("service", "==", service)
+    .where("active", "==", true)
+    .get();
 
-    if (!snap.empty) return snap.docs[0].data();
-    return null;
-  } catch (e) {
-    console.log("FIREBASE ERROR:", e);
-    return null;
-  }
+  if (!snap.empty) return snap.docs[0].data();
+  return null;
 }
 
 // ---------- VERIFY ----------
@@ -94,13 +84,30 @@ app.post("/webhook", async (req, res) => {
     const from = msg.from;
     const text = msg.text?.body || "";
 
-    // ===== TECH REPLY (الأولوية) =====
+    // ===== TECH REPLY =====
     if (userState[from] === "tech_reply") {
-      const client = userData[from]?.client;
+      const data = userData[from];
+      const client = data?.client;
+      const techData = data?.tech;
 
-      if (client) {
+      if (client && techData) {
         if (text === "1") {
-          await sendMessage(client, "✅ الفني في الطريق");
+          await sendMessage(
+            client,
+            `✅ تم قبول طلبك
+
+👨‍🔧 الفني: ${techData.name}
+🔧 الخدمة: ${techData.service}
+⭐ التقييم: ${techData.rating}`
+          );
+
+          await sendMessage(
+            from,
+            `📍 بيانات العميل
+
+📞 الرقم: ${client}
+📌 تم إرسال الموقع`
+          );
         } else {
           await sendMessage(client, "❌ تم رفض الطلب");
         }
@@ -115,9 +122,7 @@ app.post("/webhook", async (req, res) => {
     // ===== CHECK TECH =====
     const tech = await getTechnician(from);
 
-    // ===== إذا فني → لا تدخل المنيو نهائياً =====
     if (tech) {
-      // فقط عرض بياناته مرة واحدة
       if (!userState[from]) {
         userState[from] = "tech_menu";
 
@@ -127,7 +132,6 @@ app.post("/webhook", async (req, res) => {
 
 👤 الاسم: ${tech.name}
 🔧 الخدمة: ${tech.service}
-💰 الرصيد: ${tech.balance}
 ⭐ التقييم: ${tech.rating}
 
 📌 أنت فني`
@@ -138,7 +142,9 @@ app.post("/webhook", async (req, res) => {
     }
 
     // ===== RESET =====
-    if (text === "مرحبا") userState[from] = "menu";
+    if (text === "مرحبا") {
+      userState[from] = "menu";
+    }
 
     // ===== MENU =====
     if (!userState[from] || userState[from] === "menu") {
@@ -175,14 +181,14 @@ app.post("/webhook", async (req, res) => {
       userData[from] = { service };
       userState[from] = "location";
 
-      await sendMessage(from, "📍 أرسل موقعك");
+      await sendMessage(from, "📍 أرسل موقعك (مشاركة الموقع فقط)");
       return res.sendStatus(200);
     }
 
-    // ===== LOCATION =====
+    // ===== LOCATION (FIXED) =====
     if (userState[from] === "location") {
+      // ✅ إذا المستخدم كتب نص لا تعيد الطلب
       if (!msg.location) {
-        await sendMessage(from, "📍 أرسل الموقع");
         return res.sendStatus(200);
       }
 
@@ -203,6 +209,7 @@ app.post("/webhook", async (req, res) => {
           "😔 لا يوجد فني حالياً\nسيتم إشعارك عند توفر فني"
         );
 
+        userState[from] = null;
         return res.sendStatus(200);
       }
 
@@ -218,9 +225,14 @@ app.post("/webhook", async (req, res) => {
       );
 
       userState[availableTech.phone] = "tech_reply";
-      userData[availableTech.phone] = { client: from };
+      userData[availableTech.phone] = {
+        client: from,
+        tech: availableTech
+      };
 
       await sendMessage(from, "✅ تم إرسال طلبك");
+
+      userState[from] = null; // ✅ مهم جداً يمنع التكرار
 
       return res.sendStatus(200);
     }
