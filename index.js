@@ -18,13 +18,13 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const userState = {};
 const userData = {};
 
-// ---------------- SEND MESSAGE ----------------
+// ---------- SEND ----------
 async function sendMessage(to, text) {
   await axios.post(
     `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
     {
       messaging_product: "whatsapp",
-      to: to,
+      to,
       text: { body: text }
     },
     {
@@ -36,34 +36,30 @@ async function sendMessage(to, text) {
   );
 }
 
-// ---------------- GET TECH ----------------
+// ---------- GET TECH ----------
 async function getTechnician(phone) {
-  const snapshot = await db
+  const snap = await db
     .collection("technicians")
     .where("phone", "in", [phone, "+" + phone])
     .get();
 
-  if (!snapshot.empty) {
-    return snapshot.docs[0].data();
-  }
+  if (!snap.empty) return snap.docs[0].data();
   return null;
 }
 
-// ---------------- FIND AVAILABLE TECH ----------------
+// ---------- FIND TECH ----------
 async function findAvailableTech(service) {
-  const snapshot = await db
+  const snap = await db
     .collection("technicians")
     .where("service", "==", service)
     .where("active", "==", true)
     .get();
 
-  if (!snapshot.empty) {
-    return snapshot.docs[0].data();
-  }
+  if (!snap.empty) return snap.docs[0].data();
   return null;
 }
 
-// ---------------- WEBHOOK VERIFY ----------------
+// ---------- VERIFY ----------
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -76,158 +72,167 @@ app.get("/webhook", (req, res) => {
   }
 });
 
-// ---------------- WEBHOOK ----------------
+// ---------- WEBHOOK ----------
 app.post("/webhook", async (req, res) => {
-  const msg =
-    req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+  try {
+    const msg =
+      req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
-  if (!msg) return res.sendStatus(200);
+    if (!msg) return res.sendStatus(200);
 
-  const from = msg.from;
-  const text = msg.text?.body || "";
+    const from = msg.from;
+    const text = msg.text?.body || "";
 
-  const tech = await getTechnician(from);
+    console.log("📩 MESSAGE:", text);
 
-   if (tech) {
-  //اذا الفني يكتب عادي (مو رد على طلب )
-    if (tech && userState[from] !== "tech_reply") {
-      userState[from] = "tech_menu";
-      await sendMessage(
-  from,
-  "👨‍🔧 حسابك\n\n" +
-  "👤 الاسم: " + tech.name + "\n" +
-  "🔧 الخدمة: " + tech.service + "\n" +
-  "💰 الرصيد: " + tech.balance + "\n" +
-  "⭐ التقييم: " + tech.rating + "\n\n" +
-  "📌 أنت مسجل كفني\n" +
-  "سيتم إرسال الطلبات لك تلقائياً"
-);
-    return res.sendStatus(200);
-    }
-  }
+    const tech = await getTechnician(from);
 
-  // ----- Reset -----
-  if (text === "مرحبا") userState[from] = "menu";
+    // ----- TECH -----
+    if (tech) {
+      if (userState[from] !== "tech_reply") {
+        userState[from] = "tech_menu";
 
-  // ----- Menu -----
-  if (!userState[from] || userState[from] === "menu") {
-    userState[from] = "choose_service";
+        await sendMessage(
+          from,
+          "👨‍🔧 حسابك\n\n" +
+            "👤 الاسم: " +
+            tech.name +
+            "\n" +
+            "🔧 الخدمة: " +
+            tech.service +
+            "\n" +
+            "💰 الرصيد: " +
+            tech.balance +
+            "\n" +
+            "⭐ التقييم: " +
+            tech.rating +
+            "\n\n" +
+            "📌 أنت مسجل كفني\n" +
+            "سيتم إرسال الطلبات لك تلقائياً"
+        );
 
-    await sendMessage(
-      from,
-      `👋 أهلاً بك في رؤية طاقة للخدمات 🇴🇲
-
-اختر الخدمة:
-
-1️⃣ كهرباء ⚡
-2️⃣ سباكة 🚿
-3️⃣ تكييف ❄️`
-    );
-
-    return res.sendStatus(200);
-  }
-
-  // ----- Choose Service -----
-  if (userState[from] === "choose_service") {
-    const map = {
-      "1": "كهرباء",
-      "2": "سباكة",
-      "3": "تكييف"
-    };
-
-    const service = map[text];
-
-    if (!service) {
-      await sendMessage(from, "❌ اختيار غير صحيح");
-      return res.sendStatus(200);
+        return res.sendStatus(200);
+      }
     }
 
-    userData[from] = { service };
-    userState[from] = "location";
+    // ----- RESET -----
+    if (text === "مرحبا") userState[from] = "menu";
 
-    await sendMessage(from, "📍 أرسل موقعك من فضلك");
-    return res.sendStatus(200);
-  }
-
-  // ----- Location -----
-  if (userState[from] === "location") {
-    if (!msg.location) {
-      await sendMessage(from, "📍 الرجاء إرسال الموقع");
-      return res.sendStatus(200);
-    }
-
-    userData[from].location = msg.location;
-
-    const tech = await findAvailableTech(userData[from].service);
-
-    if (!tech) {
-      await db.collection("waiting_requests").add({
-        phone: from,
-        ...userData[from]
-      });
+    // ----- MENU -----
+    if (!userState[from] || userState[from] === "menu") {
+      userState[from] = "choose_service";
 
       await sendMessage(
         from,
-        `😔 لا يوجد فني متاح حالياً
-سيتم إشعارك عند توفر فني`
+        "👋 أهلاً بك في رؤية طاقة للخدمات 🇴🇲\n\n" +
+          "اختر الخدمة:\n\n" +
+          "1️⃣ كهرباء ⚡\n" +
+          "2️⃣ سباكة 🚿\n" +
+          "3️⃣ تكييف ❄️"
+      );
+
+      return res.sendStatus(200);
+    }
+
+    // ----- CHOOSE SERVICE -----
+    if (userState[from] === "choose_service") {
+      const map = {
+        "1": "كهرباء",
+        "2": "سباكة",
+        "3": "تكييف"
+      };
+
+      const service = map[text];
+
+      if (!service) {
+        await sendMessage(from, "❌ اختيار غير صحيح");
+        return res.sendStatus(200);
+      }
+
+      userData[from] = { service };
+      userState[from] = "location";
+
+      await sendMessage(from, "📍 أرسل موقعك من فضلك");
+      return res.sendStatus(200);
+    }
+
+    // ----- LOCATION -----
+    if (userState[from] === "location") {
+      if (!msg.location) {
+        await sendMessage(from, "📍 الرجاء إرسال الموقع");
+        return res.sendStatus(200);
+      }
+
+      userData[from].location = msg.location;
+
+      const tech = await findAvailableTech(userData[from].service);
+
+      if (!tech) {
+        await db.collection("waiting_requests").add({
+          phone: from,
+          ...userData[from]
+        });
+
+        await sendMessage(
+          from,
+          "😔 لا يوجد فني متاح حالياً\n" +
+            "سيتم إشعارك عند توفر فني"
+        );
+
+        userState[from] = "done";
+        return res.sendStatus(200);
+      }
+
+      await sendMessage(
+        tech.phone,
+        "📢 طلب جديد\n\n" +
+          "🔧 الخدمة: " +
+          userData[from].service +
+          "\n" +
+          "💰 السعر: 10 ريال\n\n" +
+          "للرد:\n1️⃣ قبول\n2️⃣ رفض"
+      );
+
+      userState[tech.phone] = "tech_reply";
+      userData[tech.phone] = { client: from };
+
+      await sendMessage(
+        from,
+        "✅ تم إرسال طلبك بنجاح\n" +
+          "سيتم التواصل معك قريباً"
       );
 
       userState[from] = "done";
       return res.sendStatus(200);
     }
 
-    await sendMessage(
-      tech.phone,
-      `📢 طلب جديد
+    // ----- TECH REPLY -----
+    if (userState[from] === "tech_reply") {
+      const client = userData[from].client;
 
-🔧 الخدمة: ${userData[from].service}
-💰 السعر: 10 ريال
+      if (text === "1") {
+        await sendMessage(
+          client,
+          "📌 تم قبول طلبك\nالفني في الطريق 👨‍🔧"
+        );
+      } else {
+        await sendMessage(client, "❌ تم رفض الطلب");
+      }
 
-للرد:
-1️⃣ قبول
-2️⃣ رفض`
-    );
+      userState[from] = null;
+      userState[client] = null;
 
-    userState[tech.phone] = "tech_reply";
-    userData[tech.phone] = { client: from };
-
-    await sendMessage(
-      from,
-      `✅ تم إرسال طلبك بنجاح
-سيتم التواصل معك قريباً`
-    );
-
-    userState[from] = "done";
-    return res.sendStatus(200);
-  }
-
-  // ----- Tech Reply -----
-  if (userState[from] === "tech_reply") {
-    const client = userData[from].client;
-
-    if (text === "1") {
-      await sendMessage(
-        client,
-        `📌 تم قبول طلبك
-الفني في الطريق 👨‍🔧`
-      );
-    } else {
-      await sendMessage(
-        client,
-        `❌ تم رفض الطلب`
-      );
+      return res.sendStatus(200);
     }
 
-    userState[from] = null;
-    userState[client] = null;
-
-    return res.sendStatus(200);
+    res.sendStatus(200);
+  } catch (err) {
+    console.error("🔥 ERROR:", err);
+    res.sendStatus(200);
   }
-
-  res.sendStatus(200);
 });
 
-// ---------------- START SERVER ----------------
+// ---------- START ----------
 app.listen(3000, () => {
   console.log("Server running...");
 });
