@@ -89,31 +89,38 @@ app.post("/webhook", async (req, res) => {
       const data = userData[from];
       const client = data?.client;
       const techData = data?.tech;
+      const location = data?.location;
 
       if (client && techData) {
         if (text === "1") {
+          // 👇 رسالة للعميل
           await sendMessage(
             client,
             `✅ تم قبول طلبك
 
 👨‍🔧 الفني: ${techData.name}
 🔧 الخدمة: ${techData.service}
-⭐ التقييم: ${techData.rating}`
+⭐ التقييم: ${techData.rating}
+
+📞 سيتواصل معك قريباً`
           );
 
+          // 👇 رسالة للفني (مع الموقع)
           await sendMessage(
             from,
             `📍 بيانات العميل
 
 📞 الرقم: ${client}
-📌 تم إرسال الموقع`
+📌 الموقع: https://maps.google.com/?q=${location.latitude},${location.longitude}
+
+⭐ تواصل مع العميل الآن`
           );
         } else {
           await sendMessage(client, "❌ تم رفض الطلب");
         }
 
         userState[from] = null;
-        userState[client] = null;
+        userData[from] = null;
       }
 
       return res.sendStatus(200);
@@ -142,9 +149,7 @@ app.post("/webhook", async (req, res) => {
     }
 
     // ===== RESET =====
-    if (text === "مرحبا") {
-      userState[from] = "menu";
-    }
+    if (text === "مرحبا") userState[from] = "menu";
 
     // ===== MENU =====
     if (!userState[from] || userState[from] === "menu") {
@@ -181,16 +186,13 @@ app.post("/webhook", async (req, res) => {
       userData[from] = { service };
       userState[from] = "location";
 
-      await sendMessage(from, "📍 أرسل موقعك (مشاركة الموقع فقط)");
+      await sendMessage(from, "📍 أرسل موقعك");
       return res.sendStatus(200);
     }
 
-    // ===== LOCATION (FIXED) =====
+    // ===== LOCATION =====
     if (userState[from] === "location") {
-      // ✅ إذا المستخدم كتب نص لا تعيد الطلب
-      if (!msg.location) {
-        return res.sendStatus(200);
-      }
+      if (!msg.location) return res.sendStatus(200);
 
       userData[from].location = msg.location;
 
@@ -227,12 +229,13 @@ app.post("/webhook", async (req, res) => {
       userState[availableTech.phone] = "tech_reply";
       userData[availableTech.phone] = {
         client: from,
-        tech: availableTech
+        tech: availableTech,
+        location: msg.location
       };
 
       await sendMessage(from, "✅ تم إرسال طلبك");
 
-      userState[from] = null; // ✅ مهم جداً يمنع التكرار
+      userState[from] = null;
 
       return res.sendStatus(200);
     }
