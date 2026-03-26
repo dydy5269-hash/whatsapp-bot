@@ -22,24 +22,20 @@ const userData = {};
 
 // ---------- SEND ----------
 async function sendMessage(to, text) {
-  try {
-    await axios.post(
-      `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-      {
-        messaging_product: "whatsapp",
-        to,
-        text: { body: text }
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-          "Content-Type": "application/json"
-        }
+  await axios.post(
+    `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to,
+      text: { body: text }
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json"
       }
-    );
-  } catch (e) {
-    console.log("SEND ERROR:", e.response?.data || e.message);
-  }
+    }
+  );
 }
 
 // ---------- GET TECH ----------
@@ -76,15 +72,15 @@ app.get("/webhook", (req, res) => {
 // ---------- WEBHOOK ----------
 app.post("/webhook", async (req, res) => {
   try {
-    const msg =
-      req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-
+    const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!msg) return res.sendStatus(200);
 
     const from = msg.from;
     const text = msg.text?.body || "";
 
-    // ===== TECH REPLY (الأولوية) =====
+    // =========================
+    // 🔥 FIX: TECH REPLY أول شي
+    // =========================
     if (userState[from] === "tech_reply") {
       const data = userData[from];
       const client = data?.client;
@@ -93,8 +89,7 @@ app.post("/webhook", async (req, res) => {
 
       if (client && techData) {
         if (text === "1") {
-
-          // ✅ العميل يستلم بيانات الفني
+          // 👤 للعميل
           await sendMessage(
             client,
             `✅ تم قبول طلبك
@@ -103,10 +98,10 @@ app.post("/webhook", async (req, res) => {
 🔧 الخدمة: ${techData.service}
 ⭐ التقييم: ${techData.rating}
 
-📞 سيتم التواصل معك قريباً`
+📞 سيتواصل معك قريباً`
           );
 
-          // ✅ الفني يستلم بيانات العميل + الموقع
+          // 👨‍🔧 للفني
           await sendMessage(
             from,
             `📍 بيانات العميل
@@ -127,12 +122,13 @@ https://maps.google.com/?q=${location.latitude},${location.longitude}`
       return res.sendStatus(200);
     }
 
-    // ===== CHECK TECH (مهم جداً) =====
+    // =========================
+    // CHECK TECH (بعد الرد فقط)
+    // =========================
     const tech = await getTechnician(from);
 
     if (tech) {
-
-      // ❌ لا تعرض حساب الفني إذا عنده طلب ينتظر رد
+      // ❗ مهم: لا تعرض الحساب إذا كان عنده طلب
       if (userState[from]) {
         return res.sendStatus(200);
       }
@@ -173,7 +169,7 @@ https://maps.google.com/?q=${location.latitude},${location.longitude}`
       return res.sendStatus(200);
     }
 
-    // ===== CHOOSE SERVICE =====
+    // ===== SERVICE =====
     if (userState[from] === "choose_service") {
       const map = {
         "1": "كهرباء",
@@ -213,16 +209,7 @@ https://maps.google.com/?q=${location.latitude},${location.longitude}`
       );
 
       if (!availableTech) {
-        await db.collection("waiting_requests").add({
-          phone: from,
-          ...userData[from]
-        });
-
-        await sendMessage(
-          from,
-          "😔 لا يوجد فني حالياً\nسيتم إشعارك عند توفر فني"
-        );
-
+        await sendMessage(from, "😔 لا يوجد فني حالياً");
         userState[from] = null;
         return res.sendStatus(200);
       }
@@ -253,8 +240,9 @@ https://maps.google.com/?q=${location.latitude},${location.longitude}`
     }
 
     return res.sendStatus(200);
+
   } catch (err) {
-    console.log("ERROR:", err);
+    console.log(err);
     return res.sendStatus(200);
   }
 });
