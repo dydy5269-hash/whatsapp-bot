@@ -86,8 +86,6 @@ app.get("/webhook", (req, res) => {
 // ---------- WEBHOOK ----------
 app.post("/webhook", async (req, res) => {
   try {
-    console.log("BODY:", JSON.stringify(req.body));
-
     const msg =
       req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
@@ -96,20 +94,20 @@ app.post("/webhook", async (req, res) => {
     const from = msg.from;
     const text = msg.text?.body || "";
 
-    // ===== TECH REPLY (مهم يكون أول شيء) =====
+    // ===== TECH REPLY (الأولوية) =====
     if (userState[from] === "tech_reply") {
       const client = userData[from]?.client;
 
-      if (!client) return res.sendStatus(200);
+      if (client) {
+        if (text === "1") {
+          await sendMessage(client, "✅ الفني في الطريق");
+        } else {
+          await sendMessage(client, "❌ تم رفض الطلب");
+        }
 
-      if (text === "1") {
-        await sendMessage(client, "✅ الفني في الطريق");
-      } else {
-        await sendMessage(client, "❌ تم رفض الطلب");
+        userState[from] = null;
+        userState[client] = null;
       }
-
-      userState[from] = null;
-      userState[client] = null;
 
       return res.sendStatus(200);
     }
@@ -117,21 +115,24 @@ app.post("/webhook", async (req, res) => {
     // ===== CHECK TECH =====
     const tech = await getTechnician(from);
 
-    // ===== TECH INFO =====
+    // ===== إذا فني → لا تدخل المنيو نهائياً =====
     if (tech) {
-      userState[from] = "tech_menu";
+      // فقط عرض بياناته مرة واحدة
+      if (!userState[from]) {
+        userState[from] = "tech_menu";
 
-      await sendMessage(
-        from,
-        `👨‍🔧 حسابك
+        await sendMessage(
+          from,
+          `👨‍🔧 حسابك
 
 👤 الاسم: ${tech.name}
 🔧 الخدمة: ${tech.service}
 💰 الرصيد: ${tech.balance}
 ⭐ التقييم: ${tech.rating}
 
-📌 أنت فني - لا يمكنك طلب خدمة`
-      );
+📌 أنت فني`
+        );
+      }
 
       return res.sendStatus(200);
     }
