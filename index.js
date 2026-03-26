@@ -90,16 +90,16 @@ app.post("/webhook", async (req, res) => {
 
    if (tech) {
   //اذا الفني يكتب عادي (مو رد على طلب )
-    if (userState[from] !== "tech_reply") {
+    if (tech && userState[from] !== "tech_reply") {
       userState[from] = "tech_menu";
       await sendMessage(
-      from,
-      `👨‍🔧 حسابك
-
-👤 الاسم: ${tech.name}
-🔧 الخدمة: ${tech.service}
-💰 الرصيد: ${tech.balance}
-⭐ التقييم: ${tech.rating}`
+  from,
+  "👨‍🔧 حسابك\n\n" +
+  "👤 الاسم: " + tech.name + "\n" +
+  "🔧 الخدمة: " + tech.service + "\n" +
+  "💰 الرصيد: " + tech.balance + "\n" +
+  "⭐ التقييم: " + tech.rating
+);
         انت مسجل كفني سيتمارسال الطلبات لك تلقائيا
     );
     return res.sendStatus(200);
