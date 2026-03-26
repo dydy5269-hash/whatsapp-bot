@@ -39,6 +39,17 @@ async function sendMessage(to, text) {
   );
 }
 
+// ===== Check Technician =====
+async function isTechnician(phone) {
+  const snap = await db
+    .collection("technicians")
+    .where("phone", "==", phone)
+    .get();
+
+  if (!snap.empty) return snap.docs[0].data();
+  return null;
+}
+
 // ===== Verify =====
 app.get("/webhook", (req, res) => {
   const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
@@ -66,6 +77,26 @@ app.post("/webhook", async (req, res) => {
     const from = message.from;
     const text = message.text?.body?.trim();
 
+    const techData = await isTechnician(from);
+
+    // ===== Technician Info =====
+    if (techData) {
+      await sendMessage(
+        from,
+        `👨‍🔧 حسابك الفني
+
+👤 الاسم: ${techData.name}
+🔧 الخدمة: ${techData.service}
+💰 الرصيد: ${techData.balance} ريال
+⭐ التقييم: ${techData.rating}`
+      );
+    }
+
+    // ===== Prevent Technician Request =====
+    if (techData && userState[from] !== "tech_reply") {
+      return res.sendStatus(200);
+    }
+
     // ===== Reset =====
     if (text === "مرحبا") {
       userState[from] = "menu";
@@ -78,7 +109,6 @@ app.post("/webhook", async (req, res) => {
       await sendMessage(
         from,
         `👋 أهلاً بك في رؤية طاقة للخدمات 🇴🇲
-إدارة عمانية لخدمتكم دائماً
 
 اختر الخدمة:
 1️⃣ كهرباء
@@ -104,7 +134,7 @@ app.post("/webhook", async (req, res) => {
       userState[from + "_service"] = service;
       userState[from] = "send_location";
 
-      await sendMessage(from, "📍 أرسل موقعك من فضلك");
+      await sendMessage(from, "📍 أرسل موقعك");
       return res.sendStatus(200);
     }
 
@@ -124,53 +154,44 @@ app.post("/webhook", async (req, res) => {
         .get();
 
       if (snapshot.empty) {
-        await sendMessage(from, "😔 لا يوجد فني متاح حالياً");
-        userState[from] = "menu";
+        await db.collection("waiting_requests").add({
+          client: from,
+          service,
+          location: message.location,
+          createdAt: new Date(),
+        });
+
+        await sendMessage(
+          from,
+          "😔 لا يوجد فني متاح حالياً\nسيتم إشعارك عند توفر فني"
+        );
+
+        userState[from] = "waiting";
         return res.sendStatus(200);
       }
 
-      let tech = null;
+      const tech = snapshot.docs[0].data();
 
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.phone !== from && !tech) {
-          tech = data;
-        }
-      });
-
-      if (!tech) {
-        await sendMessage(from, "😔 لا يوجد فني متاح حالياً");
-        return res.sendStatus(200);
-      }
-
-      const technicianPhone = tech.phone;
-
-      if (technicianPhone === from) {
-        await sendMessage(from, "⚠️ لا يمكنك استقبال طلبك بنفسك");
-        return res.sendStatus(200);
-      }
-
-      const orderRef = await db.collection("orders").add({
+      await db.collection("orders").add({
         client: from,
-        technician: technicianPhone,
-        service: service,
+        technician: tech.phone,
+        service,
         status: "pending",
         location: message.location,
         createdAt: new Date(),
       });
 
       await sendMessage(
-        technicianPhone,
+        tech.phone,
         `📢 طلب جديد
 
-🔧 الخدمة: ${service}
+🔧 ${service}
 
-للرد:
 1️⃣ قبول
 2️⃣ رفض`
       );
 
-      await sendMessage(from, "✅ تم إرسال طلبك بنجاح\nسيتم التواصل معك قريباً 👨‍🔧");
+      await sendMessage(from, "✅ تم إرسال طلبك");
 
       userState[from] = "waiting";
       return res.sendStatus(200);
@@ -190,27 +211,51 @@ app.post("/webhook", async (req, res) => {
       if (text === "1") {
         await orderDoc.ref.update({ status: "accepted" });
 
-        await sendMessage(order.client, "✅ تم قبول طلبك، الفني في الطريق 🚗");
-        await sendMessage(from, "👍 تم قبول الطلب");
+        await sendMessage(order.client, "✅ تم قبول طلبك");
+        await sendMessage(from, "👍 تم القبول");
 
       } else if (text === "2") {
         await orderDoc.ref.update({ status: "rejected" });
 
-        await sendMessage(order.client, "❌ تم رفض الطلب، جاري البحث عن فني آخر");
-        await sendMessage(from, "❌ تم رفض الطلب");
+        await sendMessage(order.client, "❌ تم رفض الطلب");
+        await sendMessage(from, "❌ تم الرفض");
       }
+
+      return res.sendStatus(200);
     }
 
-    // ===== Waiting State =====
-    else if (userState[from] === "waiting") {
-      await sendMessage(from, "📌 لديك طلب جاري التنفيذ\n(0) للعودة للقائمة");
-      if (text === "0") userState[from] = "menu";
-    }
+    // ===== Waiting Client =====
+    if (userState[from] === "waiting" && text === "1") {
+      const reqSnap = await db
+        .collection("waiting_requests")
+        .where("client", "==", from)
+        .get();
 
-    // ===== Fallback =====
-    else {
-      await sendMessage(from, "❗ الرجاء اختيار من القائمة");
-      userState[from] = "menu";
+      if (!reqSnap.empty) {
+        const reqData = reqSnap.docs[0].data();
+
+        const techSnap = await db
+          .collection("technicians")
+          .where("service", "==", reqData.service)
+          .where("active", "==", true)
+          .get();
+
+        if (!techSnap.empty) {
+          const tech = techSnap.docs[0].data();
+
+          await sendMessage(
+            tech.phone,
+            `📢 طلب جديد
+
+🔧 ${reqData.service}
+
+1️⃣ قبول
+2️⃣ رفض`
+          );
+
+          await sendMessage(from, "✅ تم إعادة إرسال الطلب");
+        }
+      }
     }
 
     res.sendStatus(200);
@@ -219,6 +264,28 @@ app.post("/webhook", async (req, res) => {
     res.sendStatus(500);
   }
 });
+
+// ===== Notify Waiting Clients =====
+setInterval(async () => {
+  const waiting = await db.collection("waiting_requests").get();
+
+  for (const doc of waiting.docs) {
+    const data = doc.data();
+
+    const techSnap = await db
+      .collection("technicians")
+      .where("service", "==", data.service)
+      .where("active", "==", true)
+      .get();
+
+    if (!techSnap.empty) {
+      await sendMessage(
+        data.client,
+        "👨‍🔧 يوجد فني متاح الآن\nهل ترغب في إرسال الطلب؟\n1️⃣ نعم"
+      );
+    }
+  }
+}, 30000);
 
 // ===== Start =====
 const PORT = process.env.PORT || 3000;
