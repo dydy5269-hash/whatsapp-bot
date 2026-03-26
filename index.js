@@ -93,7 +93,6 @@ app.post("/webhook", async (req, res) => {
 
       if (client && techData) {
         if (text === "1") {
-          // 👇 رسالة للعميل
           await sendMessage(
             client,
             `✅ تم قبول طلبك
@@ -105,17 +104,15 @@ app.post("/webhook", async (req, res) => {
 📞 سيتواصل معك قريباً`
           );
 
-          // 👇 رسالة للفني (مع الموقع)
           await sendMessage(
             from,
             `📍 بيانات العميل
 
 📞 الرقم: ${client}
-📌 الموقع: https://maps.google.com/?q=${location.latitude},${location.longitude}
-
-⭐ تواصل مع العميل الآن`
+📌 الموقع:
+https://maps.google.com/?q=${location.latitude},${location.longitude}`
           );
-        } else {
+        } else if (text === "2") {
           await sendMessage(client, "❌ تم رفض الطلب");
         }
 
@@ -130,6 +127,10 @@ app.post("/webhook", async (req, res) => {
     const tech = await getTechnician(from);
 
     if (tech) {
+      if (userState[from] === "tech_reply") {
+        return res.sendStatus(200);
+      }
+
       if (!userState[from]) {
         userState[from] = "tech_menu";
 
@@ -192,7 +193,15 @@ app.post("/webhook", async (req, res) => {
 
     // ===== LOCATION =====
     if (userState[from] === "location") {
-      if (!msg.location) return res.sendStatus(200);
+
+      // ❗ إذا أرسل نص بدل موقع
+      if (!msg.location) {
+        await sendMessage(
+          from,
+          "📍 قم بإرسال موقع البيت لنتمكن من خدمتكم"
+        );
+        return res.sendStatus(200);
+      }
 
       userData[from].location = msg.location;
 
