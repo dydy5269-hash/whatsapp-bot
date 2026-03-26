@@ -84,7 +84,7 @@ app.post("/webhook", async (req, res) => {
     const from = msg.from;
     const text = msg.text?.body || "";
 
-    // ===== TECH REPLY =====
+    // ===== TECH REPLY (الأولوية) =====
     if (userState[from] === "tech_reply") {
       const data = userData[from];
       const client = data?.client;
@@ -93,6 +93,8 @@ app.post("/webhook", async (req, res) => {
 
       if (client && techData) {
         if (text === "1") {
+
+          // ✅ العميل يستلم بيانات الفني
           await sendMessage(
             client,
             `✅ تم قبول طلبك
@@ -101,9 +103,10 @@ app.post("/webhook", async (req, res) => {
 🔧 الخدمة: ${techData.service}
 ⭐ التقييم: ${techData.rating}
 
-📞 سيتواصل معك قريباً`
+📞 سيتم التواصل معك قريباً`
           );
 
+          // ✅ الفني يستلم بيانات العميل + الموقع
           await sendMessage(
             from,
             `📍 بيانات العميل
@@ -112,6 +115,7 @@ app.post("/webhook", async (req, res) => {
 📌 الموقع:
 https://maps.google.com/?q=${location.latitude},${location.longitude}`
           );
+
         } else if (text === "2") {
           await sendMessage(client, "❌ تم رفض الطلب");
         }
@@ -123,28 +127,28 @@ https://maps.google.com/?q=${location.latitude},${location.longitude}`
       return res.sendStatus(200);
     }
 
-    // ===== CHECK TECH =====
+    // ===== CHECK TECH (مهم جداً) =====
     const tech = await getTechnician(from);
 
     if (tech) {
-      if (userState[from] === "tech_reply") {
+
+      // ❌ لا تعرض حساب الفني إذا عنده طلب ينتظر رد
+      if (userState[from]) {
         return res.sendStatus(200);
       }
 
-      if (!userState[from]) {
-        userState[from] = "tech_menu";
+      userState[from] = "tech_menu";
 
-        await sendMessage(
-          from,
-          `👨‍🔧 حسابك
+      await sendMessage(
+        from,
+        `👨‍🔧 حسابك
 
 👤 الاسم: ${tech.name}
 🔧 الخدمة: ${tech.service}
 ⭐ التقييم: ${tech.rating}
 
 📌 أنت فني`
-        );
-      }
+      );
 
       return res.sendStatus(200);
     }
@@ -194,7 +198,6 @@ https://maps.google.com/?q=${location.latitude},${location.longitude}`
     // ===== LOCATION =====
     if (userState[from] === "location") {
 
-      // ❗ إذا أرسل نص بدل موقع
       if (!msg.location) {
         await sendMessage(
           from,
