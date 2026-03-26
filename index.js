@@ -5,16 +5,18 @@ import admin from "firebase-admin";
 const app = express();
 app.use(express.json());
 
+// ---------- FIREBASE ----------
 admin.initializeApp({
   credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_KEY))
 });
-
 const db = admin.firestore();
 
+// ---------- ENV ----------
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
+// ---------- STATE ----------
 const userState = {};
 const userData = {};
 
@@ -42,38 +44,54 @@ async function sendMessage(to, text) {
 
 // ---------- GET TECH ----------
 async function getTechnician(phone) {
-  const snap = await db
-    .collection("technicians")
-    .where("phone", "in", [phone, "+" + phone])
-    .get();
+  try {
+    const snap = await db
+      .collection("technicians")
+      .where("phone", "in", [phone, "+" + phone])
+      .get();
 
-  if (!snap.empty) return snap.docs[0].data();
-  return null;
+    if (!snap.empty) return snap.docs[0].data();
+    return null;
+  } catch (e) {
+    console.log("FIREBASE ERROR:", e);
+    return null;
+  }
 }
 
 // ---------- FIND TECH ----------
 async function findAvailableTech(service) {
-  const snap = await db
-    .collection("technicians")
-    .where("service", "==", service)
-    .where("active", "==", true)
-    .get();
+  try {
+    const snap = await db
+      .collection("technicians")
+      .where("service", "==", service)
+      .where("active", "==", true)
+      .get();
 
-  if (!snap.empty) return snap.docs[0].data();
-  return null;
+    if (!snap.empty) return snap.docs[0].data();
+    return null;
+  } catch (e) {
+    console.log("FIREBASE ERROR:", e);
+    return null;
+  }
 }
 
 // ---------- VERIFY ----------
 app.get("/webhook", (req, res) => {
-  if (req.query["hub.verify_token"] === VERIFY_TOKEN) {
-    return res.send(req.query["hub.challenge"]);
+  try {
+    if (req.query["hub.verify_token"] === VERIFY_TOKEN) {
+      return res.send(req.query["hub.challenge"]);
+    }
+    return res.sendStatus(403);
+  } catch {
+    return res.sendStatus(200);
   }
-  res.sendStatus(403);
 });
 
 // ---------- WEBHOOK ----------
 app.post("/webhook", async (req, res) => {
   try {
+    console.log("BODY:", JSON.stringify(req.body));
+
     const msg =
       req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
@@ -82,11 +100,9 @@ app.post("/webhook", async (req, res) => {
     const from = msg.from;
     const text = msg.text?.body || "";
 
-    console.log("MSG:", text);
-
     const tech = await getTechnician(from);
 
-    // ===== الفني =====
+    // ===== TECH =====
     if (tech) {
       if (userState[from] !== "tech_reply") {
         userState[from] = "tech_menu";
@@ -100,24 +116,25 @@ app.post("/webhook", async (req, res) => {
 💰 الرصيد: ${tech.balance}
 ⭐ التقييم: ${tech.rating}
 
-📌 أنت مسجل كفني
-سيتم إرسال الطلبات لك`
+📌 أنت فني - لا يمكنك طلب خدمة`
         );
 
         return res.sendStatus(200);
       }
     }
 
-    // ===== reset =====
+    // ===== RESET =====
     if (text === "مرحبا") userState[from] = "menu";
 
-    // ===== menu =====
+    // ===== MENU =====
     if (!userState[from] || userState[from] === "menu") {
+      if (tech) return res.sendStatus(200);
+
       userState[from] = "choose_service";
 
       await sendMessage(
         from,
-        `👋 أهلاً بك في رؤية طاقة للخدمات
+        `👋 أهلاً بك في رؤية طاقة
 
 اختر الخدمة:
 1️⃣ كهرباء
@@ -128,7 +145,7 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ===== اختيار الخدمة =====
+    // ===== CHOOSE SERVICE =====
     if (userState[from] === "choose_service") {
       const map = {
         "1": "كهرباء",
@@ -150,10 +167,10 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ===== الموقع =====
+    // ===== LOCATION =====
     if (userState[from] === "location") {
       if (!msg.location) {
-        await sendMessage(from, "📍 أرسل الموقع من فضلك");
+        await sendMessage(from, "📍 أرسل الموقع");
         return res.sendStatus(200);
       }
 
@@ -189,17 +206,16 @@ app.post("/webhook", async (req, res) => {
       userState[tech.phone] = "tech_reply";
       userData[tech.phone] = { client: from };
 
-      await sendMessage(
-        from,
-        "✅ تم إرسال طلبك"
-      );
+      await sendMessage(from, "✅ تم إرسال طلبك");
 
       return res.sendStatus(200);
     }
 
-    // ===== رد الفني =====
+    // ===== TECH REPLY =====
     if (userState[from] === "tech_reply") {
-      const client = userData[from].client;
+      const client = userData[from]?.client;
+
+      if (!client) return res.sendStatus(200);
 
       if (text === "1") {
         await sendMessage(client, "✅ الفني في الطريق");
@@ -213,14 +229,14 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    res.sendStatus(200);
+    return res.sendStatus(200);
   } catch (err) {
     console.log("ERROR:", err);
-    res.sendStatus(200);
+    return res.sendStatus(200);
   }
 });
 
 // ---------- START ----------
-app.listen(3000, () => {
+app.listen(process.env.PORT || 3000, () => {
   console.log("Server running...");
 });
