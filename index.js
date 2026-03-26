@@ -1,47 +1,45 @@
 import express from "express";
 import axios from "axios";
+import admin from "firebase-admin";
 
 const app = express();
 app.use(express.json());
 
-const PORT = process.env.PORT || 8080;
+// ===== Firebase =====
+const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
 
-// 🧠 حالة المستخدم
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
+const db = admin.firestore();
+
+// ===== Variables =====
+const TOKEN = process.env.WHATSAPP_TOKEN;
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+
 const userState = {};
 
-// 📌 إرسال رسالة واتساب
+// ===== Send Message =====
 async function sendMessage(to, text) {
   await axios.post(
-    `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
+    `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
     {
       messaging_product: "whatsapp",
-      to: to,
+      to,
       type: "text",
       text: { body: text },
     },
     {
       headers: {
-        Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+        Authorization: `Bearer ${TOKEN}`,
         "Content-Type": "application/json",
       },
     }
   );
 }
 
-// 📌 رسالة الترحيب
-function mainMenu() {
-  return `👋 أهلاً بك في *رؤية طاقة للخدمات* 🇴🇲  
-إدارة عمانية لخدمتكم دائماً
-
-🔧 اختر نوع الخدمة:
-1️⃣ كهرباء
-2️⃣ سباكة
-3️⃣ تكييف
-
-🔄 أرسل (0) للعودة للقائمة`;
-}
-
-// 📌 webhook verification
+// ===== Webhook Verify =====
 app.get("/webhook", (req, res) => {
   const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
@@ -49,128 +47,168 @@ app.get("/webhook", (req, res) => {
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
+  if (mode && token === VERIFY_TOKEN) {
     res.status(200).send(challenge);
   } else {
     res.sendStatus(403);
   }
 });
 
-// 📌 استقبال الرسائل
+// ===== Webhook Receive =====
 app.post("/webhook", async (req, res) => {
-  res.sendStatus(200); // مهم جداً
-
   try {
-    const msg =
-      req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    const entry = req.body.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const message = changes?.value?.messages?.[0];
 
-    if (!msg) return;
+    if (!message) return res.sendStatus(200);
 
-    const from = msg.from;
-    const text = msg.text?.body?.trim();
+    const from = message.from;
+    const text = message.text?.body?.trim();
 
-    // 🔄 reset
-    if (text === "0" || text === "مرحبا") {
+    // ===== Reset =====
+    if (text === "مرحبا") {
       userState[from] = "menu";
-      await sendMessage(from, mainMenu());
-      return;
     }
 
-    // 🟢 أول مرة
-    if (!userState[from]) {
-      userState[from] = "menu";
-      await sendMessage(from, mainMenu());
-      return;
+    // ===== Menu =====
+    if (!userState[from] || userState[from] === "menu") {
+      userState[from] = "choose_service";
+
+      await sendMessage(
+        from,
+        `👋 أهلاً بك في رؤية طاقة للخدمات 🇴🇲
+إدارة عمانية لخدمتكم دائماً
+
+اختر الخدمة:
+1️⃣ كهرباء
+2️⃣ سباكة
+3️⃣ تكييف`
+      );
+
+      return res.sendStatus(200);
     }
 
-    // 📋 اختيار خدمة
-    if (userState[from] === "menu") {
-      if (text === "1") {
-        userState[from] = "waiting_location";
-        userState[from + "_service"] = "كهرباء";
-        await sendMessage(
-          from,
-          "✅ تم اختيار: *كهرباء*\n\n📍 أرسل موقعك من فضلك"
-        );
-        return;
+    // ===== Choose Service =====
+    if (userState[from] === "choose_service") {
+      let service = "";
+
+      if (text === "1") service = "كهرباء";
+      else if (text === "2") service = "سباكة";
+      else if (text === "3") service = "تكييف";
+      else {
+        await sendMessage(from, "❌ اختيار غير صحيح");
+        return res.sendStatus(200);
       }
 
-      if (text === "2") {
-        userState[from] = "waiting_location";
-        userState[from + "_service"] = "سباكة";
-        await sendMessage(
-          from,
-          "✅ تم اختيار: *سباكة*\n\n📍 أرسل موقعك من فضلك"
-        );
-        return;
-      }
+      userState[from + "_service"] = service;
+      userState[from] = "send_location";
 
-      if (text === "3") {
-        userState[from] = "waiting_location";
-        userState[from + "_service"] = "تكييف";
-        await sendMessage(
-          from,
-          "✅ تم اختيار: *تكييف*\n\n📍 أرسل موقعك من فضلك"
-        );
-        return;
-      }
-
-      await sendMessage(from, "❗ اختر رقم صحيح\n" + mainMenu());
-      return;
+      await sendMessage(from, "📍 أرسل موقعك من فضلك");
+      return res.sendStatus(200);
     }
 
-    // 📍 انتظار الموقع
-    if (userState[from] === "waiting_location") {
-      if (msg.type !== "location") {
-        await sendMessage(from, "📍 يرجى إرسال الموقع فقط");
-        return;
+    // ===== Receive Location =====
+    if (userState[from] === "send_location") {
+      if (!message.location) {
+        await sendMessage(from, "📍 الرجاء إرسال الموقع");
+        return res.sendStatus(200);
       }
 
       const service = userState[from + "_service"];
 
-      await sendMessage(
-        from,
-        "📦 جاري البحث عن أقرب فني متاح...\n⏳ انتظر قليلاً"
-      );
+      // ===== Get Technician =====
+      const snapshot = await db
+        .collection("technicians")
+        .where("service", "==", service)
+        .where("active", "==", true)
+        .get();
 
-      // ⚠️ مؤقت: رقم فني ثابت
-      const technicianPhone = "96891002992";
+      if (snapshot.empty) {
+        await sendMessage(from, "😔 لا يوجد فني متاح حالياً");
+        userState[from] = "menu";
+        return res.sendStatus(200);
+      }
 
+      const techDoc = snapshot.docs[0];
+      const tech = techDoc.data();
+      const technicianPhone = tech.phone;
+
+      // ===== Save Order =====
+      const orderRef = await db.collection("orders").add({
+        client: from,
+        technician: technicianPhone,
+        service: service,
+        status: "pending",
+        location: message.location,
+        createdAt: new Date(),
+      });
+
+      // ===== Send to Technician =====
       await sendMessage(
         technicianPhone,
         `📢 طلب جديد
 
 🔧 الخدمة: ${service}
-📍 تم إرسال الموقع من العميل
 
-للرد:
 1️⃣ قبول
 2️⃣ رفض`
       );
 
-      await sendMessage(
-        from,
-        "✅ تم إرسال طلبك بنجاح\n👨‍🔧 سيتم التواصل معك قريباً"
-      );
+      await sendMessage(from, "✅ تم إرسال الطلب للفني");
 
-      userState[from] = "done";
-      return;
+      userState[from] = "waiting";
+      return res.sendStatus(200);
     }
 
-    // 🟣 بعد الطلب
-    if (userState[from] === "done") {
-      await sendMessage(
-        from,
-        "📌 لديك طلب جاري التنفيذ\n\n(0) للعودة للقائمة"
-      );
-      return;
+    // ===== Technician Response =====
+    const ordersSnapshot = await db
+      .collection("orders")
+      .where("technician", "==", from)
+      .where("status", "==", "pending")
+      .get();
+
+    if (!ordersSnapshot.empty) {
+      const orderDoc = ordersSnapshot.docs[0];
+      const order = orderDoc.data();
+
+      if (text === "1") {
+        await orderDoc.ref.update({ status: "accepted" });
+
+        await sendMessage(
+          order.client,
+          "✅ تم قبول طلبك، الفني في الطريق 🚗"
+        );
+
+        await sendMessage(from, "👍 تم قبول الطلب");
+
+      } else if (text === "2") {
+        await orderDoc.ref.update({ status: "rejected" });
+
+        await sendMessage(
+          order.client,
+          "❌ تم رفض الطلب، سيتم البحث عن فني آخر"
+        );
+
+        await sendMessage(from, "❌ تم رفض الطلب");
+      }
     }
+
+    // ===== Fallback =====
+    else {
+      await sendMessage(from, "❗ الرجاء اختيار من القائمة");
+      userState[from] = "menu";
+    }
+
+    res.sendStatus(200);
   } catch (err) {
-    console.log(err);
+    console.error(err);
+    res.sendStatus(500);
   }
 });
 
-// 📌 تشغيل السيرفر
+// ===== Start Server =====
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+  console.log("Server running");
 });
