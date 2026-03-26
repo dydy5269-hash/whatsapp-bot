@@ -5,233 +5,225 @@ import admin from "firebase-admin";
 const app = express();
 app.use(express.json());
 
-// ===== Firebase =====
-const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
-
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
+  credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_KEY))
 });
 
 const db = admin.firestore();
 
-// ===== Variables =====
-const TOKEN = process.env.WHATSAPP_TOKEN;
+const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
 const userState = {};
-const PROFIT_PERCENT = 0.15;
+const userData = {};
 
-// ===== Send Message =====
+// ---------------- SEND MESSAGE ----------------
 async function sendMessage(to, text) {
   await axios.post(
-    `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+    `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
     {
       messaging_product: "whatsapp",
-      to,
-      type: "text",
-      text: { body: text },
+      to: to,
+      text: { body: text }
     },
     {
       headers: {
-        Authorization: `Bearer ${TOKEN}`,
-        "Content-Type": "application/json",
-      },
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json"
+      }
     }
   );
 }
 
-// ===== Check Technician =====
+// ---------------- GET TECH ----------------
 async function getTechnician(phone) {
-  const snap = await db
+  const snapshot = await db
     .collection("technicians")
-    .where("phone", "==", phone)
+    .where("phone", "in", [phone, "+" + phone])
     .get();
 
-  if (!snap.empty) return { id: snap.docs[0].id, ...snap.docs[0].data() };
+  if (!snapshot.empty) {
+    return snapshot.docs[0].data();
+  }
   return null;
 }
 
-// ===== Verify =====
-app.get("/webhook", (req, res) => {
-  const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+// ---------------- FIND AVAILABLE TECH ----------------
+async function findAvailableTech(service) {
+  const snapshot = await db
+    .collection("technicians")
+    .where("service", "==", service)
+    .where("active", "==", true)
+    .get();
 
-  if (
-    req.query["hub.mode"] &&
-    req.query["hub.verify_token"] === VERIFY_TOKEN
-  ) {
-    res.send(req.query["hub.challenge"]);
+  if (!snapshot.empty) {
+    return snapshot.docs[0].data();
+  }
+  return null;
+}
+
+// ---------------- WEBHOOK VERIFY ----------------
+app.get("/webhook", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode && token === VERIFY_TOKEN) {
+    res.status(200).send(challenge);
   } else {
     res.sendStatus(403);
   }
 });
 
-// ===== Webhook =====
+// ---------------- WEBHOOK ----------------
 app.post("/webhook", async (req, res) => {
-  try {
-    const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-    if (!message) return res.sendStatus(200);
+  const msg =
+    req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
-    const from = message.from;
-    const text = message.text?.body?.trim();
+  if (!msg) return res.sendStatus(200);
 
-    const tech = await getTechnician(from);
+  const from = msg.from;
+  const text = msg.text?.body || "";
 
-    // ===== Technician Block =====
-    if (tech) {
-      await sendMessage(
-        from,
-        `👨‍🔧 حسابك
+  const tech = await getTechnician(from);
 
-👤 ${tech.name}
-🔧 ${tech.service}
+  // 🚫 منع الفني من طلب خدمة
+  if (tech && userState[from] !== "tech_reply") {
+    await sendMessage(
+      from,
+      `👨‍🔧 حسابك
+
+👤 الاسم: ${tech.name}
+🔧 الخدمة: ${tech.service}
 💰 الرصيد: ${tech.balance}
 ⭐ التقييم: ${tech.rating}`
-      );
-    }
+    );
+    return res.sendStatus(200);
+  }
 
-    if (tech && userState[from] !== "tech_reply") {
+  // ----- Reset -----
+  if (text === "مرحبا") userState[from] = "menu";
+
+  // ----- Menu -----
+  if (!userState[from] || userState[from] === "menu") {
+    userState[from] = "choose_service";
+
+    await sendMessage(
+      from,
+      `👋 أهلاً بك في رؤية طاقة للخدمات 🇴🇲
+
+اختر الخدمة:
+
+1️⃣ كهرباء ⚡
+2️⃣ سباكة 🚿
+3️⃣ تكييف ❄️`
+    );
+
+    return res.sendStatus(200);
+  }
+
+  // ----- Choose Service -----
+  if (userState[from] === "choose_service") {
+    const map = {
+      "1": "كهرباء",
+      "2": "سباكة",
+      "3": "تكييف"
+    };
+
+    const service = map[text];
+
+    if (!service) {
+      await sendMessage(from, "❌ اختيار غير صحيح");
       return res.sendStatus(200);
     }
 
-    // ===== Reset =====
-    if (text === "مرحبا") userState[from] = "menu";
+    userData[from] = { service };
+    userState[from] = "location";
 
-    // ===== Menu =====
-    if (!userState[from] || userState[from] === "menu") {
-      userState[from] = "choose_service";
+    await sendMessage(from, "📍 أرسل موقعك من فضلك");
+    return res.sendStatus(200);
+  }
+
+  // ----- Location -----
+  if (userState[from] === "location") {
+    if (!msg.location) {
+      await sendMessage(from, "📍 الرجاء إرسال الموقع");
+      return res.sendStatus(200);
+    }
+
+    userData[from].location = msg.location;
+
+    const tech = await findAvailableTech(userData[from].service);
+
+    if (!tech) {
+      await db.collection("waiting_requests").add({
+        phone: from,
+        ...userData[from]
+      });
 
       await sendMessage(
         from,
-        `👋 أهلاً بك في رؤية طاقة
-
-1️⃣ كهرباء
-2️⃣ سباكة
-3️⃣ تكييف`
+        `😔 لا يوجد فني متاح حالياً
+سيتم إشعارك عند توفر فني`
       );
 
+      userState[from] = "done";
       return res.sendStatus(200);
     }
 
-    // ===== Choose Service =====
-    if (userState[from] === "choose_service") {
-      const map = { "1": "كهرباء", "2": "سباكة", "3": "تكييف" };
-      const service = map[text];
+    await sendMessage(
+      tech.phone,
+      `📢 طلب جديد
 
-      if (!service) {
-        await sendMessage(from, "❌ اختيار غير صحيح");
-        return res.sendStatus(200);
-      }
-
-      userState[from + "_service"] = service;
-      userState[from] = "location";
-
-      await sendMessage(from, "📍 أرسل موقعك");
-      return res.sendStatus(200);
-    }
-
-    // ===== Location =====
-    if (userState[from] === "location") {
-      if (!message.location) {
-        await sendMessage(from, "📍 أرسل الموقع");
-        return res.sendStatus(200);
-      }
-
-      const service = userState[from + "_service"];
-
-      const snap = await db
-        .collection("technicians")
-        .where("service", "==", service)
-        .where("active", "==", true)
-        .get();
-
-      let selected = null;
-
-      snap.forEach(doc => {
-        const t = doc.data();
-        if (t.phone !== from && t.balance > 0 && !selected) {
-          selected = { id: doc.id, ...t };
-        }
-      });
-
-      if (!selected) {
-        await sendMessage(from, "😔 لا يوجد فني متاح حالياً");
-        return res.sendStatus(200);
-      }
-
-      await db.collection("orders").add({
-        client: from,
-        technician: selected.phone,
-        techId: selected.id,
-        service,
-        price: 10,
-        status: "pending",
-        location: message.location,
-        createdAt: new Date(),
-      });
-
-      await sendMessage(
-        selected.phone,
-        `📢 طلب جديد
-
-🔧 ${service}
+🔧 الخدمة: ${userData[from].service}
 💰 السعر: 10 ريال
 
+للرد:
 1️⃣ قبول
 2️⃣ رفض`
-      );
+    );
 
-      await sendMessage(from, "✅ تم إرسال الطلب");
-      userState[from] = "waiting";
+    userState[tech.phone] = "tech_reply";
+    userData[tech.phone] = { client: from };
 
-      return res.sendStatus(200);
-    }
+    await sendMessage(
+      from,
+      `✅ تم إرسال طلبك بنجاح
+سيتم التواصل معك قريباً`
+    );
 
-    // ===== Technician Response =====
-    const orders = await db
-      .collection("orders")
-      .where("technician", "==", from)
-      .where("status", "==", "pending")
-      .get();
-
-    if (!orders.empty) {
-      const doc = orders.docs[0];
-      const order = doc.data();
-
-      if (text === "1") {
-        const techRef = db.collection("technicians").doc(order.techId);
-        const techDoc = await techRef.get();
-        const balance = techDoc.data().balance;
-
-        const fee = order.price * PROFIT_PERCENT;
-
-        if (balance < fee) {
-          await sendMessage(from, "❌ رصيدك غير كافي");
-          return res.sendStatus(200);
-        }
-
-        await techRef.update({
-          balance: balance - fee,
-        });
-
-        await doc.ref.update({ status: "accepted" });
-
-        await sendMessage(order.client, "✅ تم قبول الطلب");
-        await sendMessage(from, `💰 تم خصم ${fee} ريال`);
-
-      } else if (text === "2") {
-        await doc.ref.update({ status: "rejected" });
-        await sendMessage(order.client, "❌ تم رفض الطلب");
-      }
-
-      return res.sendStatus(200);
-    }
-
-    res.sendStatus(200);
-  } catch (e) {
-    console.log(e);
-    res.sendStatus(500);
+    userState[from] = "done";
+    return res.sendStatus(200);
   }
+
+  // ----- Tech Reply -----
+  if (userState[from] === "tech_reply") {
+    const client = userData[from].client;
+
+    if (text === "1") {
+      await sendMessage(
+        client,
+        `📌 تم قبول طلبك
+الفني في الطريق 👨‍🔧`
+      );
+    } else {
+      await sendMessage(
+        client,
+        `❌ تم رفض الطلب`
+      );
+    }
+
+    userState[from] = null;
+    userState[client] = null;
+
+    return res.sendStatus(200);
+  }
+
+  res.sendStatus(200);
 });
 
-// ===== Start =====
-app.listen(process.env.PORT || 3000);
+// ---------------- START SERVER ----------------
+app.listen(3000, () => {
+  console.log("Server running...");
+});
