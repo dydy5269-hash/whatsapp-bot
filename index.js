@@ -102,14 +102,35 @@ app.post("/webhook", async (req, res) => {
 
     const tech = await getTechnician(from);
 
-    // ===== TECH =====
-    if (tech) {
-      if (userState[from] !== "tech_reply") {
-        userState[from] = "tech_menu";
+  // ===== TECH REPLY =====
+if (userState[from] === "tech_reply") {
+  const client = userData[from]?.client;
 
-        await sendMessage(
-          from,
-          `👨‍🔧 حسابك
+  if (!client) return res.sendStatus(200);
+
+  if (text === "1") {
+    await sendMessage(client, "✅ الفني في الطريق");
+  } else {
+    await sendMessage(client, "❌ تم رفض الطلب");
+  }
+
+  userState[from] = null;
+  userState[client] = null;
+
+  return res.sendStatus(200);
+}
+
+// ===== GET TECH =====
+const tech = await getTechnician(from);
+
+// ===== TECH MENU =====
+if (tech) {
+  if (userState[from] !== "tech_reply") {
+    userState[from] = "tech_menu";
+
+    await sendMessage(
+      from,
+      `👨‍🔧 حسابك
 
 👤 الاسم: ${tech.name}
 🔧 الخدمة: ${tech.service}
@@ -117,11 +138,11 @@ app.post("/webhook", async (req, res) => {
 ⭐ التقييم: ${tech.rating}
 
 📌 أنت فني - لا يمكنك طلب خدمة`
-        );
+    );
 
-        return res.sendStatus(200);
-      }
-    }
+    return res.sendStatus(200);
+  }
+}
 
     // ===== RESET =====
     if (text === "مرحبا") userState[from] = "menu";
