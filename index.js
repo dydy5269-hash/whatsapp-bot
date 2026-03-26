@@ -19,6 +19,7 @@ const TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
 const userState = {};
+const PROFIT_PERCENT = 0.15;
 
 // ===== Send Message =====
 async function sendMessage(to, text) {
@@ -40,13 +41,13 @@ async function sendMessage(to, text) {
 }
 
 // ===== Check Technician =====
-async function isTechnician(phone) {
+async function getTechnician(phone) {
   const snap = await db
     .collection("technicians")
     .where("phone", "==", phone)
     .get();
 
-  if (!snap.empty) return snap.docs[0].data();
+  if (!snap.empty) return { id: snap.docs[0].id, ...snap.docs[0].data() };
   return null;
 }
 
@@ -54,12 +55,11 @@ async function isTechnician(phone) {
 app.get("/webhook", (req, res) => {
   const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
-
-  if (mode && token === VERIFY_TOKEN) {
-    res.status(200).send(challenge);
+  if (
+    req.query["hub.mode"] &&
+    req.query["hub.verify_token"] === VERIFY_TOKEN
+  ) {
+    res.send(req.query["hub.challenge"]);
   } else {
     res.sendStatus(403);
   }
@@ -68,39 +68,33 @@ app.get("/webhook", (req, res) => {
 // ===== Webhook =====
 app.post("/webhook", async (req, res) => {
   try {
-    const entry = req.body.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const message = changes?.value?.messages?.[0];
-
+    const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!message) return res.sendStatus(200);
 
     const from = message.from;
     const text = message.text?.body?.trim();
 
-    const techData = await isTechnician(from);
+    const tech = await getTechnician(from);
 
-    // ===== Technician Info =====
-    if (techData) {
+    // ===== Technician Block =====
+    if (tech) {
       await sendMessage(
         from,
-        `👨‍🔧 حسابك الفني
+        `👨‍🔧 حسابك
 
-👤 الاسم: ${techData.name}
-🔧 الخدمة: ${techData.service}
-💰 الرصيد: ${techData.balance} ريال
-⭐ التقييم: ${techData.rating}`
+👤 ${tech.name}
+🔧 ${tech.service}
+💰 الرصيد: ${tech.balance}
+⭐ التقييم: ${tech.rating}`
       );
     }
 
-    // ===== Prevent Technician Request =====
-    if (techData && userState[from] !== "tech_reply") {
+    if (tech && userState[from] !== "tech_reply") {
       return res.sendStatus(200);
     }
 
     // ===== Reset =====
-    if (text === "مرحبا") {
-      userState[from] = "menu";
-    }
+    if (text === "مرحبا") userState[from] = "menu";
 
     // ===== Menu =====
     if (!userState[from] || userState[from] === "menu") {
@@ -108,9 +102,8 @@ app.post("/webhook", async (req, res) => {
 
       await sendMessage(
         from,
-        `👋 أهلاً بك في رؤية طاقة للخدمات 🇴🇲
+        `👋 أهلاً بك في رؤية طاقة
 
-اختر الخدمة:
 1️⃣ كهرباء
 2️⃣ سباكة
 3️⃣ تكييف`
@@ -121,174 +114,124 @@ app.post("/webhook", async (req, res) => {
 
     // ===== Choose Service =====
     if (userState[from] === "choose_service") {
-      let service = "";
+      const map = { "1": "كهرباء", "2": "سباكة", "3": "تكييف" };
+      const service = map[text];
 
-      if (text === "1") service = "كهرباء";
-      else if (text === "2") service = "سباكة";
-      else if (text === "3") service = "تكييف";
-      else {
+      if (!service) {
         await sendMessage(from, "❌ اختيار غير صحيح");
         return res.sendStatus(200);
       }
 
       userState[from + "_service"] = service;
-      userState[from] = "send_location";
+      userState[from] = "location";
 
       await sendMessage(from, "📍 أرسل موقعك");
       return res.sendStatus(200);
     }
 
-    // ===== Receive Location =====
-    if (userState[from] === "send_location") {
+    // ===== Location =====
+    if (userState[from] === "location") {
       if (!message.location) {
-        await sendMessage(from, "📍 الرجاء إرسال الموقع");
+        await sendMessage(from, "📍 أرسل الموقع");
         return res.sendStatus(200);
       }
 
       const service = userState[from + "_service"];
 
-      const snapshot = await db
+      const snap = await db
         .collection("technicians")
         .where("service", "==", service)
         .where("active", "==", true)
         .get();
 
-      if (snapshot.empty) {
-        await db.collection("waiting_requests").add({
-          client: from,
-          service,
-          location: message.location,
-          createdAt: new Date(),
-        });
+      let selected = null;
 
-        await sendMessage(
-          from,
-          "😔 لا يوجد فني متاح حالياً\nسيتم إشعارك عند توفر فني"
-        );
+      snap.forEach(doc => {
+        const t = doc.data();
+        if (t.phone !== from && t.balance > 0 && !selected) {
+          selected = { id: doc.id, ...t };
+        }
+      });
 
-        userState[from] = "waiting";
+      if (!selected) {
+        await sendMessage(from, "😔 لا يوجد فني متاح حالياً");
         return res.sendStatus(200);
       }
 
-      const tech = snapshot.docs[0].data();
-
       await db.collection("orders").add({
         client: from,
-        technician: tech.phone,
+        technician: selected.phone,
+        techId: selected.id,
         service,
+        price: 10,
         status: "pending",
         location: message.location,
         createdAt: new Date(),
       });
 
       await sendMessage(
-        tech.phone,
+        selected.phone,
         `📢 طلب جديد
 
 🔧 ${service}
+💰 السعر: 10 ريال
 
 1️⃣ قبول
 2️⃣ رفض`
       );
 
-      await sendMessage(from, "✅ تم إرسال طلبك");
-
+      await sendMessage(from, "✅ تم إرسال الطلب");
       userState[from] = "waiting";
+
       return res.sendStatus(200);
     }
 
     // ===== Technician Response =====
-    const ordersSnapshot = await db
+    const orders = await db
       .collection("orders")
       .where("technician", "==", from)
       .where("status", "==", "pending")
       .get();
 
-    if (!ordersSnapshot.empty) {
-      const orderDoc = ordersSnapshot.docs[0];
-      const order = orderDoc.data();
+    if (!orders.empty) {
+      const doc = orders.docs[0];
+      const order = doc.data();
 
       if (text === "1") {
-        await orderDoc.ref.update({ status: "accepted" });
+        const techRef = db.collection("technicians").doc(order.techId);
+        const techDoc = await techRef.get();
+        const balance = techDoc.data().balance;
 
-        await sendMessage(order.client, "✅ تم قبول طلبك");
-        await sendMessage(from, "👍 تم القبول");
+        const fee = order.price * PROFIT_PERCENT;
+
+        if (balance < fee) {
+          await sendMessage(from, "❌ رصيدك غير كافي");
+          return res.sendStatus(200);
+        }
+
+        await techRef.update({
+          balance: balance - fee,
+        });
+
+        await doc.ref.update({ status: "accepted" });
+
+        await sendMessage(order.client, "✅ تم قبول الطلب");
+        await sendMessage(from, `💰 تم خصم ${fee} ريال`);
 
       } else if (text === "2") {
-        await orderDoc.ref.update({ status: "rejected" });
-
+        await doc.ref.update({ status: "rejected" });
         await sendMessage(order.client, "❌ تم رفض الطلب");
-        await sendMessage(from, "❌ تم الرفض");
       }
 
       return res.sendStatus(200);
     }
 
-    // ===== Waiting Client =====
-    if (userState[from] === "waiting" && text === "1") {
-      const reqSnap = await db
-        .collection("waiting_requests")
-        .where("client", "==", from)
-        .get();
-
-      if (!reqSnap.empty) {
-        const reqData = reqSnap.docs[0].data();
-
-        const techSnap = await db
-          .collection("technicians")
-          .where("service", "==", reqData.service)
-          .where("active", "==", true)
-          .get();
-
-        if (!techSnap.empty) {
-          const tech = techSnap.docs[0].data();
-
-          await sendMessage(
-            tech.phone,
-            `📢 طلب جديد
-
-🔧 ${reqData.service}
-
-1️⃣ قبول
-2️⃣ رفض`
-          );
-
-          await sendMessage(from, "✅ تم إعادة إرسال الطلب");
-        }
-      }
-    }
-
     res.sendStatus(200);
-  } catch (err) {
-    console.error(err);
+  } catch (e) {
+    console.log(e);
     res.sendStatus(500);
   }
 });
 
-// ===== Notify Waiting Clients =====
-setInterval(async () => {
-  const waiting = await db.collection("waiting_requests").get();
-
-  for (const doc of waiting.docs) {
-    const data = doc.data();
-
-    const techSnap = await db
-      .collection("technicians")
-      .where("service", "==", data.service)
-      .where("active", "==", true)
-      .get();
-
-    if (!techSnap.empty) {
-      await sendMessage(
-        data.client,
-        "👨‍🔧 يوجد فني متاح الآن\nهل ترغب في إرسال الطلب؟\n1️⃣ نعم"
-      );
-    }
-  }
-}, 30000);
-
 // ===== Start =====
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("Server running");
-});
+app.listen(process.env.PORT || 3000);
