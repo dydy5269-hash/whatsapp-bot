@@ -88,9 +88,11 @@ app.post("/webhook", async (req, res) => {
 
   const tech = await getTechnician(from);
 
-  // 🚫 منع الفني من طلب خدمة
-  if (tech && userState[from] !== "tech_reply") {
-    await sendMessage(
+   if (tech) {
+  //اذا الفني يكتب عادي (مو رد على طلب )
+    if (userState[from] !== "tech_reply") {
+      userState[from] = "tech_menu";
+      await sendMessage(
       from,
       `👨‍🔧 حسابك
 
@@ -98,8 +100,10 @@ app.post("/webhook", async (req, res) => {
 🔧 الخدمة: ${tech.service}
 💰 الرصيد: ${tech.balance}
 ⭐ التقييم: ${tech.rating}`
+        انت مسجل كفني سيتمارسال الطلبات لك تلقائيا
     );
     return res.sendStatus(200);
+    }
   }
 
   // ----- Reset -----
