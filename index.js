@@ -39,7 +39,7 @@ async function sendMessage(to, text) {
   );
 }
 
-// ===== Webhook Verify =====
+// ===== Verify =====
 app.get("/webhook", (req, res) => {
   const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
@@ -54,7 +54,7 @@ app.get("/webhook", (req, res) => {
   }
 });
 
-// ===== Webhook Receive =====
+// ===== Webhook =====
 app.post("/webhook", async (req, res) => {
   try {
     const entry = req.body.entry?.[0];
@@ -117,7 +117,6 @@ app.post("/webhook", async (req, res) => {
 
       const service = userState[from + "_service"];
 
-      // ===== Get Technician =====
       const snapshot = await db
         .collection("technicians")
         .where("service", "==", service)
@@ -130,11 +129,27 @@ app.post("/webhook", async (req, res) => {
         return res.sendStatus(200);
       }
 
-      const techDoc = snapshot.docs[0];
-      const tech = techDoc.data();
+      let tech = null;
+
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.phone !== from && !tech) {
+          tech = data;
+        }
+      });
+
+      if (!tech) {
+        await sendMessage(from, "😔 لا يوجد فني متاح حالياً");
+        return res.sendStatus(200);
+      }
+
       const technicianPhone = tech.phone;
 
-      // ===== Save Order =====
+      if (technicianPhone === from) {
+        await sendMessage(from, "⚠️ لا يمكنك استقبال طلبك بنفسك");
+        return res.sendStatus(200);
+      }
+
       const orderRef = await db.collection("orders").add({
         client: from,
         technician: technicianPhone,
@@ -144,18 +159,18 @@ app.post("/webhook", async (req, res) => {
         createdAt: new Date(),
       });
 
-      // ===== Send to Technician =====
       await sendMessage(
         technicianPhone,
         `📢 طلب جديد
 
 🔧 الخدمة: ${service}
 
+للرد:
 1️⃣ قبول
 2️⃣ رفض`
       );
 
-      await sendMessage(from, "✅ تم إرسال الطلب للفني");
+      await sendMessage(from, "✅ تم إرسال طلبك بنجاح\nسيتم التواصل معك قريباً 👨‍🔧");
 
       userState[from] = "waiting";
       return res.sendStatus(200);
@@ -175,23 +190,21 @@ app.post("/webhook", async (req, res) => {
       if (text === "1") {
         await orderDoc.ref.update({ status: "accepted" });
 
-        await sendMessage(
-          order.client,
-          "✅ تم قبول طلبك، الفني في الطريق 🚗"
-        );
-
+        await sendMessage(order.client, "✅ تم قبول طلبك، الفني في الطريق 🚗");
         await sendMessage(from, "👍 تم قبول الطلب");
 
       } else if (text === "2") {
         await orderDoc.ref.update({ status: "rejected" });
 
-        await sendMessage(
-          order.client,
-          "❌ تم رفض الطلب، سيتم البحث عن فني آخر"
-        );
-
+        await sendMessage(order.client, "❌ تم رفض الطلب، جاري البحث عن فني آخر");
         await sendMessage(from, "❌ تم رفض الطلب");
       }
+    }
+
+    // ===== Waiting State =====
+    else if (userState[from] === "waiting") {
+      await sendMessage(from, "📌 لديك طلب جاري التنفيذ\n(0) للعودة للقائمة");
+      if (text === "0") userState[from] = "menu";
     }
 
     // ===== Fallback =====
@@ -207,7 +220,7 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-// ===== Start Server =====
+// ===== Start =====
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log("Server running");
