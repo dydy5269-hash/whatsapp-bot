@@ -10,21 +10,27 @@ const userData = {};
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
+// ================= SEND MESSAGE =================
 async function sendMessage(to, text) {
-  await fetch(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to,
-      text: { body: text },
-    }),
-  });
+  try {
+    await fetch(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to,
+        text: { body: text },
+      }),
+    });
+  } catch (err) {
+    console.log("Send Error:", err);
+  }
 }
 
+// ================= TECH =================
 async function getTechnician(phone) {
   if (phone === "96890000000") {
     return {
@@ -37,32 +43,34 @@ async function getTechnician(phone) {
   return null;
 }
 
+// ================= WEBHOOK =================
 app.post("/webhook", async (req, res) => {
-  const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-  if (!msg) return res.sendStatus(200);
+  try {
+    const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    if (!msg) return res.sendStatus(200);
 
-  const from = msg.from;
-  const text = msg.text?.body || "";
+    const from = msg.from;
+    const text = msg.text?.body || "";
 
-  // ================= TECH REPLY =================
-  if (userState[from] === "tech_reply") {
-    const data = userData[from];
-    if (!data) return res.sendStatus(200);
+    // ================= TECH REPLY =================
+    if (userState[from] === "tech_reply") {
+      const data = userData[from];
+      if (!data) return res.sendStatus(200);
 
-    const client = data.client;
-    const tech = data.tech;
-    const location = data.location;
+      const client = data.client;
+      const tech = data.tech;
+      const location = data.location;
 
-    let mapLink = "لا يوجد موقع";
+      let mapLink = "لا يوجد موقع";
 
-    if (location && location.latitude && location.longitude) {
-      mapLink = `https://maps.google.com/?q=${location.latitude},${location.longitude}`;
-    }
+      if (location && location.latitude && location.longitude) {
+        mapLink = `https://maps.google.com/?q=${location.latitude},${location.longitude}`;
+      }
 
-    if (text.trim() === "1") {
-      await sendMessage(
-        client,
-        `🚀 تم تأكيد طلبك بنجاح
+      if (text.trim() === "1") {
+        await sendMessage(
+          client,
+          `🚀 تم تأكيد طلبك بنجاح
 
 👨‍🔧 بيانات الفني:
 👤 ${tech.name}
@@ -70,11 +78,11 @@ app.post("/webhook", async (req, res) => {
 ⭐ ${tech.rating}
 
 ⏳ الفني في طريقه إليك الآن`
-      );
+        );
 
-      await sendMessage(
-        from,
-        `📥 تفاصيل الطلب
+        await sendMessage(
+          from,
+          `📥 تفاصيل الطلب
 
 👤 العميل: ${client}
 📞 ${client}
@@ -83,47 +91,47 @@ app.post("/webhook", async (req, res) => {
 📍 ${mapLink}
 
 💰 السعر: 10 ريال`
-      );
+        );
 
-      userState[from] = "working";
-      userState[client] = "waiting_service";
+        userState[from] = "working";
+        userState[client] = "waiting_service";
+      }
+
+      if (text.trim() === "2") {
+        await sendMessage(client, `❌ تم رفض الطلب`);
+        userState[from] = null;
+      }
+
+      return res.sendStatus(200);
     }
 
-    if (text.trim() === "2") {
-      await sendMessage(client, `❌ تم رفض الطلب`);
-      userState[from] = null;
-    }
+    // ================= LOCATION =================
+    if (msg.type === "location") {
+      const location = msg.location;
 
-    return res.sendStatus(200);
-  }
+      userData[from] = {
+        ...userData[from],
+        location,
+      };
 
-  // ================= LOCATION =================
-  if (msg.type === "location") {
-    const location = msg.location;
+      await sendMessage(from, `🚀 تم استلام موقعك`);
 
-    userData[from] = {
-      ...userData[from],
-      location,
-    };
+      const techPhone = "96890000000";
+      const tech = await getTechnician(techPhone);
+      if (!tech) return res.sendStatus(200);
 
-    await sendMessage(from, `🚀 تم استلام موقعك`);
+      userData[techPhone] = {
+        client: from,
+        tech,
+        location,
+        service: userData[from]?.service || "كهرباء",
+      };
 
-    const techPhone = "96890000000";
-    const tech = await getTechnician(techPhone);
-    if (!tech) return res.sendStatus(200);
+      userState[techPhone] = "tech_reply";
 
-    userData[techPhone] = {
-      client: from,
-      tech,
-      location,
-      service: userData[from]?.service || "كهرباء",
-    };
-
-    userState[techPhone] = "tech_reply";
-
-    await sendMessage(
-      techPhone,
-      `📥 طلب جديد
+      await sendMessage(
+        techPhone,
+        `📥 طلب جديد
 
 👤 ${from}
 🔧 ${userData[from]?.service || "كهرباء"}
@@ -131,93 +139,104 @@ app.post("/webhook", async (req, res) => {
 
 1️⃣ قبول
 2️⃣ رفض`
-    );
+      );
 
-    return res.sendStatus(200);
-  }
+      return res.sendStatus(200);
+    }
 
-  // ================= WAIT LOCATION =================
-  if (userState[from] === "waiting_location") {
-    await sendMessage(
-      from,
-      `📍 قم بارسال موقع البيت لنتمكن من خدمتكم`
-    );
-    return res.sendStatus(200);
-  }
+    // ================= WAIT LOCATION =================
+    if (userState[from] === "waiting_location") {
+      await sendMessage(
+        from,
+        `📍 قم بارسال موقع البيت لنتمكن من خدمتكم`
+      );
+      return res.sendStatus(200);
+    }
 
-  // ================= MAIN =================
-  if (!userState[from]) {
-    userState[from] = "menu";
+    // ================= START =================
+    if (!userState[from]) {
+      userState[from] = "menu";
 
-    await sendMessage(
-      from,
-      `👋 مرحباً بكم في شركة رؤية طاقة ⚡
+      await sendMessage(
+        from,
+        `👋 مرحباً بكم في شركة رؤية طاقة ⚡
 
 1️⃣ كهرباء
 2️⃣ سباكة
 3️⃣ تكييف`
-    );
+      );
 
-    return res.sendStatus(200);
-  }
+      return res.sendStatus(200);
+    }
 
-  if (userState[from] === "menu") {
-    if (text.trim() === "1") {
-      userState[from] = "confirm";
+    // ================= MENU =================
+    if (userState[from] === "menu") {
+      if (text.trim() === "1") {
+        userState[from] = "confirm";
 
-      userData[from] = {
-        service: "كهرباء",
-      };
+        userData[from] = {
+          service: "كهرباء",
+        };
 
-      await sendMessage(
-        from,
-        `🧾 تفاصيل الطلب
+        await sendMessage(
+          from,
+          `🧾 تفاصيل الطلب
 
 🔧 الخدمة: كهرباء
 💰 السعر: 10 ريال
 
 1️⃣ نعم
 2️⃣ لا`
-      );
+        );
+      }
+
+      return res.sendStatus(200);
     }
 
-    return res.sendStatus(200);
-  }
+    // ================= CONFIRM =================
+    if (userState[from] === "confirm") {
+      if (text.trim() === "1") {
+        userState[from] = "waiting_location";
 
-  if (userState[from] === "confirm") {
-    if (text.trim() === "1") {
-      userState[from] = "waiting_location";
+        await sendMessage(
+          from,
+          `📍 يرجى ارسال موقعك عبر الواتساب`
+        );
+      } else {
+        userState[from] = "menu";
+      }
+
+      return res.sendStatus(200);
+    }
+
+    // ================= TECH ACCOUNT =================
+    const tech = await getTechnician(from);
+
+    if (tech && userState[from] !== "tech_reply") {
+      userState[from] = "tech_menu";
 
       await sendMessage(
         from,
-        `📍 يرجى ارسال موقعك عبر الواتساب`
-      );
-    } else {
-      userState[from] = "menu";
-    }
-
-    return res.sendStatus(200);
-  }
-
-  // ================= CHECK TECH =================
-  const tech = await getTechnician(from);
-
-  if (tech && userState[from] !== "tech_reply") {
-    userState[from] = "tech_menu";
-
-    await sendMessage(
-      from,
-      `👨‍🔧 حسابك
+        `👨‍🔧 حسابك
 
 👤 ${tech.name}
 🔧 ${tech.service}
 ⭐ ${tech.rating}`
-    );
+      );
+
+      return res.sendStatus(200);
+    }
 
     return res.sendStatus(200);
+  } catch (err) {
+    console.log("CRASH:", err);
+    return res.sendStatus(200);
   }
+});
 
-  return res.sendStatus(200);
+// ================= SERVER =================
+app.get("/", (req, res) => {
+  res.send("Bot is running");
 });
 
 app.listen(3000, () => {
