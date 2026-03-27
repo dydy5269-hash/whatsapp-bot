@@ -55,9 +55,11 @@ app.post("/webhook", async (req, res) => {
 
     let mapLink = "لا يوجد موقع";
 
-if (location && location.latitude && location.longitude) {
-  mapLink = `https://maps.google.com/?q=${location.latitude},${location.longitude}`;
-}
+    if (location && location.latitude && location.longitude) {
+      mapLink = `https://maps.google.com/?q=${location.latitude},${location.longitude}`;
+    }
+
+    if (text.trim() === "1") {
       await sendMessage(
         client,
         `🚀 تم تأكيد طلبك بنجاح
@@ -78,7 +80,7 @@ if (location && location.latitude && location.longitude) {
 📞 ${client}
 
 🔧 الخدمة: ${data.service}
-📍 https://maps.google.com/?q=${location.latitude},${location.longitude}
+📍 ${mapLink}
 
 💰 السعر: 10 ريال`
       );
@@ -108,7 +110,6 @@ if (location && location.latitude && location.longitude) {
 
     const techPhone = "96890000000";
     const tech = await getTechnician(techPhone);
-
     if (!tech) return res.sendStatus(200);
 
     userData[techPhone] = {
