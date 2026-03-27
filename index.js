@@ -76,17 +76,6 @@ async function getServices() {
 }
 
 // ---------- TECH ----------
-async function getTechnician(phone) {
-  const p = normalizePhone(phone);
-  const snap = await db
-    .collection("technicians")
-    .where("phone", "in", [p, "+" + p])
-    .get();
-
-  if (!snap.empty) return snap.docs[0].data();
-  return null;
-}
-
 async function findAvailableTech(service) {
   const snap = await db
     .collection("technicians")
@@ -96,11 +85,7 @@ async function findAvailableTech(service) {
 
   if (snap.empty) return null;
 
-  const techs = snap.docs
-    .map(doc => ({ id: doc.id, ...doc.data() }))
-    .filter(t => (t.balance || 0) >= 1);
-
-  return techs.length ? techs[0] : null;
+  return snap.docs[0].data();
 }
 
 // ---------- VERIFY ----------
@@ -129,39 +114,6 @@ app.post("/webhook", async (req, res) => {
       }
     }
 
-    // ===== BLOCK ONLY WHEN WAITING =====
-    if (
-      userState[from] === "waiting" &&
-      text !== "cancel_order" &&
-      text !== "resume"
-    ) {
-      await sendButtons(from, "⚠️ عندك طلب قيد التنفيذ", [
-        { id: "resume", title: "🔄 متابعة" },
-        { id: "cancel_order", title: "❌ إلغاء" }
-      ]);
-      return res.sendStatus(200);
-    }
-
-    // ===== CANCEL =====
-    if (text === "cancel_order") {
-      userState[from] = "cancel_reason";
-      await sendMessage(from, "✍️ اكتب سبب الإلغاء");
-      return res.sendStatus(200);
-    }
-
-    if (userState[from] === "cancel_reason") {
-      userState[from] = null;
-      userData[from] = null;
-
-      await sendMessage(from, `❌ تم إلغاء الطلب\n📝 السبب: ${text}`);
-      return res.sendStatus(200);
-    }
-
-    if (text === "resume") {
-      await sendMessage(from, "🔄 طلبك قيد التنفيذ");
-      return res.sendStatus(200);
-    }
-
     // ===== START =====
     if (!userState[from] || text === "مرحبا") {
       userState[from] = "main_menu";
@@ -180,7 +132,7 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ===== SERVICE =====
+    // ===== SELECT SERVICE =====
     if (userState[from] === "main_menu" && text.startsWith("service_")) {
       const id = text.replace("service_", "");
       const doc = await db.collection("services").doc(id).get();
@@ -193,7 +145,7 @@ app.post("/webhook", async (req, res) => {
       const service = doc.data();
 
       if (!service.types || !Array.isArray(service.types)) {
-        await sendMessage(from, "❌ لا توجد أنواع لهذه الخدمة");
+        await sendMessage(from, "❌ لا توجد أنواع");
         return res.sendStatus(200);
       }
 
@@ -216,9 +168,10 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ===== TYPE =====
+    // ===== SELECT TYPE =====
     if (userState[from] === "type" && text.startsWith("type_")) {
       const id = text.replace("type_", "");
+
       const type = userData[from].types.find(t => t.id === id);
 
       if (!type) {
@@ -263,8 +216,6 @@ app.post("/webhook", async (req, res) => {
         return res.sendStatus(200);
       }
 
-      userData[from].location = msg.location;
-
       const tech = await findAvailableTech(userData[from].serviceName);
 
       if (!tech) {
@@ -272,37 +223,16 @@ app.post("/webhook", async (req, res) => {
         return res.sendStatus(200);
       }
 
-      const techPhone = normalizePhone(tech.phone);
-
-      await sendMessage(
-        tech.phone,
-        `📥 طلب جديد\n👤 ${from}\n🔧 ${userData[from].type.name}\n💰 ${userData[from].type.price}`
-      );
-
-      await sendButtons(tech.phone, "اختر:", [
-        { id: "accept", title: "✅ قبول" },
-        { id: "reject", title: "❌ رفض" }
-      ]);
-
-      userData[techPhone] = {
-        client: { phone: from },
-        tech,
-        service: userData[from].serviceName,
-        price: userData[from].type.price,
-        location: msg.location
-      };
-
-      userState[techPhone] = "tech_reply";
-      userState[from] = "waiting";
-
       await sendMessage(from, "🚀 تم إرسال الطلب");
+
+      userState[from] = "waiting";
 
       return res.sendStatus(200);
     }
 
     return res.sendStatus(200);
   } catch (e) {
-    console.log("ERROR:", e);
+    console.log(e);
     return res.sendStatus(200);
   }
 });
