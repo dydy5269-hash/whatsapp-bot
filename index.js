@@ -20,12 +20,12 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const userState = {};
 const userData = {};
 
-// ---------- NORMALIZE PHONE ----------
+// ---------- NORMALIZE ----------
 function normalizePhone(phone) {
   return phone.replace("+", "");
 }
 
-// ---------- SEND ----------
+// ---------- SEND TEXT ----------
 async function sendMessage(to, text) {
   await axios.post(
     `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
@@ -33,6 +33,39 @@ async function sendMessage(to, text) {
       messaging_product: "whatsapp",
       to,
       text: { body: text }
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json"
+      }
+    }
+  );
+}
+
+// ---------- SEND BUTTON ----------
+async function sendFinishButton(to, bodyText) {
+  await axios.post(
+    `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to,
+      type: "interactive",
+      interactive: {
+        type: "button",
+        body: { text: bodyText },
+        action: {
+          buttons: [
+            {
+              type: "reply",
+              reply: {
+                id: "finish",
+                title: "إنهاء الخدمة"
+              }
+            }
+          ]
+        }
+      }
     },
     {
       headers: {
@@ -53,11 +86,10 @@ app.get("/webhook", (req, res) => {
 
 // ---------- GET TECH ----------
 async function getTechnician(phone) {
-  const normalized = normalizePhone(phone);
-
+  const p = normalizePhone(phone);
   const snap = await db
     .collection("technicians")
-    .where("phone", "in", [normalized, "+" + normalized])
+    .where("phone", "in", [p, "+" + p])
     .get();
 
   if (!snap.empty) return snap.docs[0].data();
@@ -82,9 +114,15 @@ app.post("/webhook", async (req, res) => {
     const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!msg) return res.sendStatus(200);
 
-    const fromRaw = msg.from;
-    const from = normalizePhone(fromRaw);
-    const text = msg.text?.body || "";
+    const from = normalizePhone(msg.from);
+
+    // ===== READ MESSAGE TYPE =====
+    let text = "";
+    if (msg.type === "text") {
+      text = msg.text?.body;
+    } else if (msg.type === "interactive") {
+      text = msg.interactive?.button_reply?.id;
+    }
 
     // ================= TECH REPLY =================
     if (userState[from] === "tech_reply") {
@@ -105,14 +143,15 @@ app.post("/webhook", async (req, res) => {
 ⏳ الفني في طريقه إليك`
         );
 
-        await sendMessage(
+        await sendFinishButton(
           tech.phone,
           `📥 تفاصيل الطلب
 
 👤 رقم العميل: ${clientPhone}
-
 🔧 ${data.service}
-📍 https://maps.google.com/?q=${location.latitude},${location.longitude}`
+📍 https://maps.google.com/?q=${location.latitude},${location.longitude}
+
+🔚 عند الانتهاء اضغط الزر`
         );
 
         userState[from] = "working";
@@ -125,8 +164,8 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ================= FINISH SERVICE =================
-    if (userState[from] === "working" && text === "تم") {
+    // ================= FINISH =================
+    if (userState[from] === "working" && text === "finish") {
       const clientPhone = userData[from]?.client?.phone;
 
       await sendMessage(
@@ -269,7 +308,7 @@ app.post("/webhook", async (req, res) => {
       if (text === "1") {
         userState[from] = "location";
 
-        await sendMessage(from, `📍 أرسل موقعك عبر الواتساب`);
+        await sendMessage(from, "📍 أرسل موقعك عبر الواتساب");
       }
 
       return res.sendStatus(200);
@@ -317,9 +356,7 @@ app.post("/webhook", async (req, res) => {
       );
 
       userData[techPhone] = {
-        client: {
-          phone: from
-        },
+        client: { phone: from },
         tech,
         service: `${userData[from].type} ${userData[from].service}`,
         location: msg.location
