@@ -128,11 +128,52 @@ app.post("/webhook", async (req, res) => {
     if (
       userState[from] &&
       ["type", "confirm", "location", "waiting"].includes(userState[from]) &&
-      text !== "cancel"
+      text !== "cancel_order" &&
+      text !== "resume"
     ) {
+      await sendButtons(
+        from,
+        "⚠️ عندك طلب قيد التنفيذ",
+        [
+          { id: "resume", title: "🔄 متابعة الطلب" },
+          { id: "cancel_order", title: "❌ إلغاء الطلب" }
+        ]
+      );
+      return res.sendStatus(200);
+    }
+
+    // ===== CANCEL ORDER =====
+    if (text === "cancel_order") {
+      userState[from] = "cancel_reason";
+
+      await sendMessage(from, "✍️ اكتب سبب إلغاء الطلب:");
+      return res.sendStatus(200);
+    }
+
+    // ===== RECEIVE CANCEL REASON =====
+    if (userState[from] === "cancel_reason") {
+      const reason = text;
+
+      userState[from] = null;
+      userData[from] = null;
+
       await sendMessage(
         from,
-        "⚠️ عندك طلب قيد التنفيذ\n\n❗ لا يمكن إنشاء طلب جديد حالياً"
+        `❌ تم إلغاء الطلب
+
+📝 السبب: ${reason}
+
+💙 نأمل خدمتك مرة أخرى`
+      );
+
+      return res.sendStatus(200);
+    }
+
+    // ===== RESUME =====
+    if (text === "resume") {
+      await sendMessage(
+        from,
+        "🔄 طلبك قيد التنفيذ، الرجاء الانتظار ⏳"
       );
       return res.sendStatus(200);
     }
