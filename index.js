@@ -53,7 +53,7 @@ async function sendButtons(to, bodyText, buttons) {
         type: "button",
         body: { text: bodyText },
         action: {
-          buttons: buttons.map(btn => ({
+          buttons: buttons.slice(0, 3).map(btn => ({
             type: "reply",
             reply: { id: btn.id, title: btn.title }
           }))
@@ -120,45 +120,13 @@ app.post("/webhook", async (req, res) => {
     const from = normalizePhone(msg.from);
 
     let text = "";
-    if (msg.type === "text") {
-      text = msg.text?.body;
-    } else if (msg.type === "interactive") {
+    if (msg.type === "text") text = msg.text?.body;
+    else if (msg.type === "interactive") {
       if (msg.interactive?.button_reply) {
         text = msg.interactive.button_reply.id;
       } else if (msg.interactive?.list_reply) {
         text = msg.interactive.list_reply.id;
       }
-    }
-
-    // ===== CANCEL ORDER =====
-    if (text === "cancel_order") {
-      userState[from] = "cancel_reason";
-      await sendMessage(from, "✍️ اكتب سبب إلغاء الطلب:");
-      return res.sendStatus(200);
-    }
-
-    // ===== RECEIVE CANCEL REASON =====
-    if (userState[from] === "cancel_reason") {
-      const reason = text;
-      userState[from] = null;
-      userData[from] = null;
-
-      await sendMessage(
-        from,
-        `❌ تم إلغاء الطلب
-
-📝 السبب: ${reason}
-
-💙 نأمل خدمتك مرة أخرى`
-      );
-
-      return res.sendStatus(200);
-    }
-
-    // ===== RESUME =====
-    if (text === "resume") {
-      await sendMessage(from, "🔄 طلبك قيد التنفيذ، الرجاء الانتظار ⏳");
-      return res.sendStatus(200);
     }
 
     // ===== BLOCK ONLY WHEN WAITING =====
@@ -167,127 +135,30 @@ app.post("/webhook", async (req, res) => {
       text !== "cancel_order" &&
       text !== "resume"
     ) {
-      await sendButtons(
-        from,
-        "⚠️ عندك طلب قيد التنفيذ",
-        [
-          { id: "resume", title: "🔄 متابعة الطلب" },
-          { id: "cancel_order", title: "❌ إلغاء الطلب" }
-        ]
-      );
+      await sendButtons(from, "⚠️ عندك طلب قيد التنفيذ", [
+        { id: "resume", title: "🔄 متابعة" },
+        { id: "cancel_order", title: "❌ إلغاء" }
+      ]);
       return res.sendStatus(200);
     }
 
-    // ===== TECH ACCEPT =====
-    if (userState[from] === "tech_reply") {
-      const data = userData[from];
-      const clientPhone = data.client.phone;
-      const tech = data.tech;
-      const location = data.location;
-
-      if (text === "accept") {
-        await sendMessage(
-          clientPhone,
-          `🚀 تم تأكيد طلبك
-
-👨‍🔧 الفني: ${tech.name}
-📞 ${tech.phone}
-⭐ ${tech.rating}`
-        );
-
-        await sendMessage(
-          tech.phone,
-          `📥 تفاصيل الطلب
-
-👤 ${clientPhone}
-🔧 ${data.service}
-💰 ${data.price} ريال
-📍 https://maps.google.com/?q=${location.latitude},${location.longitude}`
-        );
-
-        await sendButtons(tech.phone, "اختر الحالة:", [
-          { id: "on_way", title: "🚗 في الطريق" },
-          { id: "arrived", title: "📍 وصلت" },
-          { id: "finish", title: "✅ إنهاء الخدمة" }
-        ]);
-
-        userState[from] = "working";
-        userState[clientPhone] = "waiting";
-      }
-
-      if (text === "reject") {
-        await sendMessage(clientPhone, "❌ تم رفض الطلب");
-        userState[from] = null;
-      }
-
+    // ===== CANCEL =====
+    if (text === "cancel_order") {
+      userState[from] = "cancel_reason";
+      await sendMessage(from, "✍️ اكتب سبب الإلغاء");
       return res.sendStatus(200);
     }
 
-    // ===== STATUS =====
-    if (userState[from] === "working") {
-      const data = userData[from];
-      const clientPhone = data.client.phone;
+    if (userState[from] === "cancel_reason") {
+      userState[from] = null;
+      userData[from] = null;
 
-      if (text === "on_way") {
-        await sendMessage(clientPhone, "🚗 الفني في الطريق");
-      }
-
-      if (text === "arrived") {
-        await sendMessage(clientPhone, "📍 الفني وصل");
-      }
-
-      if (text === "finish") {
-        const tech = data.tech;
-        const price = data.price;
-        const commission = price * 0.15;
-
-        const snap = await db
-          .collection("technicians")
-          .where("phone", "in", [tech.phone, "+" + tech.phone])
-          .get();
-
-        if (!snap.empty) {
-          const doc = snap.docs[0];
-          const t = doc.data();
-
-          let newBalance = (t.balance || 0) - commission;
-
-          await doc.ref.update({ balance: newBalance });
-
-          if (newBalance < 2 && newBalance >= 1) {
-            await sendMessage(
-              tech.phone,
-              `⚠️ رصيدك منخفض (${newBalance.toFixed(2)} ريال)`
-            );
-          }
-
-          if (newBalance < 1) {
-            await doc.ref.update({ active: false });
-            await sendMessage(
-              tech.phone,
-              `⛔ تم إيقاف حسابك (${newBalance.toFixed(2)} ريال)`
-            );
-          }
-        }
-
-        await sendMessage(
-          clientPhone,
-          `✅ تم إنهاء الخدمة
-
-⭐ قيم الخدمة من 1 إلى 5`
-        );
-
-        userState[clientPhone] = "rating";
-        userState[from] = null;
-      }
-
+      await sendMessage(from, `❌ تم إلغاء الطلب\n📝 السبب: ${text}`);
       return res.sendStatus(200);
     }
 
-    // ===== RATING =====
-    if (userState[from] === "rating") {
-      await sendMessage(from, "💙 شكراً لتقييمك");
-      userState[from] = "main_menu";
+    if (text === "resume") {
+      await sendMessage(from, "🔄 طلبك قيد التنفيذ");
       return res.sendStatus(200);
     }
 
@@ -297,11 +168,9 @@ app.post("/webhook", async (req, res) => {
 
       const services = await getServices();
 
-      await sendMessage(from, "👋 مرحباً بكم في *رؤية طاقة* ⚡");
-
       await sendButtons(
         from,
-        "اختر الخدمة:",
+        "👋 مرحباً\nاختر الخدمة:",
         services.map(s => ({
           id: "service_" + s.id,
           title: s.name
@@ -311,11 +180,22 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ===== SELECT SERVICE =====
+    // ===== SERVICE =====
     if (userState[from] === "main_menu" && text.startsWith("service_")) {
       const id = text.replace("service_", "");
       const doc = await db.collection("services").doc(id).get();
+
+      if (!doc.exists) {
+        await sendMessage(from, "❌ الخدمة غير موجودة");
+        return res.sendStatus(200);
+      }
+
       const service = doc.data();
+
+      if (!service.types || !Array.isArray(service.types)) {
+        await sendMessage(from, "❌ لا توجد أنواع لهذه الخدمة");
+        return res.sendStatus(200);
+      }
 
       userData[from] = {
         serviceName: service.name,
@@ -326,7 +206,7 @@ app.post("/webhook", async (req, res) => {
 
       await sendButtons(
         from,
-        "اختر النوع:",
+        `⚡ ${service.name}\nاختر النوع:`,
         service.types.map(t => ({
           id: "type_" + t.id,
           title: `${t.name} - ${t.price} ريال`
@@ -341,19 +221,22 @@ app.post("/webhook", async (req, res) => {
       const id = text.replace("type_", "");
       const type = userData[from].types.find(t => t.id === id);
 
+      if (!type) {
+        await sendMessage(from, "❌ اختيار غير صحيح");
+        return res.sendStatus(200);
+      }
+
       userData[from].type = type;
       userState[from] = "confirm";
 
-      await sendMessage(
+      await sendButtons(
         from,
-        `🧾 ${type.name} ${userData[from].serviceName}
-💰 ${type.price} ريال`
+        `🧾 ${type.name} ${userData[from].serviceName}\n💰 ${type.price} ريال`,
+        [
+          { id: "confirm", title: "✅ تأكيد" },
+          { id: "cancel", title: "❌ إلغاء" }
+        ]
       );
-
-      await sendButtons(from, "تأكيد:", [
-        { id: "confirm", title: "✅ تأكيد" },
-        { id: "cancel", title: "❌ إلغاء" }
-      ]);
 
       return res.sendStatus(200);
     }
@@ -393,11 +276,7 @@ app.post("/webhook", async (req, res) => {
 
       await sendMessage(
         tech.phone,
-        `📥 طلب جديد
-
-👤 ${from}
-🔧 ${userData[from].type.name} ${userData[from].serviceName}
-💰 ${userData[from].type.price} ريال`
+        `📥 طلب جديد\n👤 ${from}\n🔧 ${userData[from].type.name}\n💰 ${userData[from].type.price}`
       );
 
       await sendButtons(tech.phone, "اختر:", [
@@ -408,28 +287,26 @@ app.post("/webhook", async (req, res) => {
       userData[techPhone] = {
         client: { phone: from },
         tech,
-        service: `${userData[from].type.name} ${userData[from].serviceName}`,
+        service: userData[from].serviceName,
         price: userData[from].type.price,
         location: msg.location
       };
 
       userState[techPhone] = "tech_reply";
+      userState[from] = "waiting";
 
       await sendMessage(from, "🚀 تم إرسال الطلب");
-
-      userState[from] = "waiting";
 
       return res.sendStatus(200);
     }
 
     return res.sendStatus(200);
   } catch (e) {
-    console.log(e);
+    console.log("ERROR:", e);
     return res.sendStatus(200);
   }
 });
 
-// ---------- START ----------
 app.listen(process.env.PORT || 3000, () => {
   console.log("Server running...");
 });
