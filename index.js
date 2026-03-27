@@ -43,8 +43,8 @@ async function sendMessage(to, text) {
   );
 }
 
-// ---------- SEND STATUS BUTTONS ----------
-async function sendStatusButtons(to, bodyText) {
+// ---------- SEND BUTTONS ----------
+async function sendStatusButtons(to) {
   await axios.post(
     `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
     {
@@ -53,7 +53,7 @@ async function sendStatusButtons(to, bodyText) {
       type: "interactive",
       interactive: {
         type: "button",
-        body: { text: bodyText },
+        body: { text: "اختر الحالة:" },
         action: {
           buttons: [
             {
@@ -109,8 +109,13 @@ async function findAvailableTech(service) {
     .where("active", "==", true)
     .get();
 
-  if (!snap.empty) return snap.docs[0].data();
-  return null;
+  if (snap.empty) return null;
+
+  const techs = snap.docs
+    .map(doc => ({ id: doc.id, ...doc.data() }))
+    .filter(t => (t.balance || 0) >= 1);
+
+  return techs.length ? techs[0] : null;
 }
 
 // ---------- WEBHOOK ----------
@@ -122,13 +127,11 @@ app.post("/webhook", async (req, res) => {
     const from = normalizePhone(msg.from);
 
     let text = "";
-    if (msg.type === "text") {
-      text = msg.text?.body;
-    } else if (msg.type === "interactive") {
+    if (msg.type === "text") text = msg.text?.body;
+    else if (msg.type === "interactive")
       text = msg.interactive?.button_reply?.id;
-    }
 
-    // ================= TECH ACCEPT =================
+    // ===== TECH ACCEPT =====
     if (userState[from] === "tech_reply") {
       const data = userData[from];
       const clientPhone = data.client.phone;
@@ -145,16 +148,18 @@ app.post("/webhook", async (req, res) => {
 ⭐ ${tech.rating}`
         );
 
-        await sendStatusButtons(
+        await sendMessage(
           tech.phone,
           `📥 تفاصيل الطلب
 
-👤 ${clientPhone}
+👤 رقم العميل: ${clientPhone}
 🔧 ${data.service}
 📍 https://maps.google.com/?q=${location.latitude},${location.longitude}
 
-اختر الحالة:`
+━━━━━━━━━━━━━━━`
         );
+
+        await sendStatusButtons(tech.phone);
 
         userState[from] = "working";
         userState[clientPhone] = "waiting";
@@ -163,7 +168,7 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ================= STATUS =================
+    // ===== STATUS =====
     if (userState[from] === "working") {
       const data = userData[from];
       const clientPhone = data.client.phone;
@@ -177,6 +182,45 @@ app.post("/webhook", async (req, res) => {
       }
 
       if (text === "finish") {
+        const tech = data.tech;
+        const servicePrice = 10;
+        const commission = servicePrice * 0.15;
+
+        const snap = await db
+          .collection("technicians")
+          .where("phone", "in", [tech.phone, "+" + tech.phone])
+          .get();
+
+        if (!snap.empty) {
+          const doc = snap.docs[0];
+          const techData = doc.data();
+
+          let newBalance = (techData.balance || 0) - commission;
+
+          await doc.ref.update({ balance: newBalance });
+
+          if (newBalance < 2 && newBalance >= 1) {
+            await sendMessage(
+              tech.phone,
+              `⚠️ تنبيه: رصيدك منخفض (${newBalance.toFixed(2)} ريال)
+
+يرجى تعبئة الرصيد لتجنب توقف الخدمة`
+            );
+          }
+
+          if (newBalance < 1) {
+            await doc.ref.update({ active: false });
+
+            await sendMessage(
+              tech.phone,
+              `⛔ تم إيقاف حسابك
+
+رصيدك (${newBalance.toFixed(2)} ريال)
+يرجى تعبئة الرصيد لإعادة التفعيل`
+            );
+          }
+        }
+
         await sendMessage(
           clientPhone,
           `✅ تم إنهاء الخدمة
@@ -191,14 +235,14 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ================= RATING =================
+    // ===== RATING =====
     if (userState[from] === "rating") {
       await sendMessage(from, "💙 شكراً لتقييمك");
       userState[from] = "main_menu";
       return res.sendStatus(200);
     }
 
-    // ================= CHECK TECH =================
+    // ===== CHECK TECH =====
     const tech = await getTechnician(from);
 
     if (tech && !userState[from]) {
@@ -210,13 +254,14 @@ app.post("/webhook", async (req, res) => {
 
 👤 ${tech.name}
 🔧 ${tech.service}
-⭐ ${tech.rating}`
+⭐ ${tech.rating}
+💰 الرصيد: ${tech.balance || 0} ريال`
       );
 
       return res.sendStatus(200);
     }
 
-    // ================= START =================
+    // ===== START =====
     if (!userState[from] || text === "مرحبا") {
       userState[from] = "main_menu";
 
@@ -232,7 +277,7 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ================= MENU =================
+    // ===== MENU =====
     if (userState[from] === "main_menu") {
       const map = { "1": "كهرباء", "2": "سباكة", "3": "تكييف" };
       const service = map[text];
@@ -245,7 +290,7 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ================= LOCATION =================
+    // ===== LOCATION =====
     if (userState[from] === "location") {
       if (!msg.location) {
         await sendMessage(from, "📍 أرسل الموقع");
@@ -256,7 +301,7 @@ app.post("/webhook", async (req, res) => {
 
       const tech = await findAvailableTech(userData[from].service);
       if (!tech) {
-        await sendMessage(from, "🚫 لا يوجد فني");
+        await sendMessage(from, "🚫 لا يوجد فني متاح");
         return res.sendStatus(200);
       }
 
