@@ -81,13 +81,13 @@ app.post("/webhook", async (req, res) => {
     // ================= TECH REPLY =================
     if (userState[from] === "tech_reply") {
       const data = userData[from];
-      const client = data?.client;
+      const clientPhone = data?.client?.phone;
       const tech = data?.tech;
       const location = data?.location;
 
       if (text === "1") {
         await sendMessage(
-          client,
+          clientPhone,
           `🚀 تم تأكيد طلبك
 
 👨‍🔧 الفني: ${tech.name}
@@ -101,17 +101,16 @@ app.post("/webhook", async (req, res) => {
           from,
           `📥 تفاصيل الطلب
 
-👤 العميل: ${client}
-📞 ${client}
+👤 رقم العميل: ${clientPhone}
 
 🔧 ${data.service}
 📍 https://maps.google.com/?q=${location.latitude},${location.longitude}`
         );
 
         userState[from] = "working";
-        userState[client] = "waiting_service";
+        userState[clientPhone] = "waiting_service";
       } else {
-        await sendMessage(client, "❌ تم رفض الطلب");
+        await sendMessage(clientPhone, "❌ تم رفض الطلب");
         userState[from] = null;
       }
 
@@ -120,15 +119,18 @@ app.post("/webhook", async (req, res) => {
 
     // ================= FINISH SERVICE =================
     if (userState[from] === "working" && text === "تم") {
-      const client = userData[from]?.client;
+      const clientPhone = userData[from]?.client?.phone;
 
-      await sendMessage(client, `✅ تم إنهاء الخدمة
+      await sendMessage(
+        clientPhone,
+        `✅ تم إنهاء الخدمة
 
 🙏 نأمل تقييم الخدمة
 
-⭐ من 1 إلى 5`);
+⭐ من 1 إلى 5`
+      );
 
-      userState[client] = "rating";
+      userState[clientPhone] = "rating";
       userState[from] = null;
 
       return res.sendStatus(200);
@@ -194,10 +196,13 @@ app.post("/webhook", async (req, res) => {
       };
 
       const service = map[text];
-
       if (!service) return res.sendStatus(200);
 
-      userData[from] = { service };
+      userData[from] = {
+        phone: from,
+        service
+      };
+
       userState[from] = "service_type";
 
       await sendMessage(
@@ -296,7 +301,7 @@ app.post("/webhook", async (req, res) => {
         tech.phone,
         `📥 طلب جديد
 
-👤 ${from}
+👤 رقم العميل: ${from}
 🔧 ${userData[from].type} ${userData[from].service}
 📍 موقع متوفر
 
@@ -304,13 +309,16 @@ app.post("/webhook", async (req, res) => {
 2️⃣ رفض`
       );
 
-      userState[tech.phone] = "tech_reply";
       userData[tech.phone] = {
-        client: from,
+        client: {
+          phone: from
+        },
         tech,
         service: `${userData[from].type} ${userData[from].service}`,
         location: msg.location
       };
+
+      userState[tech.phone] = "tech_reply";
 
       await sendMessage(from, "🚀 تم إرسال طلبك");
 
