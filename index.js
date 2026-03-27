@@ -42,7 +42,7 @@ async function sendMessage(to, text) {
   );
 }
 
-async function sendButtons(to, bodyText, buttons) {
+async function sendList(to, bodyText, options) {
   await axios.post(
     `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
     {
@@ -50,13 +50,19 @@ async function sendButtons(to, bodyText, buttons) {
       to,
       type: "interactive",
       interactive: {
-        type: "button",
+        type: "list",
         body: { text: bodyText },
         action: {
-          buttons: buttons.slice(0, 3).map(btn => ({
-            type: "reply",
-            reply: { id: btn.id, title: btn.title }
-          }))
+          button: "اختيار",
+          sections: [
+            {
+              title: "القائمة",
+              rows: options.map(o => ({
+                id: o.id,
+                title: o.title
+              }))
+            }
+          ]
         }
       }
     },
@@ -69,13 +75,13 @@ async function sendButtons(to, bodyText, buttons) {
   );
 }
 
-// ---------- GET SERVICES ----------
+// ---------- SERVICES ----------
 async function getServices() {
   const snap = await db.collection("services").get();
   return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-// ---------- WEBHOOK VERIFY ----------
+// ---------- VERIFY ----------
 app.get("/webhook", (req, res) => {
   if (req.query["hub.verify_token"] === VERIFY_TOKEN) {
     return res.send(req.query["hub.challenge"]);
@@ -91,7 +97,6 @@ app.post("/webhook", async (req, res) => {
 
     const from = normalizePhone(msg.from);
 
-    // ===== READ MESSAGE =====
     let text = "";
 
     if (msg.type === "text") {
@@ -113,7 +118,7 @@ app.post("/webhook", async (req, res) => {
 
       const services = await getServices();
 
-      await sendButtons(
+      await sendList(
         from,
         "👋 مرحباً\nاختر الخدمة:",
         services.map(s => ({
@@ -125,7 +130,7 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ===== SERVICE =====
+    // ===== SELECT SERVICE =====
     if (userState[from] === "main") {
       const services = await getServices();
 
@@ -142,38 +147,38 @@ app.post("/webhook", async (req, res) => {
 
       userState[from] = "type";
 
-      await sendButtons(
+      await sendList(
         from,
         `⚡ ${service.name}\nاختر النوع:`,
         service.types.map(t => ({
           id: "type_" + t.id,
-          title: `${t.name} - ${t.price}`
+          title: `${t.name} - ${t.price} ريال`
         }))
       );
 
       return res.sendStatus(200);
     }
 
-    // ===== TYPE =====
+    // ===== SELECT TYPE =====
     if (userState[from] === "type") {
       const id = text.replace("type_", "");
 
       const type = userData[from].types.find(t => t.id === id);
 
       if (!type) {
-        await sendMessage(from, "❌ خطأ في الاختيار");
+        await sendMessage(from, "❌ اختيار غير صحيح");
         return res.sendStatus(200);
       }
 
       userData[from].type = type;
       userState[from] = "confirm";
 
-      await sendButtons(
+      await sendList(
         from,
         `🧾 ${type.name}\n💰 ${type.price} ريال`,
         [
-          { id: "confirm", title: "تأكيد" },
-          { id: "cancel", title: "إلغاء" }
+          { id: "confirm", title: "✅ تأكيد" },
+          { id: "cancel", title: "❌ إلغاء" }
         ]
       );
 
@@ -184,7 +189,7 @@ app.post("/webhook", async (req, res) => {
     if (userState[from] === "confirm") {
       if (text === "cancel") {
         userState[from] = "main";
-        await sendMessage(from, "تم الإلغاء");
+        await sendMessage(from, "❌ تم الإلغاء");
         return res.sendStatus(200);
       }
 
@@ -211,7 +216,7 @@ app.post("/webhook", async (req, res) => {
 
     return res.sendStatus(200);
   } catch (err) {
-    console.log(err);
+    console.log(err.response?.data || err);
     return res.sendStatus(200);
   }
 });
