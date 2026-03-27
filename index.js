@@ -54,6 +54,11 @@ app.post("/webhook", async (req, res) => {
     const location = data.location;
 
     if (text.trim() === "1") {
+      let mapLink = "لا يوجد موقع";
+
+  if (location && location.latitude && location.longitude) {
+    mapLink = https://maps.google.com/?q=${location.latitude},${location.longitude};
+  }
       await sendMessage(
         client,
         `🚀 تم تأكيد طلبك بنجاح
