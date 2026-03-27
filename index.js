@@ -120,32 +120,19 @@ app.post("/webhook", async (req, res) => {
     const from = normalizePhone(msg.from);
 
     let text = "";
-    if (msg.type === "text") text = msg.text?.body;
-    else if (msg.type === "interactive")
-      text = msg.interactive?.button_reply?.id;
-
-    // ===== BLOCK MULTIPLE ORDERS =====
-    if (
-      userState[from] &&
-      ["type", "confirm", "location", "waiting"].includes(userState[from]) &&
-      text !== "cancel_order" &&
-      text !== "resume"
-    ) {
-      await sendButtons(
-        from,
-        "⚠️ عندك طلب قيد التنفيذ",
-        [
-          { id: "resume", title: "🔄 متابعة الطلب" },
-          { id: "cancel_order", title: "❌ إلغاء الطلب" }
-        ]
-      );
-      return res.sendStatus(200);
+    if (msg.type === "text") {
+      text = msg.text?.body;
+    } else if (msg.type === "interactive") {
+      if (msg.interactive?.button_reply) {
+        text = msg.interactive.button_reply.id;
+      } else if (msg.interactive?.list_reply) {
+        text = msg.interactive.list_reply.id;
+      }
     }
 
     // ===== CANCEL ORDER =====
     if (text === "cancel_order") {
       userState[from] = "cancel_reason";
-
       await sendMessage(from, "✍️ اكتب سبب إلغاء الطلب:");
       return res.sendStatus(200);
     }
@@ -153,7 +140,6 @@ app.post("/webhook", async (req, res) => {
     // ===== RECEIVE CANCEL REASON =====
     if (userState[from] === "cancel_reason") {
       const reason = text;
-
       userState[from] = null;
       userData[from] = null;
 
@@ -171,9 +157,23 @@ app.post("/webhook", async (req, res) => {
 
     // ===== RESUME =====
     if (text === "resume") {
-      await sendMessage(
+      await sendMessage(from, "🔄 طلبك قيد التنفيذ، الرجاء الانتظار ⏳");
+      return res.sendStatus(200);
+    }
+
+    // ===== BLOCK ONLY WHEN WAITING =====
+    if (
+      userState[from] === "waiting" &&
+      text !== "cancel_order" &&
+      text !== "resume"
+    ) {
+      await sendButtons(
         from,
-        "🔄 طلبك قيد التنفيذ، الرجاء الانتظار ⏳"
+        "⚠️ عندك طلب قيد التنفيذ",
+        [
+          { id: "resume", title: "🔄 متابعة الطلب" },
+          { id: "cancel_order", title: "❌ إلغاء الطلب" }
+        ]
       );
       return res.sendStatus(200);
     }
@@ -263,7 +263,6 @@ app.post("/webhook", async (req, res) => {
 
           if (newBalance < 1) {
             await doc.ref.update({ active: false });
-
             await sendMessage(
               tech.phone,
               `⛔ تم إيقاف حسابك (${newBalance.toFixed(2)} ريال)`
@@ -289,25 +288,6 @@ app.post("/webhook", async (req, res) => {
     if (userState[from] === "rating") {
       await sendMessage(from, "💙 شكراً لتقييمك");
       userState[from] = "main_menu";
-      return res.sendStatus(200);
-    }
-
-    // ===== CHECK TECH =====
-    const tech = await getTechnician(from);
-
-    if (tech && !userState[from]) {
-      userState[from] = "tech_menu";
-
-      await sendMessage(
-        tech.phone,
-        `👨‍🔧 حسابك
-
-👤 ${tech.name}
-🔧 ${tech.service}
-⭐ ${tech.rating}
-💰 ${tech.balance || 0} ريال`
-      );
-
       return res.sendStatus(200);
     }
 
