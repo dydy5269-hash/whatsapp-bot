@@ -43,17 +43,24 @@ async function getTechnician(phone) {
   return null;
 }
 
-// ===== WEBHOOK =====
+// ===== VERIFY WEBHOOK =====
+app.get("/webhook", (req, res) => {
+  const verify_token = "123456"; // نفس اللي في Meta
+
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode && token === verify_token) {
+    return res.status(200).send(challenge);
+  } else {
+    return res.sendStatus(403);
+  }
+});
+
+
+// ===== هنا يبدا الكود القديم =====
 app.post("/webhook", async (req, res) => {
-  try {
-    let msg;
-
-    try {
-      msg = req.body.entry[0].changes[0].value.messages[0];
-    } catch {
-      return res.sendStatus(200);
-    }
-
     const from = msg.from;
     const text = msg.text?.body || "";
 
