@@ -69,26 +69,13 @@ async function sendButtons(to, bodyText, buttons) {
   );
 }
 
-// ---------- SERVICES ----------
+// ---------- GET SERVICES ----------
 async function getServices() {
   const snap = await db.collection("services").get();
   return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-// ---------- TECH ----------
-async function findAvailableTech(service) {
-  const snap = await db
-    .collection("technicians")
-    .where("service", "==", service)
-    .where("active", "==", true)
-    .get();
-
-  if (snap.empty) return null;
-
-  return snap.docs[0].data();
-}
-
-// ---------- VERIFY ----------
+// ---------- WEBHOOK VERIFY ----------
 app.get("/webhook", (req, res) => {
   if (req.query["hub.verify_token"] === VERIFY_TOKEN) {
     return res.send(req.query["hub.challenge"]);
@@ -104,19 +91,25 @@ app.post("/webhook", async (req, res) => {
 
     const from = normalizePhone(msg.from);
 
+    // ===== READ MESSAGE =====
     let text = "";
-    if (msg.type === "text") text = msg.text?.body;
-    else if (msg.type === "interactive") {
-      if (msg.interactive?.button_reply) {
+
+    if (msg.type === "text") {
+      text = msg.text.body;
+    } else if (msg.type === "interactive") {
+      if (msg.interactive?.button_reply?.id) {
         text = msg.interactive.button_reply.id;
-      } else if (msg.interactive?.list_reply) {
+      } else if (msg.interactive?.list_reply?.id) {
         text = msg.interactive.list_reply.id;
       }
     }
 
+    console.log("TEXT:", text);
+    console.log("STATE:", userState[from]);
+
     // ===== START =====
     if (!userState[from] || text === "مرحبا") {
-      userState[from] = "main_menu";
+      userState[from] = "main";
 
       const services = await getServices();
 
@@ -132,18 +125,15 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ===== SELECT SERVICE =====
-    if (userState[from] === "main_menu") {
+    // ===== SERVICE =====
+    if (userState[from] === "main") {
       const services = await getServices();
 
-      const service = services.find(s =>
-        text === "service_" + s.id || text === s.name
-      );
+      let service =
+        services.find(s => text === "service_" + s.id) ||
+        services.find(s => text === s.name);
 
-      if (!service) {
-        await sendMessage(from, "❌ اختر خدمة من القائمة");
-        return res.sendStatus(200);
-      }
+      if (!service) return res.sendStatus(200);
 
       userData[from] = {
         serviceName: service.name,
@@ -157,21 +147,21 @@ app.post("/webhook", async (req, res) => {
         `⚡ ${service.name}\nاختر النوع:`,
         service.types.map(t => ({
           id: "type_" + t.id,
-          title: `${t.name} - ${t.price} ريال`
+          title: `${t.name} - ${t.price}`
         }))
       );
 
       return res.sendStatus(200);
     }
 
-    // ===== SELECT TYPE =====
+    // ===== TYPE =====
     if (userState[from] === "type") {
       const id = text.replace("type_", "");
 
       const type = userData[from].types.find(t => t.id === id);
 
       if (!type) {
-        await sendMessage(from, "❌ اختيار غير صحيح");
+        await sendMessage(from, "❌ خطأ في الاختيار");
         return res.sendStatus(200);
       }
 
@@ -180,10 +170,10 @@ app.post("/webhook", async (req, res) => {
 
       await sendButtons(
         from,
-        `🧾 ${type.name} ${userData[from].serviceName}\n💰 ${type.price} ريال`,
+        `🧾 ${type.name}\n💰 ${type.price} ريال`,
         [
-          { id: "confirm", title: "✅ تأكيد" },
-          { id: "cancel", title: "❌ إلغاء" }
+          { id: "confirm", title: "تأكيد" },
+          { id: "cancel", title: "إلغاء" }
         ]
       );
 
@@ -193,7 +183,8 @@ app.post("/webhook", async (req, res) => {
     // ===== CONFIRM =====
     if (userState[from] === "confirm") {
       if (text === "cancel") {
-        userState[from] = "main_menu";
+        userState[from] = "main";
+        await sendMessage(from, "تم الإلغاء");
         return res.sendStatus(200);
       }
 
@@ -212,23 +203,15 @@ app.post("/webhook", async (req, res) => {
         return res.sendStatus(200);
       }
 
-      const tech = await findAvailableTech(userData[from].serviceName);
-
-      if (!tech) {
-        await sendMessage(from, "🚫 لا يوجد فني");
-        return res.sendStatus(200);
-      }
-
       await sendMessage(from, "🚀 تم إرسال الطلب");
-
-      userState[from] = "waiting";
+      userState[from] = "done";
 
       return res.sendStatus(200);
     }
 
     return res.sendStatus(200);
-  } catch (e) {
-    console.log(e);
+  } catch (err) {
+    console.log(err);
     return res.sendStatus(200);
   }
 });
