@@ -133,19 +133,15 @@ app.post("/webhook", async (req, res) => {
     }
 
     // ===== SELECT SERVICE =====
-    if (userState[from] === "main_menu" && text.startsWith("service_")) {
-      const id = text.replace("service_", "");
-      const doc = await db.collection("services").doc(id).get();
+    if (userState[from] === "main_menu") {
+      const services = await getServices();
 
-      if (!doc.exists) {
-        await sendMessage(from, "❌ الخدمة غير موجودة");
-        return res.sendStatus(200);
-      }
+      const service = services.find(s =>
+        text === "service_" + s.id || text === s.name
+      );
 
-      const service = doc.data();
-
-      if (!service.types || !Array.isArray(service.types)) {
-        await sendMessage(from, "❌ لا توجد أنواع");
+      if (!service) {
+        await sendMessage(from, "❌ اختر خدمة من القائمة");
         return res.sendStatus(200);
       }
 
@@ -169,7 +165,7 @@ app.post("/webhook", async (req, res) => {
     }
 
     // ===== SELECT TYPE =====
-    if (userState[from] === "type" && text.startsWith("type_")) {
+    if (userState[from] === "type") {
       const id = text.replace("type_", "");
 
       const type = userData[from].types.find(t => t.id === id);
