@@ -85,7 +85,7 @@ app.post("/webhook", async (req, res) => {
       const tech = data?.tech;
       const location = data?.location;
 
-      if (text === "1") {
+      if (text.trim === "1") {
         await sendMessage(
           client,
           `🚀 تم تأكيد طلبك
@@ -149,8 +149,7 @@ app.post("/webhook", async (req, res) => {
 
     // ================= CHECK TECH =================
     const tech = await getTechnician(from);
-
-    if (tech && !userState[from]) {
+if (tech && !userState[from] !== "tech_reply") {
       userState[from] = "tech_menu";
 
       await sendMessage(
