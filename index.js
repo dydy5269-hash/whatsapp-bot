@@ -44,7 +44,7 @@ async function sendMessage(to, text) {
 }
 
 // ---------- SEND BUTTONS ----------
-async function sendStatusButtons(to) {
+async function sendButtons(to, bodyText, buttons) {
   await axios.post(
     `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
     {
@@ -53,22 +53,15 @@ async function sendStatusButtons(to) {
       type: "interactive",
       interactive: {
         type: "button",
-        body: { text: "اختر الحالة:" },
+        body: { text: bodyText },
         action: {
-          buttons: [
-            {
-              type: "reply",
-              reply: { id: "on_way", title: "🚗 في الطريق" }
-            },
-            {
-              type: "reply",
-              reply: { id: "arrived", title: "📍 وصلت" }
-            },
-            {
-              type: "reply",
-              reply: { id: "finish", title: "✅ إنهاء الخدمة" }
+          buttons: buttons.map(btn => ({
+            type: "reply",
+            reply: {
+              id: btn.id,
+              title: btn.title
             }
-          ]
+          }))
         }
       }
     },
@@ -138,7 +131,7 @@ app.post("/webhook", async (req, res) => {
       const tech = data.tech;
       const location = data.location;
 
-      if (text === "1") {
+      if (text === "accept") {
         await sendMessage(
           clientPhone,
           `🚀 تم تأكيد طلبك
@@ -159,10 +152,19 @@ app.post("/webhook", async (req, res) => {
 ━━━━━━━━━━━━━━━`
         );
 
-        await sendStatusButtons(tech.phone);
+        await sendButtons(tech.phone, "اختر الحالة:", [
+          { id: "on_way", title: "🚗 في الطريق" },
+          { id: "arrived", title: "📍 وصلت" },
+          { id: "finish", title: "✅ إنهاء الخدمة" }
+        ]);
 
         userState[from] = "working";
         userState[clientPhone] = "waiting";
+      }
+
+      if (text === "reject") {
+        await sendMessage(clientPhone, "❌ تم رفض الطلب");
+        userState[from] = null;
       }
 
       return res.sendStatus(200);
@@ -204,7 +206,7 @@ app.post("/webhook", async (req, res) => {
               tech.phone,
               `⚠️ تنبيه: رصيدك منخفض (${newBalance.toFixed(2)} ريال)
 
-يرجى تعبئة الرصيد لتجنب توقف الخدمة`
+يرجى تعبئة الرصيد`
             );
           }
 
@@ -215,8 +217,7 @@ app.post("/webhook", async (req, res) => {
               tech.phone,
               `⛔ تم إيقاف حسابك
 
-رصيدك (${newBalance.toFixed(2)} ريال)
-يرجى تعبئة الرصيد لإعادة التفعيل`
+رصيدك (${newBalance.toFixed(2)} ريال)`
             );
           }
         }
@@ -267,26 +268,85 @@ app.post("/webhook", async (req, res) => {
 
       await sendMessage(
         from,
-        `👋 مرحباً بكم
-
-1️⃣ كهرباء
-2️⃣ سباكة
-3️⃣ تكييف`
+        `👋 مرحباً بكم في *شركة رؤية طاقة* ⚡`
       );
+
+      await sendButtons(from, "اختر الخدمة:", [
+        { id: "electric", title: "⚡ كهرباء" },
+        { id: "plumbing", title: "🚿 سباكة" },
+        { id: "ac", title: "❄️ تكييف" }
+      ]);
 
       return res.sendStatus(200);
     }
 
-    // ===== MENU =====
+    // ===== MAIN MENU =====
     if (userState[from] === "main_menu") {
-      const map = { "1": "كهرباء", "2": "سباكة", "3": "تكييف" };
+      const map = {
+        electric: "كهرباء",
+        plumbing: "سباكة",
+        ac: "تكييف"
+      };
+
       const service = map[text];
       if (!service) return res.sendStatus(200);
 
       userData[from] = { phone: from, service };
-      userState[from] = "location";
+      userState[from] = "service_type";
 
-      await sendMessage(from, "📍 أرسل موقعك");
+      await sendMessage(from, `⚡ قسم ${service}`);
+
+      await sendButtons(from, "اختر نوع الخدمة:", [
+        { id: "install", title: "🔧 تركيب" },
+        { id: "repair", title: "🛠️ تصليح" },
+        { id: "parts", title: "🧰 قطع غيار" }
+      ]);
+
+      return res.sendStatus(200);
+    }
+
+    // ===== SERVICE TYPE =====
+    if (userState[from] === "service_type") {
+      const map = {
+        install: "تركيب",
+        repair: "تصليح",
+        parts: "قطع غيار"
+      };
+
+      const type = map[text];
+      if (!type) return res.sendStatus(200);
+
+      userData[from].type = type;
+      userState[from] = "confirm";
+
+      await sendMessage(
+        from,
+        `🧾 تفاصيل الطلب
+
+🔧 ${type} ${userData[from].service}
+💰 السعر: 10 ريال`
+      );
+
+      await sendButtons(from, "تأكيد الطلب:", [
+        { id: "confirm", title: "✅ تأكيد" },
+        { id: "cancel", title: "❌ إلغاء" }
+      ]);
+
+      return res.sendStatus(200);
+    }
+
+    // ===== CONFIRM =====
+    if (userState[from] === "confirm") {
+      if (text === "cancel") {
+        userState[from] = "main_menu";
+        return res.sendStatus(200);
+      }
+
+      if (text === "confirm") {
+        userState[from] = "location";
+        await sendMessage(from, "📍 أرسل موقعك");
+      }
+
       return res.sendStatus(200);
     }
 
@@ -312,15 +372,18 @@ app.post("/webhook", async (req, res) => {
         `📥 طلب جديد
 
 👤 ${from}
-🔧 ${userData[from].service}
-
-1️⃣ قبول`
+🔧 ${userData[from].type} ${userData[from].service}`
       );
+
+      await sendButtons(tech.phone, "اختر:", [
+        { id: "accept", title: "✅ قبول" },
+        { id: "reject", title: "❌ رفض" }
+      ]);
 
       userData[techPhone] = {
         client: { phone: from },
         tech,
-        service: userData[from].service,
+        service: `${userData[from].type} ${userData[from].service}`,
         location: msg.location
       };
 
