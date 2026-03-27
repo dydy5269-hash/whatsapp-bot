@@ -20,6 +20,11 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const userState = {};
 const userData = {};
 
+// ---------- NORMALIZE PHONE ----------
+function normalizePhone(phone) {
+  return phone.replace("+", "");
+}
+
 // ---------- SEND ----------
 async function sendMessage(to, text) {
   await axios.post(
@@ -48,9 +53,11 @@ app.get("/webhook", (req, res) => {
 
 // ---------- GET TECH ----------
 async function getTechnician(phone) {
+  const normalized = normalizePhone(phone);
+
   const snap = await db
     .collection("technicians")
-    .where("phone", "in", [phone, "+" + phone])
+    .where("phone", "in", [normalized, "+" + normalized])
     .get();
 
   if (!snap.empty) return snap.docs[0].data();
@@ -75,7 +82,8 @@ app.post("/webhook", async (req, res) => {
     const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!msg) return res.sendStatus(200);
 
-    const from = msg.from;
+    const fromRaw = msg.from;
+    const from = normalizePhone(fromRaw);
     const text = msg.text?.body || "";
 
     // ================= TECH REPLY =================
@@ -98,7 +106,7 @@ app.post("/webhook", async (req, res) => {
         );
 
         await sendMessage(
-          from,
+          tech.phone,
           `📥 تفاصيل الطلب
 
 👤 رقم العميل: ${clientPhone}
@@ -156,7 +164,7 @@ app.post("/webhook", async (req, res) => {
       userState[from] = "tech_menu";
 
       await sendMessage(
-        from,
+        tech.phone,
         `👨‍🔧 حسابك
 
 👤 ${tech.name}
@@ -261,10 +269,7 @@ app.post("/webhook", async (req, res) => {
       if (text === "1") {
         userState[from] = "location";
 
-        await sendMessage(
-          from,
-          `📍 أرسل موقعك عبر الواتساب`
-        );
+        await sendMessage(from, `📍 أرسل موقعك عبر الواتساب`);
       }
 
       return res.sendStatus(200);
@@ -297,6 +302,8 @@ app.post("/webhook", async (req, res) => {
         return res.sendStatus(200);
       }
 
+      const techPhone = normalizePhone(tech.phone);
+
       await sendMessage(
         tech.phone,
         `📥 طلب جديد
@@ -309,7 +316,7 @@ app.post("/webhook", async (req, res) => {
 2️⃣ رفض`
       );
 
-      userData[tech.phone] = {
+      userData[techPhone] = {
         client: {
           phone: from
         },
@@ -318,7 +325,7 @@ app.post("/webhook", async (req, res) => {
         location: msg.location
       };
 
-      userState[tech.phone] = "tech_reply";
+      userState[techPhone] = "tech_reply";
 
       await sendMessage(from, "🚀 تم إرسال طلبك");
 
