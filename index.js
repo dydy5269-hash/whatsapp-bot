@@ -26,12 +26,15 @@ async function sendMessage(to, text) {
 }
 
 async function getTechnician(phone) {
-  return {
-    name: "أحمد سالم",
-    phone: "96890000000",
-    service: "كهرباء",
-    rating: "4.8",
-  };
+  if (phone === "96890000000") {
+    return {
+      name: "أحمد سالم",
+      phone: "96890000000",
+      service: "كهرباء",
+      rating: "4.8",
+    };
+  }
+  return null;
 }
 
 app.post("/webhook", async (req, res) => {
@@ -44,9 +47,11 @@ app.post("/webhook", async (req, res) => {
   // ================= TECH REPLY =================
   if (userState[from] === "tech_reply") {
     const data = userData[from];
-    const client = data?.client;
-    const tech = data?.tech;
-    const location = data?.location;
+    if (!data) return res.sendStatus(200);
+
+    const client = data.client;
+    const tech = data.tech;
+    const location = data.location;
 
     if (text.trim() === "1") {
       await sendMessage(
@@ -100,11 +105,13 @@ app.post("/webhook", async (req, res) => {
     const techPhone = "96890000000";
     const tech = await getTechnician(techPhone);
 
+    if (!tech) return res.sendStatus(200);
+
     userData[techPhone] = {
       client: from,
       tech,
       location,
-      service: "كهرباء",
+      service: userData[from]?.service || "كهرباء",
     };
 
     userState[techPhone] = "tech_reply";
@@ -114,7 +121,7 @@ app.post("/webhook", async (req, res) => {
       `📥 طلب جديد
 
 👤 ${from}
-🔧 كهرباء
+🔧 ${userData[from]?.service || "كهرباء"}
 📍 موقع متوفر
 
 1️⃣ قبول
