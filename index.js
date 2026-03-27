@@ -124,6 +124,19 @@ app.post("/webhook", async (req, res) => {
     else if (msg.type === "interactive")
       text = msg.interactive?.button_reply?.id;
 
+    // ===== BLOCK MULTIPLE ORDERS =====
+    if (
+      userState[from] &&
+      ["type", "confirm", "location", "waiting"].includes(userState[from]) &&
+      text !== "cancel"
+    ) {
+      await sendMessage(
+        from,
+        "⚠️ عندك طلب قيد التنفيذ\n\n❗ لا يمكن إنشاء طلب جديد حالياً"
+      );
+      return res.sendStatus(200);
+    }
+
     // ===== TECH ACCEPT =====
     if (userState[from] === "tech_reply") {
       const data = userData[from];
@@ -382,7 +395,8 @@ app.post("/webhook", async (req, res) => {
       userState[techPhone] = "tech_reply";
 
       await sendMessage(from, "🚀 تم إرسال الطلب");
-      userState[from] = null;
+
+      userState[from] = "waiting";
 
       return res.sendStatus(200);
     }
