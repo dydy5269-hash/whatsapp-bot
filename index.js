@@ -6,9 +6,11 @@ const app = express();
 app.use(express.json());
 
 // ---------- FIREBASE ----------
-admin.initializeApp({
-  credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_KEY))
-});
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_KEY))
+  });
+}
 const db = admin.firestore();
 
 // ---------- ENV ----------
@@ -16,7 +18,7 @@ const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
-// ---------- STATE ----------
+// ---------- STATE (يفضل استخدام قاعدة بيانات للحالات في الإنتاج) ----------
 const userState = {};
 const userData = {};
 
@@ -26,53 +28,39 @@ function normalizePhone(phone) {
 }
 
 async function sendMessage(to, text) {
-  await axios.post(
-    `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to,
-      text: { body: text }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        "Content-Type": "application/json"
-      }
-    }
-  );
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to,
+        text: { body: text }
+      },
+      { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` } }
+    );
+  } catch (err) { console.error("Error sending message:", err.response?.data || err.message); }
 }
 
-async function sendList(to, bodyText, options) {
-  await axios.post(
-    `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to,
-      type: "interactive",
-      interactive: {
-        type: "list",
-        body: { text: bodyText },
-        action: {
-          button: "اختيار",
-          sections: [
-            {
-              title: "القائمة",
-              rows: options.map(o => ({
-                id: o.id,
-                title: o.title
-              }))
-            }
-          ]
+async function sendList(to, bodyText, buttonText, sections) {
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to,
+        type: "interactive",
+        interactive: {
+          type: "list",
+          body: { text: bodyText },
+          action: {
+            button: buttonText,
+            sections: sections
+          }
         }
-      }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        "Content-Type": "application/json"
-      }
-    }
-  );
+      },
+      { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` } }
+    );
+  } catch (err) { console.error("Error sending list:", err.response?.data || err.message); }
 }
 
 // ---------- SERVICES ----------
@@ -81,7 +69,7 @@ async function getServices() {
   return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-// ---------- VERIFY ----------
+// ---------- VERIFY WEBHOOK ----------
 app.get("/webhook", (req, res) => {
   if (req.query["hub.verify_token"] === VERIFY_TOKEN) {
     return res.send(req.query["hub.challenge"]);
@@ -89,165 +77,125 @@ app.get("/webhook", (req, res) => {
   return res.sendStatus(403);
 });
 
-// ---------- WEBHOOK ----------
+// ---------- WEBHOOK MAIN ----------
 app.post("/webhook", async (req, res) => {
   try {
-    const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    const value = req.body.entry?.[0]?.changes?.[0]?.value;
+    const msg = value?.messages?.[0];
     if (!msg) return res.sendStatus(200);
 
     const from = normalizePhone(msg.from);
+    let incomingText = "";
 
-    let text = "";
-
+    // استخراج النص أو الـ ID من الرسالة
     if (msg.type === "text") {
-      text = msg.text.body;
+      incomingText = msg.text.body.trim();
     } else if (msg.type === "interactive") {
-      if (msg.interactive?.button_reply) {
-        text =
-          msg.interactive.button_reply.id ||
-          msg.interactive.button_reply.title;
-      } else if (msg.interactive?.list_reply) {
-        text =
-          msg.interactive.list_reply.id ||
-          msg.interactive.list_reply.title;
-      }
+      incomingText = msg.interactive.list_reply?.id || msg.interactive.button_reply?.id;
     }
 
-    // ===== START =====
-    if (!userState[from] || text === "مرحبا") {
+    console.log(`[${from}] State: ${userState[from] || 'New'} | Received: ${incomingText}`);
+
+    // 1. البداية أو إعادة التعيين
+    if (!userState[from] || incomingText === "مرحبا" || incomingText === "الغاء") {
       userState[from] = "main";
-
       const services = await getServices();
-
-      await sendList(
-        from,
-        "👋 مرحباً\nاختر الخدمة:",
-        services.map(s => ({
-          id: "service_" + s.id,
-          title: s.name
-        }))
-      );
-
+      
+      const rows = services.map(s => ({ id: `service_${s.id}`, title: s.name.substring(0, 24) }));
+      
+      await sendList(from, "👋 مرحباً بك في خدمة الطلبات.\nالرجاء اختيار الخدمة المطلوبة:", "الخدمات", [{ title: "قائمة الخدمات", rows }]);
       return res.sendStatus(200);
     }
 
-    // ===== SERVICE =====
+    // 2. معالجة اختيار الخدمة (Main)
     if (userState[from] === "main") {
       const services = await getServices();
-
-      let service = null;
-
-      if (text.startsWith("service_")) {
-        const serviceId = text.replace("service_", "");
-        service = services.find(s => s.id === serviceId);
-      } else {
-        service = services.find(s => s.name === text);
-      }
+      const cleanId = incomingText.replace("service_", "");
+      const service = services.find(s => s.id === cleanId || s.name === incomingText);
 
       if (!service) {
-        await sendMessage(from, "❌ اختيار غير صحيح");
+        await sendMessage(from, "⚠️ عذراً، يرجى اختيار خدمة من القائمة.");
         return res.sendStatus(200);
       }
 
-      userData[from] = {
-        serviceName: service.name,
-        types: service.types
-      };
-
+      userData[from] = { serviceId: service.id, serviceName: service.name, types: service.types || [] };
       userState[from] = "type";
 
-      await sendList(
-        from,
-        `⚡ ${service.name}\nاختر النوع:`,
-        service.types.map(t => ({
-          id: "type_" + t.id,
-          title: `${t.name} - ${t.price} ريال`
-        }))
-      );
+      const typeRows = userData[from].types.map((t, index) => ({
+        id: `type_${index}`, // نستخدم Index إذا لم يوجد ID فريد للنوع
+        title: t.name.substring(0, 24),
+        description: `${t.price} ريال`
+      }));
 
+      await sendList(from, `⚡ خدمة: ${service.name}\nالرجاء اختيار النوع:`, "الأنواع", [{ title: "الأنواع المتاحة", rows: typeRows }]);
       return res.sendStatus(200);
     }
 
-    // ===== TYPE =====
+    // 3. معالجة اختيار النوع (Type)
     if (userState[from] === "type") {
-      let type = null;
+      const typeIndex = incomingText.startsWith("type_") ? parseInt(incomingText.replace("type_", "")) : -1;
+      const selectedType = userData[from].types[typeIndex];
 
-      if (text.startsWith("type_")) {
-        const typeId = text.replace("type_", "");
-        type = userData[from].types.find(t => t.id === typeId);
-      } else {
-        type = userData[from].types.find(t =>
-          text.includes(t.name)
-        );
-      }
-
-      if (!type) {
-        await sendMessage(from, "❌ اختيار غير صحيح");
+      if (!selectedType) {
+        await sendMessage(from, "⚠️ يرجى اختيار نوع من القائمة الموضحة.");
         return res.sendStatus(200);
       }
 
-      userData[from].type = type;
+      userData[from].selectedType = selectedType;
       userState[from] = "confirm";
 
-      await sendList(
-        from,
-        `🧾 ${type.name}\n💰 ${type.price} ريال`,
-        [
-          { id: "confirm", title: "✅ تأكيد" },
-          { id: "cancel", title: "❌ إلغاء" }
-        ]
-      );
+      const confirmRows = [
+        { id: "confirm_yes", title: "✅ تأكيد الطلب" },
+        { id: "confirm_no", title: "❌ إلغاء" }
+      ];
 
+      await sendList(from, `🧾 تفاصيل طلبك:\n- الخدمة: ${userData[from].serviceName}\n- النوع: ${selectedType.name}\n- السعر: ${selectedType.price} ريال`, "التأكيد", [{ title: "هل تود التأكيد؟", rows: confirmRows }]);
       return res.sendStatus(200);
     }
 
-    // ===== CONFIRM =====
+    // 4. معالجة التأكيد (Confirm)
     if (userState[from] === "confirm") {
-      if (text === "cancel") {
-        userState[from] = "main";
-        await sendMessage(from, "❌ تم الإلغاء");
+      if (incomingText === "confirm_no") {
+        delete userState[from];
+        await sendMessage(from, "❌ تم إلغاء الطلب. يمكنك البدء من جديد بإرسال 'مرحبا'.");
         return res.sendStatus(200);
       }
 
-      if (text === "confirm") {
+      if (incomingText === "confirm_yes") {
         userState[from] = "location";
-        await sendMessage(from, "📍 أرسل موقعك");
+        await sendMessage(from, "📍 رائع! من فضلك أرسل موقعك (Location) الآن لتحديد العنوان.");
         return res.sendStatus(200);
       }
-
-      return res.sendStatus(200);
     }
 
-    // ===== LOCATION =====
+    // 5. معالجة الموقع (Location)
     if (userState[from] === "location") {
-      if (!msg.location) {
-        await sendMessage(from, "📍 أرسل الموقع");
+      if (msg.type !== "location") {
+        await sendMessage(from, "📍 من فضلك أرسل 'الموقع الجغرافي' عبر واتساب.");
         return res.sendStatus(200);
       }
 
+      const loc = msg.location;
+      // هنا يمكنك حفظ الطلب في Firestore
       await db.collection("orders").add({
         phone: from,
         service: userData[from].serviceName,
-        type: userData[from].type,
-        location: msg.location,
-        createdAt: new Date()
+        type: userData[from].selectedType,
+        location: { lat: loc.latitude, lng: loc.longitude },
+        timestamp: admin.firestore.FieldValue.serverTimestamp()
       });
 
-      await sendMessage(from, "🚀 تم إرسال الطلب بنجاح");
-
-      userState[from] = "done";
+      await sendMessage(from, "🚀 تم استلام طلبك بنجاح! سنتواصل معك قريباً.");
+      delete userState[from];
       delete userData[from];
-
       return res.sendStatus(200);
     }
 
     return res.sendStatus(200);
   } catch (err) {
-    console.log(err.response?.data || err);
+    console.error("Critical Webhook Error:", err);
     return res.sendStatus(200);
   }
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log("Server running...");
-});
+app.listen(process.env.PORT || 3000, () => console.log("Server is live..."));
