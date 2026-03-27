@@ -103,9 +103,13 @@ app.post("/webhook", async (req, res) => {
       text = msg.text.body;
     } else if (msg.type === "interactive") {
       if (msg.interactive?.button_reply) {
-        text = msg.interactive.button_reply.id;
+        text =
+          msg.interactive.button_reply.id ||
+          msg.interactive.button_reply.title;
       } else if (msg.interactive?.list_reply) {
-        text = msg.interactive.list_reply.id;
+        text =
+          msg.interactive.list_reply.id ||
+          msg.interactive.list_reply.title;
       }
     }
 
@@ -131,8 +135,14 @@ app.post("/webhook", async (req, res) => {
     if (userState[from] === "main") {
       const services = await getServices();
 
-      const serviceId = text.replace("service_", "");
-      const service = services.find(s => s.id === serviceId);
+      let service = null;
+
+      if (text.startsWith("service_")) {
+        const serviceId = text.replace("service_", "");
+        service = services.find(s => s.id === serviceId);
+      } else {
+        service = services.find(s => s.name === text);
+      }
 
       if (!service) {
         await sendMessage(from, "❌ اختيار غير صحيح");
@@ -160,8 +170,16 @@ app.post("/webhook", async (req, res) => {
 
     // ===== TYPE =====
     if (userState[from] === "type") {
-      const typeId = text.replace("type_", "");
-      const type = userData[from].types.find(t => t.id === typeId);
+      let type = null;
+
+      if (text.startsWith("type_")) {
+        const typeId = text.replace("type_", "");
+        type = userData[from].types.find(t => t.id === typeId);
+      } else {
+        type = userData[from].types.find(t =>
+          text.includes(t.name)
+        );
+      }
 
       if (!type) {
         await sendMessage(from, "❌ اختيار غير صحيح");
