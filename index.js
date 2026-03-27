@@ -105,14 +105,9 @@ app.post("/webhook", async (req, res) => {
       if (msg.interactive?.button_reply) {
         text = msg.interactive.button_reply.id;
       } else if (msg.interactive?.list_reply) {
-        text =
-          msg.interactive.list_reply.id ||
-          msg.interactive.list_reply.title;
+        text = msg.interactive.list_reply.id;
       }
     }
-
-    console.log("TEXT:", text);
-    console.log("STATE:", userState[from]);
 
     // ===== START =====
     if (!userState[from] || text === "مرحبا") {
@@ -136,10 +131,8 @@ app.post("/webhook", async (req, res) => {
     if (userState[from] === "main") {
       const services = await getServices();
 
-      let service =
-        services.find(s => text === "service_" + s.id) ||
-        services.find(s => text === s.name) ||
-        services.find(s => text.includes(s.name));
+      const serviceId = text.replace("service_", "");
+      const service = services.find(s => s.id === serviceId);
 
       if (!service) {
         await sendMessage(from, "❌ اختيار غير صحيح");
@@ -167,10 +160,8 @@ app.post("/webhook", async (req, res) => {
 
     // ===== TYPE =====
     if (userState[from] === "type") {
-      const type =
-        userData[from].types.find(t => text === "type_" + t.id) ||
-        userData[from].types.find(t => text === t.name) ||
-        userData[from].types.find(t => text.includes(t.name));
+      const typeId = text.replace("type_", "");
+      const type = userData[from].types.find(t => t.id === typeId);
 
       if (!type) {
         await sendMessage(from, "❌ اختيار غير صحيح");
@@ -203,6 +194,7 @@ app.post("/webhook", async (req, res) => {
       if (text === "confirm") {
         userState[from] = "location";
         await sendMessage(from, "📍 أرسل موقعك");
+        return res.sendStatus(200);
       }
 
       return res.sendStatus(200);
@@ -215,8 +207,18 @@ app.post("/webhook", async (req, res) => {
         return res.sendStatus(200);
       }
 
-      await sendMessage(from, "🚀 تم إرسال الطلب");
+      await db.collection("orders").add({
+        phone: from,
+        service: userData[from].serviceName,
+        type: userData[from].type,
+        location: msg.location,
+        createdAt: new Date()
+      });
+
+      await sendMessage(from, "🚀 تم إرسال الطلب بنجاح");
+
       userState[from] = "done";
+      delete userData[from];
 
       return res.sendStatus(200);
     }
