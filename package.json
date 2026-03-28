@@ -1,15 +1,48 @@
-{
-  "name": "whatsapp-bot",
-  "version": "1.0.0",
-  "main": "server.js",
-  "type": "module",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "express": "^4.18.2",
-    "axios": "^1.6.0",
-    "firebase-admin": "^12.0.0",
-    "node-fetch": "^3.3.2"
-  }
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>لوحة الإدارة</title>
+<style>
+body { font-family: Arial; background:#111; color:white; text-align:center; }
+.stat { background:#333; padding:15px; margin:10px; border-radius:10px; }
+.card { background:#222; padding:10px; margin:10px; border-radius:10px; }
+</style>
+</head>
+<body>
+
+<h1>📊 لوحة الإدارة</h1>
+<button onclick="load()">تحديث</button>
+
+<div id="stats"></div>
+<div id="orders"></div>
+
+<script>
+async function load() {
+  const res = await fetch("/admin/dashboard");
+  const data = await res.json();
+
+  document.getElementById("stats").innerHTML = `
+    <div class="stat">📦 الطلبات: ${data.totalOrders}</div>
+    <div class="stat">👨‍🔧 الفنيين: ${data.totalTechs}</div>
+    <div class="stat">🟢 متاح: ${data.available}</div>
+    <div class="stat">🔴 مشغول: ${data.busy}</div>
+  `;
+
+  const list = document.getElementById("orders");
+  list.innerHTML = "";
+
+  data.latestOrders.forEach(o => {
+    list.innerHTML += `
+      <div class="card">
+        ${o.serviceName} - ${o.status}
+      </div>
+    `;
+  });
 }
+
+load();
+</script>
+
+</body>
+</html>
