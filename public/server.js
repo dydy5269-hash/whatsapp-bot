@@ -1,0 +1,9 @@
+import express from "express";
+import axios from "axios";
+import admin from "firebase-admin";
+import path from "path";
+
+const app = express();
+app.use(express.json());
+
+app.use(express.static(path.join(process.cwd(), "public")));
