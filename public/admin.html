@@ -3,45 +3,94 @@
 <head>
 <meta charset="UTF-8">
 <title>لوحة الإدارة</title>
+
 <style>
-body { font-family: Arial; background:#111; color:white; text-align:center; }
-.stat { background:#333; padding:15px; margin:10px; border-radius:10px; }
-.card { background:#222; padding:10px; margin:10px; border-radius:10px; }
+body { font-family: Arial; background:#111; color:white; padding:10px; }
+h1 { text-align:center; }
+
+.grid { display:flex; flex-wrap:wrap; gap:10px; justify-content:center; }
+.card { background:#222; padding:15px; border-radius:10px; min-width:150px; text-align:center; }
+
+.section { margin-top:20px; }
+.order { background:#1a1a1a; padding:10px; margin:5px 0; border-radius:8px; }
+.tech { background:#1f1f1f; padding:10px; margin:5px 0; border-radius:8px; }
+
+.green { color: #00ff88; }
+.red { color: #ff4d4d; }
+.yellow { color: #ffd700; }
 </style>
+
 </head>
+
 <body>
 
 <h1>📊 لوحة الإدارة</h1>
-<button onclick="load()">تحديث</button>
 
-<div id="stats"></div>
-<div id="orders"></div>
+<button onclick="load()">🔄 تحديث</button>
+
+<div class="grid">
+  <div class="card">📦 الطلبات<br><b id="orders">0</b></div>
+  <div class="card">👨‍🔧 الفنيين<br><b id="techs">0</b></div>
+  <div class="card green">🟢 متاح<br><b id="available">0</b></div>
+  <div class="card red">🔴 مشغول<br><b id="busy">0</b></div>
+</div>
+
+<div class="section">
+  <h2>📦 الطلبات</h2>
+  <div id="ordersList"></div>
+</div>
+
+<div class="section">
+  <h2>👨‍🔧 الفنيين</h2>
+  <div id="techList"></div>
+</div>
 
 <script>
 async function load() {
   const res = await fetch("/admin/dashboard");
   const data = await res.json();
 
-  document.getElementById("stats").innerHTML = `
-    <div class="stat">📦 الطلبات: ${data.totalOrders}</div>
-    <div class="stat">👨‍🔧 الفنيين: ${data.totalTechs}</div>
-    <div class="stat">🟢 متاح: ${data.available}</div>
-    <div class="stat">🔴 مشغول: ${data.busy}</div>
-  `;
+  document.getElementById("orders").innerText = data.totalOrders;
+  document.getElementById("techs").innerText = data.totalTechs;
+  document.getElementById("available").innerText = data.available;
+  document.getElementById("busy").innerText = data.busy;
 
-  const list = document.getElementById("orders");
-  list.innerHTML = "";
+  // الطلبات
+  const ordersList = document.getElementById("ordersList");
+  ordersList.innerHTML = "";
 
-  data.latestOrders.forEach(o => {
-    list.innerHTML += `
-      <div class="card">
-      🛠 ${o.serviceName || "خدمة"} - 📌 ${o.status || "new"}o.status}
+  data.orders.slice(0, 10).forEach(o => {
+    ordersList.innerHTML += `
+      <div class="order">
+        🛠 ${o.serviceName} <br>
+        📌 الحالة: ${o.status} <br>
+        💰 السعر: ${o.price} ريال <br>
+        📱 العميل: ${o.customer}
+      </div>
+    `;
+  });
+
+  // الفنيين
+  const techList = document.getElementById("techList");
+  techList.innerHTML = "";
+
+  data.technicians.forEach(t => {
+    techList.innerHTML += `
+      <div class="tech">
+        👨‍🔧 ${t.name} <br>
+        📱 ${t.phone} <br>
+        ⭐ ${t.rating || 0} <br>
+        💰 ${t.balance || 0} ريال <br>
+        الحالة: ${t.active ? "🟢 متاح" : "🔴 مشغول"}
       </div>
     `;
   });
 }
 
 load();
+
+// تحديث تلقائي كل 5 ثواني
+setInterval(load, 5000);
 </script>
 
 </body>
