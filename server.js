@@ -29,7 +29,7 @@ app.get("/", (req, res) => {
   res.send("🔥 Server is running");
 });
 
-// ---------- SEND ----------
+// ---------- SEND TEXT ----------
 async function sendMessage(to, text) {
   await axios.post(
     `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
@@ -42,7 +42,7 @@ async function sendMessage(to, text) {
   );
 }
 
-// ---------- BUTTONS ----------
+// ---------- SEND BUTTONS ----------
 async function sendButtons(to, text, buttons) {
   await axios.post(
     `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
@@ -56,7 +56,10 @@ async function sendButtons(to, text, buttons) {
         action: {
           buttons: buttons.map(b => ({
             type: "reply",
-            reply: { id: b.id, title: b.title }
+            reply: {
+              id: b.id,
+              title: b.title.substring(0, 20)
+            }
           }))
         }
       }
@@ -65,50 +68,21 @@ async function sendButtons(to, text, buttons) {
   );
 }
 
-// ---------- DISTANCE ----------
-function distance(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) *
-    Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) ** 2;
-
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
 // ---------- GET SERVICES ----------
 async function getServices() {
   const snap = await db.collection("services").get();
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-// ---------- GET NEAREST TECH ----------
-async function getNearestTech(serviceId, lat, lng) {
+// ---------- GET TECH ----------
+async function getTech(serviceId) {
   const snap = await db.collection("technicians")
     .where("service", "==", serviceId)
     .where("active", "==", true)
+    .limit(1)
     .get();
 
-  let nearest = null;
-  let minDist = 9999;
-
-  snap.forEach(doc => {
-    const t = doc.data();
-    if (!t.lat || !t.lng) return;
-
-    const d = distance(lat, lng, t.lat, t.lng);
-
-    if (d < minDist) {
-      minDist = d;
-      nearest = t;
-    }
-  });
-
-  return nearest;
+  return snap.docs[0]?.data();
 }
 
 // ---------- WEBHOOK ----------
@@ -118,10 +92,24 @@ app.post("/webhook", async (req, res) => {
     if (!msg) return res.sendStatus(200);
 
     const from = msg.from;
+
     const text =
       msg.text?.body ||
       msg.interactive?.button_reply?.id ||
       "";
+
+    // 🚫 منع طلب مزدوج
+    const existing = await db.collection("orders")
+      .where("phone", "==", from)
+      .where("status", "==", "pending")
+      .get();
+
+    if (!existing.empty && text !== "cancel") {
+      await sendButtons(from, "⚠️ عندك طلب قيد التنفيذ", [
+        { id: "cancel", title: "❌ إلغاء الطلب" }
+      ]);
+      return res.sendStatus(200);
+    }
 
     // ---------- START ----------
     if (!state[from] || text === "مرحبا") {
@@ -131,9 +119,9 @@ app.post("/webhook", async (req, res) => {
 
       await sendButtons(
         from,
-        "اختر الخدمة:",
+        "👋 اختر الخدمة:",
         services.map(s => ({
-          id: s.id,
+          id: "service_" + s.id,
           title: s.name
         }))
       );
@@ -143,13 +131,16 @@ app.post("/webhook", async (req, res) => {
 
     // ---------- SERVICE ----------
     if (state[from] === "service") {
+      const id = text.replace("service_", "");
       const services = await getServices();
-      const s = services.find(x => x.id === text);
+      const s = services.find(x => x.id === id);
 
-      if (!s) return res.sendStatus(200);
+      if (!s) {
+        await sendMessage(from, "❌ اختيار غير صحيح");
+        return res.sendStatus(200);
+      }
 
       data[from] = { service: s };
-
       state[from] = "type";
 
       await sendButtons(
@@ -176,8 +167,8 @@ app.post("/webhook", async (req, res) => {
         from,
         `🧾 ${data[from].service.name}\n${type.name}\n${type.price} ريال`,
         [
-          { id: "ok", title: "تأكيد" },
-          { id: "cancel", title: "إلغاء" }
+          { id: "ok", title: "✅ تأكيد" },
+          { id: "cancel", title: "❌ إلغاء" }
         ]
       );
 
@@ -185,48 +176,45 @@ app.post("/webhook", async (req, res) => {
     }
 
     // ---------- CONFIRM ----------
-    if (state[from] === "confirm") {
-      if (text === "cancel") {
-        delete state[from];
-        delete data[from];
-        await sendMessage(from, "❌ تم الإلغاء");
-        return res.sendStatus(200);
+    if (state[from] === "confirm" && text === "ok") {
+      const order = await db.collection("orders").add({
+        phone: from,
+        service: data[from].service.name,
+        type: data[from].type,
+        status: "pending",
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // 🔥 ربط فني
+      const tech = await getTech(data[from].service.id);
+
+      if (tech) {
+        await sendMessage(
+          tech.phone,
+          `🚨 طلب جديد\n${data[from].service.name}\n${data[from].type.name}\n📞 ${from}`
+        );
       }
 
-      if (text === "ok") {
-        state[from] = "location";
-        await sendMessage(from, "📍 أرسل موقعك");
-        return res.sendStatus(200);
-      }
+      await sendMessage(from, "✅ تم إرسال الطلب");
+
+      delete state[from];
+      delete data[from];
+
+      return res.sendStatus(200);
     }
 
-    // ---------- LOCATION ----------
-    if (state[from] === "location") {
-      if (msg.type !== "location") {
-        await sendMessage(from, "📍 أرسل الموقع");
-        return res.sendStatus(200);
+    // ---------- CANCEL ----------
+    if (text === "cancel") {
+      const orders = await db.collection("orders")
+        .where("phone", "==", from)
+        .where("status", "==", "pending")
+        .get();
+
+      for (const doc of orders.docs) {
+        await doc.ref.update({ status: "cancelled" });
       }
 
-      const lat = msg.location.latitude;
-      const lng = msg.location.longitude;
-
-      const tech = await getNearestTech(
-        data[from].service.id,
-        lat,
-        lng
-      );
-
-      if (!tech) {
-        await sendMessage(from, "❌ لا يوجد فني");
-        return res.sendStatus(200);
-      }
-
-      await sendMessage(
-        tech.phone,
-        `🚨 طلب جديد\n${data[from].service.name}\n${data[from].type.name}\n📍 https://maps.google.com/?q=${lat},${lng}`
-      );
-
-      await sendMessage(from, "✅ تم إرسال الطلب لأقرب فني");
+      await sendMessage(from, "❌ تم الإلغاء");
 
       delete state[from];
       delete data[from];
@@ -235,6 +223,7 @@ app.post("/webhook", async (req, res) => {
     }
 
     return res.sendStatus(200);
+
   } catch (e) {
     console.error(e);
     return res.sendStatus(200);
