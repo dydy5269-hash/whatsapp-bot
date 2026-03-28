@@ -69,7 +69,7 @@ async function sendList(to, bodyText, buttonText, sections) {
   );
 }
 
-// ---------- DB ----------
+// ---------- DATABASE ----------
 async function getServices() {
   const snap = await db.collection("services").get();
   return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -97,6 +97,28 @@ async function getTech(serviceId) {
 
   return { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
+
+// ---------- ADMIN STATS ----------
+app.get("/admin/technicians/stats", async (req, res) => {
+  try {
+    const snap = await db.collection("technicians").get();
+
+    let total = 0;
+    let available = 0;
+    let busy = 0;
+
+    snap.forEach(doc => {
+      total++;
+      if (doc.data().active === true) available++;
+      else busy++;
+    });
+
+    res.json({ total, available, busy });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "error" });
+  }
+});
 
 // ---------- VERIFY ----------
 app.get("/webhook", (req, res) => {
@@ -131,7 +153,6 @@ app.post("/webhook", async (req, res) => {
       incomingText.startsWith("reject_")
     ) {
       const orderId = incomingText.split("_")[1];
-
       const ref = db.collection("orders").doc(orderId);
       const snap = await ref.get();
 
@@ -145,22 +166,18 @@ app.post("/webhook", async (req, res) => {
       if (incomingText.startsWith("accept_")) {
         await ref.update({ status: "accepted" });
 
-        await sendMessage(
-          order.customer,
-          "👨‍🔧 تم قبول طلبك، الفني في الطريق 🚗"
-        );
+        await db.collection("technicians").doc(order.technicianId).update({
+          active: false
+        });
 
+        await sendMessage(order.customer, "👨‍🔧 الفني في الطريق 🚗");
         await sendMessage(from, "✅ تم قبول الطلب");
       }
 
       if (incomingText.startsWith("reject_")) {
         await ref.update({ status: "rejected" });
 
-        await sendMessage(
-          order.customer,
-          "❌ تم رفض الطلب، سيتم تحويله لفني آخر"
-        );
-
+        await sendMessage(order.customer, "❌ تم رفض الطلب");
         await sendMessage(from, "❌ تم رفض الطلب");
       }
 
@@ -171,7 +188,6 @@ app.post("/webhook", async (req, res) => {
     if (!userState[from] || incomingText === "مرحبا") {
       const tech = await getTechnicianByPhone(from);
 
-      // 👨‍🔧 فني
       if (tech) {
         await sendMessage(
           from,
@@ -184,9 +200,7 @@ app.post("/webhook", async (req, res) => {
         return res.sendStatus(200);
       }
 
-      // 👤 عميل
       userState[from] = "main";
-
       const services = await getServices();
 
       await sendList(
@@ -313,7 +327,6 @@ app.post("/webhook", async (req, res) => {
 
       const orderId = orderRef.id;
 
-      // 📩 إرسال للفني
       await sendMessage(
         tech.phone,
         `📥 طلب جديد
