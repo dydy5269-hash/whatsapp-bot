@@ -116,10 +116,15 @@ app.get("/admin/dashboard", async (req, res) => {
       else busy++;
     });
 
-    const latestOrders = ordersSnap.docs.slice(-5).map(d => ({
-      id: d.id,
-      ...d.data()
-    }));
+    const latestOrders = ordersSnap.docs.slice(-5).map(d => {
+  const data = d.data();
+
+  return {
+    id: d.id,
+    serviceName: data.serviceName || "بدون اسم",
+    status: data.status || "new"
+  };
+});
 
     res.json({
       totalOrders,
