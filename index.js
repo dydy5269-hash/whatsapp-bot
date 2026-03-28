@@ -39,12 +39,6 @@ async function sendMessage(to, text) {
   );
 }
 
-// ---------- SERVICES ----------
-async function getServices() {
-  const snap = await db.collection("services").get();
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-}
-
 // ---------- CHECK TECH ----------
 async function isTechnician(phone) {
   const snap = await db.collection("technicians").where("phone", "==", phone).get();
@@ -52,19 +46,10 @@ async function isTechnician(phone) {
 }
 
 // ---------- CHECK ACTIVE ORDER ----------
-async function hasActiveOrder(phone) {
+async function getActiveOrder(phone) {
   const snap = await db.collection("orders")
     .where("phone", "==", phone)
     .where("status", "in", ["pending", "accepted"])
-    .get();
-  return !snap.empty;
-}
-
-// ---------- FIND TECH ----------
-async function findTech(service) {
-  const snap = await db.collection("technicians")
-    .where("service", "==", service)
-    .where("active", "==", true)
     .limit(1)
     .get();
 
@@ -89,13 +74,7 @@ app.post("/webhook", async (req, res) => {
     if (!msg) return res.sendStatus(200);
 
     const from = normalizePhone(msg.from);
-    let text = "";
-
-    if (msg.type === "text") {
-      text = msg.text.body.trim();
-    }
-
-    console.log("TEXT:", text, "STATE:", userState[from]);
+    let text = msg.type === "text" ? msg.text.body.trim() : "";
 
     // ===== منع الفني =====
     if (await isTechnician(from)) {
@@ -103,127 +82,63 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ===== البداية =====
-    if (!userState[from] || text === "مرحبا") {
-      if (await hasActiveOrder(from)) {
-        await sendMessage(from, "⚠️ لديك طلب قيد التنفيذ");
-        return res.sendStatus(200);
-      }
+    // ===== فحص طلب موجود =====
+    const activeOrder = await getActiveOrder(from);
 
-      userState[from] = "service";
-
-      const services = await getServices();
-
-      let msgText = "👋 مرحبا\nاختر الخدمة:\n\n";
-      services.forEach((s, i) => {
-        msgText += `${i + 1}️⃣ ${s.name}\n`;
-      });
-
-      userData[from] = { services };
-
-      await sendMessage(from, msgText);
-      return res.sendStatus(200);
-    }
-
-    // ===== اختيار الخدمة =====
-    if (userState[from] === "service") {
-      const index = parseInt(text) - 1;
-      const service = userData[from].services[index];
-
-      if (!service) {
-        await sendMessage(from, "❌ اختر رقم صحيح");
-        return res.sendStatus(200);
-      }
-
-      userData[from].service = service;
-      userState[from] = "type";
-
-      let msgText = `⚡ ${service.name}\nاختر النوع:\n\n`;
-
-      service.types.forEach((t, i) => {
-        msgText += `${i + 1}️⃣ ${t.name} - ${t.price} ريال\n`;
-      });
-
-      await sendMessage(from, msgText);
-      return res.sendStatus(200);
-    }
-
-    // ===== اختيار النوع =====
-    if (userState[from] === "type") {
-      const index = parseInt(text) - 1;
-      const type = userData[from].service.types[index];
-
-      if (!type) {
-        await sendMessage(from, "❌ اختر رقم صحيح");
-        return res.sendStatus(200);
-      }
-
-      userData[from].type = type;
-      userState[from] = "confirm";
+    if (!userState[from] && activeOrder) {
+      userState[from] = "existing_order";
 
       await sendMessage(
         from,
-        `🧾 ${type.name}\n💰 ${type.price} ريال\n\n1️⃣ تأكيد\n2️⃣ إلغاء`
+        "⚠️ لديك طلب قيد التنفيذ\n\n1️⃣ متابعة الطلب\n2️⃣ إلغاء الطلب"
       );
 
+      userData[from] = { orderId: activeOrder.id };
+
       return res.sendStatus(200);
     }
 
-    // ===== تأكيد =====
-    if (userState[from] === "confirm") {
-      if (text === "2") {
-        delete userState[from];
-        delete userData[from];
-        await sendMessage(from, "❌ تم الإلغاء");
-        return res.sendStatus(200);
-      }
-
+    // ===== التعامل مع الطلب الحالي =====
+    if (userState[from] === "existing_order") {
       if (text === "1") {
-        userState[from] = "location";
-        await sendMessage(from, "📍 أرسل موقعك");
+        await sendMessage(from, "📦 طلبك قيد التنفيذ حالياً");
+        delete userState[from];
+        return res.sendStatus(200);
       }
 
-      return res.sendStatus(200);
+      if (text === "2") {
+        userState[from] = "cancel_reason";
+        await sendMessage(from, "✍️ اكتب سبب الإلغاء:");
+        return res.sendStatus(200);
+      }
     }
 
-    // ===== الموقع =====
-    if (userState[from] === "location") {
-      if (msg.type !== "location") {
-        await sendMessage(from, "📍 أرسل الموقع");
-        return res.sendStatus(200);
-      }
+    // ===== سبب الإلغاء =====
+    if (userState[from] === "cancel_reason") {
+      const orderId = userData[from].orderId;
 
-      const tech = await findTech(userData[from].service.name);
-
-      if (!tech) {
-        await sendMessage(from, "🚫 لا يوجد فني متاح");
-        return res.sendStatus(200);
-      }
-
-      // حفظ الطلب
-      await db.collection("orders").add({
-        phone: from,
-        service: userData[from].service.name,
-        type: userData[from].type,
-        technicianId: tech.id,
-        status: "pending",
-        location: {
-          lat: msg.location.latitude,
-          lng: msg.location.longitude
-        },
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      await db.collection("orders").doc(orderId).update({
+        status: "cancelled",
+        cancelReason: text,
+        cancelledAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
-      // إرسال للفني
-      await sendMessage(
-        tech.phone,
-        `📥 طلب جديد\n${userData[from].service.name}\n${userData[from].type.name}\n\n1️⃣ قبول\n2️⃣ رفض`
-      );
-
-      await sendMessage(from, "🚀 تم إرسال طلبك");
+      await sendMessage(from, "❌ تم إلغاء الطلب\nشكراً لك");
 
       delete userState[from];
       delete userData[from];
+
+      return res.sendStatus(200);
+    }
+
+    // ===== البداية =====
+    if (!userState[from] || text === "مرحبا") {
+      userState[from] = "main";
+
+      await sendMessage(
+        from,
+        "👋 مرحبا\nاختر الخدمة:\n\n1️⃣ كهرباء\n2️⃣ سباكة\n3️⃣ تكييف"
+      );
 
       return res.sendStatus(200);
     }
