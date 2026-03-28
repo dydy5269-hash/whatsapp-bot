@@ -174,10 +174,25 @@ app.post("/webhook", async (req, res) => {
       }
 
       userData[from].selectedType = type;
-      userState[from] = "location";
+      userState[from] = "confirm";
 
-      await sendMessage(from, "📍 أرسل موقعك");
-      return res.sendStatus(200);
+        await sendList(
+         from,
+  `🧾 تفاصيل الطلب:      
+
+الخدمة: ${safeText(userData[from].name)}
+النوع: ${safeText(type.name)}
+السعر: ${safePrice(type.price)} ريال
+
+هل تود المتابعة؟`,
+  "تأكيد",
+  [
+    { id: "confirm_yes", title: "✅ متابعة" },
+    { id: "confirm_no", title: "❌ إلغاء" }
+  ]
+);
+
+return res.sendStatus(200);
     }
 
     // ===== LOCATION =====
