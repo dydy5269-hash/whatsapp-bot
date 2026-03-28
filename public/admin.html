@@ -35,7 +35,7 @@ async function load() {
   data.latestOrders.forEach(o => {
     list.innerHTML += `
       <div class="card">
-        ${o.serviceName} - ${o.status}
+      🛠 ${o.serviceName || "خدمة"} - 📌 ${o.status || "new"}o.status}
       </div>
     `;
   });
