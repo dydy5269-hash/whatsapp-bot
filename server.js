@@ -5,7 +5,7 @@ import admin from "firebase-admin";
 const app = express();
 app.use(express.json());
 
-// ---------- FIREBASE ----------
+// ===== FIREBASE =====
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_KEY))
@@ -13,93 +13,78 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
-// ---------- ENV ----------
+// ===== ENV =====
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
-// ---------- STATE ----------
+// ===== STATE =====
 const userState = {};
 const userData = {};
 
-// ---------- HELPERS ----------
-function normalizePhone(phone) {
-  return phone.replace("+", "");
-}
+// ===== HELPERS =====
+const normalize = (p) => p.replace("+", "");
 
+// ===== SEND =====
 async function sendMessage(to, text) {
-  await axios.post(
-    `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to,
-      text: { body: text }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        "Content-Type": "application/json"
-      }
+  await axios.post(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`, {
+    messaging_product: "whatsapp",
+    to,
+    text: { body: text }
+  }, {
+    headers: {
+      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+      "Content-Type": "application/json"
     }
-  );
+  });
 }
 
-async function sendList(to, bodyText, buttonText, sections) {
-  await axios.post(
-    `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to,
-      type: "interactive",
-      interactive: {
-        type: "list",
-        body: { text: bodyText },
-        action: { button: buttonText, sections }
-      }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        "Content-Type": "application/json"
-      }
+async function sendList(to, body, button, sections) {
+  await axios.post(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`, {
+    messaging_product: "whatsapp",
+    to,
+    type: "interactive",
+    interactive: {
+      type: "list",
+      body: { text: body },
+      action: { button, sections }
     }
-  );
+  }, {
+    headers: {
+      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+      "Content-Type": "application/json"
+    }
+  });
 }
 
 async function sendLocation(to, lat, lng) {
-  await axios.post(
-    `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to,
-      type: "location",
-      location: { latitude: lat, longitude: lng }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        "Content-Type": "application/json"
-      }
+  await axios.post(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`, {
+    messaging_product: "whatsapp",
+    to,
+    type: "location",
+    location: { latitude: lat, longitude: lng }
+  }, {
+    headers: {
+      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+      "Content-Type": "application/json"
     }
-  );
+  });
 }
 
-// ---------- DATABASE ----------
+// ===== DATABASE =====
 async function getServices() {
   const snap = await db.collection("services").get();
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-async function getTechnicianByPhone(phone) {
+async function getTechByPhone(phone) {
   const snap = await db.collection("technicians").where("phone", "==", phone).get();
   if (snap.empty) return null;
   return { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
 
-async function getBestTechnician(serviceId) {
-  const snap = await db
-    .collection("technicians")
-    .where("services", "array-contains", serviceId)
+async function getAvailableTech(serviceId) {
+  const snap = await db.collection("technicians")
     .where("active", "==", true)
     .get();
 
@@ -107,21 +92,21 @@ async function getBestTechnician(serviceId) {
   return { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
 
-// ---------- VERIFY ----------
+// ===== VERIFY =====
 app.get("/webhook", (req, res) => {
   if (req.query["hub.verify_token"] === VERIFY_TOKEN) {
     return res.send(req.query["hub.challenge"]);
   }
-  return res.sendStatus(403);
+  res.sendStatus(403);
 });
 
-// ---------- WEBHOOK ----------
+// ===== WEBHOOK =====
 app.post("/webhook", async (req, res) => {
   try {
     const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!msg) return res.sendStatus(200);
 
-    const from = normalizePhone(msg.from);
+    const from = normalize(msg.from);
     let text = "";
 
     if (msg.type === "text") text = msg.text.body.trim();
@@ -129,21 +114,21 @@ app.post("/webhook", async (req, res) => {
       text = msg.interactive?.list_reply?.id || msg.interactive?.button_reply?.id;
     }
 
-    // ===== الفني =====
-    const techCheck = await getTechnicianByPhone(from);
+    console.log("FROM:", from, "TEXT:", text);
+
+    // ===== فني =====
+    const techCheck = await getTechByPhone(from);
     if (techCheck && text === "مرحبا") {
-      await sendMessage(from,
-        `👨‍🔧 ${techCheck.name}\n⭐ ${techCheck.rating}\n💰 ${techCheck.balance}`
-      );
+      await sendMessage(from, `👨‍🔧 ${techCheck.name}\n⭐ ${techCheck.rating}\n💰 ${techCheck.balance}`);
       return res.sendStatus(200);
     }
 
-    // ===== البداية =====
+    // ===== بداية =====
     if (!userState[from] || text === "مرحبا") {
       userState[from] = "main";
       const services = await getServices();
 
-      await sendList(from, "اختر الخدمة", "الخدمات", [{
+      await sendList(from, "👋 اختر الخدمة", "الخدمات", [{
         title: "القائمة",
         rows: services.map(s => ({
           id: "service_" + s.id,
@@ -154,7 +139,7 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ===== اختيار الخدمة =====
+    // ===== اختيار خدمة =====
     if (userState[from] === "main") {
       const services = await getServices();
       const id = text.replace("service_", "");
@@ -164,7 +149,7 @@ app.post("/webhook", async (req, res) => {
       userState[from] = "type";
 
       await sendList(from, service.name, "الأنواع", [{
-        title: "اختيار",
+        title: "اختر",
         rows: service.types.map((t, i) => ({
           id: "type_" + i,
           title: t.name.substring(0, 24),
@@ -184,7 +169,7 @@ app.post("/webhook", async (req, res) => {
       userState[from] = "confirm";
 
       await sendList(from,
-        `${type.name}\n${type.price} ريال`,
+        `${type.name}\n💰 ${type.price}`,
         "تأكيد",
         [{
           title: "تأكيد",
@@ -217,10 +202,10 @@ app.post("/webhook", async (req, res) => {
       if (msg.type !== "location") return res.sendStatus(200);
 
       const service = userData[from];
-      const tech = await getBestTechnician(service.id);
+      const tech = await getAvailableTech(service.id);
 
       if (!tech) {
-        await sendMessage(from, "❌ لا يوجد فني");
+        await sendMessage(from, "❌ لا يوجد فني متاح");
         return res.sendStatus(200);
       }
 
@@ -260,76 +245,44 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ===== قبول الطلب =====
+    // ===== قبول =====
     if (text.startsWith("accept_")) {
-  try {
-    const id = text.split("_")[1];
+      const id = text.split("_")[1];
+      const ref = db.collection("orders").doc(id);
+      const snap = await ref.get();
 
-    const ref = db.collection("orders").doc(id);
-    const snap = await ref.get();
+      if (!snap.exists) return res.sendStatus(200);
 
-    if (!snap.exists) {
-      console.log("❌ order not found");
-      return res.sendStatus(200);
-    }
+      const order = snap.data();
 
-    const order = snap.data();
-    console.log("ORDER:", order);
+      await ref.update({ status: "accepted" });
 
-    await ref.update({ status: "accepted" });
+      const techRef = db.collection("technicians").doc(order.technicianId);
+      const techSnap = await techRef.get();
+      const tech = techSnap.data();
 
-    const techRef = db.collection("technicians").doc(order.technicianId);
-    const techSnap = await techRef.get();
+      await techRef.update({ active: false });
 
-    if (!techSnap.exists) {
-      console.log("❌ tech not found");
-      return res.sendStatus(200);
-    }
+      // إرسال للفني
+      await sendMessage(tech.phone, `📱 العميل: ${order.customer}`);
 
-    const tech = techSnap.data();
-    console.log("TECH:", tech);
+      if (order.location?.latitude) {
+        await sendLocation(
+          tech.phone,
+          order.location.latitude,
+          order.location.longitude
+        );
+      }
 
-    // تحديث الفني
-    await techRef.update({ active: false });
-
-    // ===== إرسال للفني (بيانات العميل) =====
-    const customerPhone = order.customer;
-
-    if (!customerPhone) {
-      console.log("❌ customer phone missing");
-    } else {
-      await sendMessage(
-        tech.phone,
-        `📍 طلب جديد\n📱 رقم العميل: ${customerPhone}`
+      // إرسال للعميل
+      await sendMessage(order.customer,
+        `👨‍🔧 ${tech.name}\n📱 ${tech.phone}\n🚗 في الطريق`
       );
-    }
-
-    // ===== إرسال الموقع =====
-    if (order.location && order.location.latitude) {
-      await sendLocation(
-        tech.phone,
-        order.location.latitude,
-        order.location.longitude
-      );
-    } else {
-      console.log("❌ location missing", order.location);
-    }
-
-    // ===== إرسال للعميل (بيانات الفني) =====
-    await sendMessage(
-      order.customer,
-      `👨‍🔧 تم تعيين فني\n${tech.name}\n📱 ${tech.phone}\n🚗 في الطريق`
-    );
-
-    return res.sendStatus(200);
-
-  } catch (err) {
-    console.log("❌ ACCEPT ERROR:", err);
 
       return res.sendStatus(200);
     }
 
-    // ===== إنهاء + خصم =====
+    // ===== إنهاء =====
     if (text.startsWith("done_")) {
       const id = text.split("_")[1];
       const ref = db.collection("orders").doc(id);
@@ -341,18 +294,13 @@ app.post("/webhook", async (req, res) => {
       const techRef = db.collection("technicians").doc(order.technicianId);
       const tech = (await techRef.get()).data();
 
-      const commission = order.price * 0.2;
-      const newBalance = (tech.balance || 0) - commission;
+      const fee = order.price * 0.2;
+      const balance = (tech.balance || 0) - fee;
 
-      await techRef.update({
-        balance: newBalance,
-        active: true
-      });
+      await techRef.update({ balance, active: true });
 
       await sendMessage(order.customer, "✅ تم الإنجاز");
-      await sendMessage(tech.phone,
-        `💰 تم خصم ${commission}\nرصيدك: ${newBalance}`
-      );
+      await sendMessage(tech.phone, `💰 تم خصم ${fee}\nرصيدك: ${balance}`);
 
       return res.sendStatus(200);
     }
@@ -360,11 +308,11 @@ app.post("/webhook", async (req, res) => {
     return res.sendStatus(200);
 
   } catch (err) {
-    console.log(err);
+    console.log("ERROR:", err);
     return res.sendStatus(200);
   }
 });
 
 app.listen(process.env.PORT || 3000, () => {
-  console.log("Server running...");
+  console.log("🚀 Server running");
 });
