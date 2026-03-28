@@ -124,19 +124,47 @@ app.post("/webhook", async (req, res) => {
     console.log("STATE:", userState[from], "TEXT:", text);
 
     // ===== START =====
-    if (!userState[from] || text === "مرحبا" || text === "0") {
-      userState[from] = "main";
+    // ===== START =====
+if (!userState[from] || incomingText === "مرحبا") {
 
-      const services = await getServices();
+  const tech = await getTechnicianByPhone(from);
 
-      const rows = services.map(s => ({
-        id: `service_${s.id}`,
-        title: safeText(s.name)
-      }));
+  // ✅ إذا هو فني
+  if (tech) {
+    await sendMessage(
+      from,
+      `👨‍🔧 بياناتك:
 
-      await sendList(from, "👋 اختر الخدمة:", "الخدمات", rows);
-      return res.sendStatus(200);
-    }
+الاسم: ${tech.name}
+⭐ التقييم: ${tech.rating}
+💰 الرصيد: ${tech.balance} ريال`
+    );
+
+    return res.sendStatus(200);
+  }
+
+  // 👤 إذا عميل
+  userState[from] = "main";
+
+  const services = await getServices();
+
+  await sendList(
+    from,
+    "👋 مرحباً\nاختر الخدمة:",
+    "الخدمات",
+    [
+      {
+        title: "القائمة",
+        rows: services.map(s => ({
+          id: "service_" + s.id,
+          title: s.name
+        }))
+      }
+    ]
+  );
+
+  return res.sendStatus(200);
+}
 
     // ===== SERVICE =====
     if (userState[from] === "main") {
