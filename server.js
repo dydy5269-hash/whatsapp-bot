@@ -29,7 +29,16 @@ app.get("/", (req, res) => {
   res.send("🔥 Server is running");
 });
 
-// ---------- SEND TEXT ----------
+// ---------- HELPERS ----------
+function chunkArray(arr, size) {
+  const result = [];
+  for (let i = 0; i < arr.length; i += size) {
+    result.push(arr.slice(i, i + size));
+  }
+  return result;
+}
+
+// ---------- SEND ----------
 async function sendMessage(to, text) {
   await axios.post(
     `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
@@ -42,7 +51,6 @@ async function sendMessage(to, text) {
   );
 }
 
-// ---------- SEND BUTTONS ----------
 async function sendButtons(to, text, buttons) {
   await axios.post(
     `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
@@ -54,7 +62,7 @@ async function sendButtons(to, text, buttons) {
         type: "button",
         body: { text },
         action: {
-          buttons: buttons.map(b => ({
+          buttons: buttons.slice(0, 3).map(b => ({
             type: "reply",
             reply: {
               id: b.id,
@@ -68,13 +76,13 @@ async function sendButtons(to, text, buttons) {
   );
 }
 
-// ---------- GET SERVICES ----------
+// ---------- SERVICES ----------
 async function getServices() {
   const snap = await db.collection("services").get();
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-// ---------- GET TECH ----------
+// ---------- TECH ----------
 async function getTech(serviceId) {
   const snap = await db.collection("technicians")
     .where("service", "==", serviceId)
@@ -106,39 +114,91 @@ app.post("/webhook", async (req, res) => {
 
     if (!existing.empty && text !== "cancel") {
       await sendButtons(from, "⚠️ عندك طلب قيد التنفيذ", [
-        { id: "cancel", title: "❌ إلغاء الطلب" }
+        { id: "cancel", title: "❌ إلغاء" }
       ]);
       return res.sendStatus(200);
     }
 
     // ---------- START ----------
     if (!state[from] || text === "مرحبا") {
-      state[from] = "service";
-
       const services = await getServices();
+      const pages = chunkArray(services, 3);
+
+      data[from] = { pages };
+      state[from] = "service_page_0";
+
+      const page = pages[0];
 
       await sendButtons(
         from,
         "👋 اختر الخدمة:",
-        services.map(s => ({
-          id: "service_" + s.id,
-          title: s.name
-        }))
+        [
+          ...page.map(s => ({
+            id: "service_" + s.id,
+            title: s.name
+          })),
+          ...(pages.length > 1 ? [{ id: "next_1", title: "➡️ المزيد" }] : [])
+        ]
+      );
+
+      return res.sendStatus(200);
+    }
+
+    // ---------- PAGINATION NEXT ----------
+    if (text.startsWith("next_")) {
+      const i = parseInt(text.replace("next_", ""));
+      const pages = data[from].pages;
+
+      const page = pages[i];
+
+      await sendButtons(
+        from,
+        "اختر الخدمة:",
+        [
+          ...page.map(s => ({
+            id: "service_" + s.id,
+            title: s.name
+          })),
+          ...(i > 0 ? [{ id: "prev_" + (i - 1), title: "⬅️ رجوع" }] : []),
+          ...(i < pages.length - 1
+            ? [{ id: "next_" + (i + 1), title: "➡️ المزيد" }]
+            : [])
+        ]
+      );
+
+      return res.sendStatus(200);
+    }
+
+    // ---------- PAGINATION PREV ----------
+    if (text.startsWith("prev_")) {
+      const i = parseInt(text.replace("prev_", ""));
+      const pages = data[from].pages;
+
+      const page = pages[i];
+
+      await sendButtons(
+        from,
+        "اختر الخدمة:",
+        [
+          ...page.map(s => ({
+            id: "service_" + s.id,
+            title: s.name
+          })),
+          ...(i > 0 ? [{ id: "prev_" + (i - 1), title: "⬅️ رجوع" }] : []),
+          ...(i < pages.length - 1
+            ? [{ id: "next_" + (i + 1), title: "➡️ المزيد" }]
+            : [])
+        ]
       );
 
       return res.sendStatus(200);
     }
 
     // ---------- SERVICE ----------
-    if (state[from] === "service") {
+    if (text.startsWith("service_")) {
       const id = text.replace("service_", "");
       const services = await getServices();
       const s = services.find(x => x.id === id);
-
-      if (!s) {
-        await sendMessage(from, "❌ اختيار غير صحيح");
-        return res.sendStatus(200);
-      }
 
       data[from] = { service: s };
       state[from] = "type";
@@ -156,7 +216,7 @@ app.post("/webhook", async (req, res) => {
     }
 
     // ---------- TYPE ----------
-    if (state[from] === "type") {
+    if (text.startsWith("type_")) {
       const index = parseInt(text.replace("type_", ""));
       const type = data[from].service.types[index];
 
@@ -176,7 +236,7 @@ app.post("/webhook", async (req, res) => {
     }
 
     // ---------- CONFIRM ----------
-    if (state[from] === "confirm" && text === "ok") {
+    if (text === "ok") {
       const order = await db.collection("orders").add({
         phone: from,
         service: data[from].service.name,
@@ -185,7 +245,6 @@ app.post("/webhook", async (req, res) => {
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
-      // 🔥 ربط فني
       const tech = await getTech(data[from].service.id);
 
       if (tech) {
@@ -214,7 +273,7 @@ app.post("/webhook", async (req, res) => {
         await doc.ref.update({ status: "cancelled" });
       }
 
-      await sendMessage(from, "❌ تم الإلغاء");
+      await sendMessage(from, "❌ تم إلغاء الطلب");
 
       delete state[from];
       delete data[from];
