@@ -82,7 +82,6 @@ async function getTechnicianByPhone(phone) {
     .get();
 
   if (snap.empty) return null;
-
   return { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
 
@@ -94,30 +93,24 @@ async function getTech(serviceId) {
     .get();
 
   if (snap.empty) return null;
-
   return { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
 
-// ---------- ADMIN STATS ----------
+// ---------- ADMIN ----------
 app.get("/admin/technicians/stats", async (req, res) => {
-  try {
-    const snap = await db.collection("technicians").get();
+  const snap = await db.collection("technicians").get();
 
-    let total = 0;
-    let available = 0;
-    let busy = 0;
+  let total = 0;
+  let available = 0;
+  let busy = 0;
 
-    snap.forEach(doc => {
-      total++;
-      if (doc.data().active === true) available++;
-      else busy++;
-    });
+  snap.forEach(doc => {
+    total++;
+    if (doc.data().active) available++;
+    else busy++;
+  });
 
-    res.json({ total, available, busy });
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: "error" });
-  }
+  res.json({ total, available, busy });
 });
 
 // ---------- VERIFY ----------
@@ -145,9 +138,7 @@ app.post("/webhook", async (req, res) => {
         msg.interactive?.button_reply?.id;
     }
 
-    console.log("STATE:", userState[from], "TEXT:", incomingText);
-
-    // ===== TECH ACTION =====
+    // ===== TECH ACCEPT/REJECT =====
     if (
       incomingText.startsWith("accept_") ||
       incomingText.startsWith("reject_")
@@ -155,11 +146,7 @@ app.post("/webhook", async (req, res) => {
       const orderId = incomingText.split("_")[1];
       const ref = db.collection("orders").doc(orderId);
       const snap = await ref.get();
-
-      if (!snap.exists) {
-        await sendMessage(from, "❌ الطلب غير موجود");
-        return res.sendStatus(200);
-      }
+      if (!snap.exists) return res.sendStatus(200);
 
       const order = snap.data();
 
@@ -171,16 +158,117 @@ app.post("/webhook", async (req, res) => {
         });
 
         await sendMessage(order.customer, "👨‍🔧 الفني في الطريق 🚗");
+
+        await sendList(
+          from,
+          "🚀 اختر الحالة:",
+          "الحالة",
+          [
+            {
+              title: "التحديث",
+              rows: [
+                { id: `onway_${orderId}`, title: "🚗 في الطريق" },
+                { id: `arrived_${orderId}`, title: "📍 وصلت" },
+                { id: `done_${orderId}`, title: "✔️ تم الإنجاز" }
+              ]
+            }
+          ]
+        );
+
         await sendMessage(from, "✅ تم قبول الطلب");
       }
 
       if (incomingText.startsWith("reject_")) {
         await ref.update({ status: "rejected" });
-
         await sendMessage(order.customer, "❌ تم رفض الطلب");
         await sendMessage(from, "❌ تم رفض الطلب");
       }
 
+      return res.sendStatus(200);
+    }
+
+    // ===== STATUS UPDATES =====
+    if (
+      incomingText.startsWith("onway_") ||
+      incomingText.startsWith("arrived_") ||
+      incomingText.startsWith("done_")
+    ) {
+      const orderId = incomingText.split("_")[1];
+      const ref = db.collection("orders").doc(orderId);
+      const snap = await ref.get();
+      if (!snap.exists) return res.sendStatus(200);
+
+      const order = snap.data();
+
+      if (incomingText.startsWith("onway_")) {
+        await ref.update({ status: "on_the_way" });
+        await sendMessage(order.customer, "🚗 الفني في الطريق");
+        await sendMessage(from, "🚗 تم التحديث");
+      }
+
+      if (incomingText.startsWith("arrived_")) {
+        await ref.update({ status: "arrived" });
+        await sendMessage(order.customer, "📍 وصل الفني");
+        await sendMessage(from, "📍 تم التحديث");
+      }
+
+      if (incomingText.startsWith("done_")) {
+        await ref.update({ status: "done" });
+
+        await db.collection("technicians").doc(order.technicianId).update({
+          active: true
+        });
+
+        await sendMessage(order.customer, "✅ تم إنجاز الطلب");
+
+        await sendList(
+          order.customer,
+          "⭐ قيّم الخدمة:",
+          "تقييم",
+          [
+            {
+              title: "التقييم",
+              rows: [
+                { id: `rate_5_${orderId}`, title: "⭐️⭐️⭐️⭐️⭐️" },
+                { id: `rate_4_${orderId}`, title: "⭐️⭐️⭐️⭐️" },
+                { id: `rate_3_${orderId}`, title: "⭐️⭐️⭐️" },
+                { id: `rate_2_${orderId}`, title: "⭐️⭐️" },
+                { id: `rate_1_${orderId}`, title: "⭐️" }
+              ]
+            }
+          ]
+        );
+
+        await sendMessage(from, "✅ تم إنهاء الطلب");
+      }
+
+      return res.sendStatus(200);
+    }
+
+    // ===== RATING =====
+    if (incomingText.startsWith("rate_")) {
+      const parts = incomingText.split("_");
+      const rating = parseInt(parts[1]);
+      const orderId = parts[2];
+
+      const ref = db.collection("orders").doc(orderId);
+      const snap = await ref.get();
+      if (!snap.exists) return res.sendStatus(200);
+
+      const order = snap.data();
+
+      await ref.update({ rating });
+
+      const techRef = db.collection("technicians").doc(order.technicianId);
+      const techSnap = await techRef.get();
+
+      if (techSnap.exists) {
+        const tech = techSnap.data();
+        const newRating = ((tech.rating || 0) + rating) / 2;
+        await techRef.update({ rating: newRating });
+      }
+
+      await sendMessage(from, "🙏 شكراً لتقييمك");
       return res.sendStatus(200);
     }
 
@@ -192,10 +280,9 @@ app.post("/webhook", async (req, res) => {
         await sendMessage(
           from,
           `👨‍🔧 بياناتك:
-
 الاسم: ${tech.name}
 ⭐ التقييم: ${tech.rating}
-💰 الرصيد: ${tech.balance} ريال`
+💰 الرصيد: ${tech.balance}`
         );
         return res.sendStatus(200);
       }
@@ -205,7 +292,7 @@ app.post("/webhook", async (req, res) => {
 
       await sendList(
         from,
-        "👋 مرحباً\nاختر الخدمة:",
+        "👋 اختر الخدمة:",
         "الخدمات",
         [
           {
@@ -228,7 +315,7 @@ app.post("/webhook", async (req, res) => {
       const service = services.find(s => s.id === id);
 
       if (!service) {
-        await sendMessage(from, "❌ اختيار غير صحيح");
+        await sendMessage(from, "❌ خطأ");
         return res.sendStatus(200);
       }
 
@@ -237,7 +324,7 @@ app.post("/webhook", async (req, res) => {
 
       await sendList(
         from,
-        `⚡ ${service.name}\nاختر النوع:`,
+        `⚡ ${service.name}`,
         "الأنواع",
         [
           {
@@ -260,7 +347,7 @@ app.post("/webhook", async (req, res) => {
       const type = userData[from].types[index];
 
       if (!type) {
-        await sendMessage(from, "❌ اختيار غير صحيح");
+        await sendMessage(from, "❌ خطأ");
         return res.sendStatus(200);
       }
 
@@ -269,7 +356,7 @@ app.post("/webhook", async (req, res) => {
 
       await sendList(
         from,
-        `🧾 ${type.name}\n💰 ${type.price} ريال`,
+        `🧾 ${type.name}\n💰 ${type.price}`,
         "تأكيد",
         [
           {
@@ -330,10 +417,9 @@ app.post("/webhook", async (req, res) => {
       await sendMessage(
         tech.phone,
         `📥 طلب جديد
-
-الخدمة: ${service.name}
-النوع: ${service.selectedType.name}
-السعر: ${service.selectedType.price} ريال`
+${service.name}
+${service.selectedType.name}
+${service.selectedType.price} ريال`
       );
 
       await sendList(
@@ -360,6 +446,7 @@ app.post("/webhook", async (req, res) => {
     }
 
     return res.sendStatus(200);
+
   } catch (err) {
     console.log(err.response?.data || err);
     return res.sendStatus(200);
