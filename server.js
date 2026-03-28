@@ -34,9 +34,7 @@ async function sendMessage(to, text) {
       to,
       text: { body: text }
     },
-    {
-      headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` }
-    }
+    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` } }
   );
 }
 
@@ -53,9 +51,7 @@ async function sendList(to, bodyText, buttonText, sections) {
         action: { button: buttonText, sections }
       }
     },
-    {
-      headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` }
-    }
+    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` } }
   );
 }
 
@@ -71,7 +67,6 @@ async function getTechnicianByPhone(phone) {
   return { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
 
-// 🔥 جلب كل الفنيين المناسبين
 async function getAllTechs(serviceId) {
   const snap = await db.collection("technicians")
     .where("services", "array-contains", serviceId)
@@ -80,27 +75,6 @@ async function getAllTechs(serviceId) {
 
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
-
-// ---------- ADMIN ----------
-app.get("/admin/dashboard", async (req, res) => {
-  const ordersSnap = await db.collection("orders").get();
-  const techSnap = await db.collection("technicians").get();
-
-  let available = 0;
-  let busy = 0;
-
-  techSnap.forEach(doc => {
-    if (doc.data().active) available++;
-    else busy++;
-  });
-
-  res.json({
-    totalOrders: ordersSnap.size,
-    totalTechs: techSnap.size,
-    available,
-    busy
-  });
-});
 
 // ---------- VERIFY ----------
 app.get("/webhook", (req, res) => {
@@ -138,7 +112,7 @@ app.post("/webhook", async (req, res) => {
       }
     }
 
-    // ---------- قبول ----------
+    // ---------- قبول الطلب ----------
     if (text.startsWith("accept_")) {
       const id = text.split("_")[1];
       const ref = db.collection("orders").doc(id);
@@ -177,7 +151,7 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ---------- حالات ----------
+    // ---------- الحالات ----------
     if (text.startsWith("onway_") || text.startsWith("arrived_") || text.startsWith("done_")) {
       const id = text.split("_")[1];
       const ref = db.collection("orders").doc(id);
@@ -201,19 +175,18 @@ app.post("/webhook", async (req, res) => {
           active: true
         });
 
-        // 💰 عمولة
+        // عمولة
         const commission = order.price * 0.1;
         await db.collection("technicians").doc(order.technicianId).update({
           balance: admin.firestore.FieldValue.increment(-commission)
         });
 
-        await sendMessage(order.customer, "⭐ قيّم الخدمة");
-
-        await sendList(order.customer, "التقييم", "اختر", [{
+        await sendList(order.customer, "⭐ قيّم الخدمة", "تقييم", [{
           title: "التقييم",
           rows: [
             { id: `rate_5_${id}`, title: "⭐⭐⭐⭐⭐" },
-            { id: `rate_4_${id}`, title: "⭐⭐⭐⭐" }
+            { id: `rate_4_${id}`, title: "⭐⭐⭐⭐" },
+            { id: `rate_3_${id}`, title: "⭐⭐⭐" }
           ]
         }]);
       }
@@ -221,55 +194,51 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ---------- تقييم ----------
+    // ---------- التقييم ----------
     if (text.startsWith("rate_")) {
-  const parts = text.split("_");
-  const rating = parseInt(parts[1]);
-  const orderId = parts[2];
+      const parts = text.split("_");
+      const rating = parseInt(parts[1]);
+      const orderId = parts[2];
 
-  const orderRef = db.collection("orders").doc(orderId);
-  const orderSnap = await orderRef.get();
+      const orderRef = db.collection("orders").doc(orderId);
+      const orderSnap = await orderRef.get();
+      if (!orderSnap.exists) return res.sendStatus(200);
 
-  if (!orderSnap.exists) return res.sendStatus(200);
+      const order = orderSnap.data();
 
-  const order = orderSnap.data();
+      await orderRef.update({ rating });
 
-  // حفظ التقييم في الطلب
-  await orderRef.update({ rating });
+      const techRef = db.collection("technicians").doc(order.technicianId);
+      const techSnap = await techRef.get();
 
-  const techRef = db.collection("technicians").doc(order.technicianId);
-  const techSnap = await techRef.get();
+      if (techSnap.exists) {
+        const tech = techSnap.data();
 
-  if (techSnap.exists) {
-    const tech = techSnap.data();
+        const newTotal = (tech.ratingTotal || 0) + rating;
+        const newCount = (tech.ratingCount || 0) + 1;
+        const newAvg = newTotal / newCount;
 
-    const newTotal = (tech.ratingTotal || 0) + rating;
-    const newCount = (tech.ratingCount || 0) + 1;
-    const newAverage = newTotal / newCount;
+        await techRef.update({
+          rating: parseFloat(newAvg.toFixed(2)),
+          ratingTotal: newTotal,
+          ratingCount: newCount
+        });
+      }
 
-    await techRef.update({
-      rating: parseFloat(newAverage.toFixed(2)),
-      ratingTotal: newTotal,
-      ratingCount: newCount
-    });
-  }
-
-  await sendMessage(from, " يمكنك الحصول على خدماتنا بالرجوع الى القايمه الرئيسية 🙏 شكراً لتقييمك");
-
-  return res.sendStatus(200);
-}
+      await sendMessage(from, "🙏 شكراً لتقييمك");
+      return res.sendStatus(200);
+    }
 
     // ---------- البداية ----------
     if (!userState[from] || text === "مرحبا") {
       const services = await getServices();
-
       userState[from] = "main";
 
-      await sendList(from, "اختر خدمة", "خدمات", [{
+      await sendList(from, "اختر خدمة", "الخدمات", [{
         title: "القائمة",
         rows: services.map(s => ({
           id: "service_" + s.id,
-          title: s.name
+          title: s.name.substring(0, 24)
         }))
       }]);
 
@@ -280,17 +249,44 @@ app.post("/webhook", async (req, res) => {
     if (userState[from] === "main") {
       const services = await getServices();
       const service = services.find(s => s.id === text.replace("service_", ""));
+      if (!service) return res.sendStatus(200);
 
       userData[from] = service;
+      userState[from] = "type";
+
+      await sendList(from, "⚡ اختر النوع", "الأنواع", [{
+        title: "الأنواع",
+        rows: service.types.map((t, i) => ({
+          id: "type_" + i,
+          title: t.name.substring(0, 24),
+          description: `${t.price} ريال`
+        }))
+      }]);
+
+      return res.sendStatus(200);
+    }
+
+    // ---------- اختيار نوع ----------
+    if (userState[from] === "type") {
+      const index = parseInt(text.replace("type_", ""));
+      const type = userData[from].types[index];
+      if (!type) return res.sendStatus(200);
+
+      userData[from].selectedType = type;
       userState[from] = "confirm";
 
-      await sendList(from, "تأكيد؟", "تأكيد", [{
-        title: "تأكيد",
-        rows: [
-          { id: "yes", title: "✅ نعم" },
-          { id: "no", title: "❌ لا" }
-        ]
-      }]);
+      await sendList(
+        from,
+        `🧾 ${type.name}\n💰 ${type.price} ريال`,
+        "تأكيد",
+        [{
+          title: "تأكيد",
+          rows: [
+            { id: "yes", title: "✅ تأكيد" },
+            { id: "no", title: "❌ إلغاء" }
+          ]
+        }]
+      );
 
       return res.sendStatus(200);
     }
@@ -299,16 +295,20 @@ app.post("/webhook", async (req, res) => {
     if (userState[from] === "confirm") {
       if (text === "yes") {
         userState[from] = "location";
-        await sendMessage(from, "📍 أرسل الموقع");
+        await sendMessage(from, "📍 أرسل موقعك");
       } else {
         delete userState[from];
+        await sendMessage(from, "❌ تم الإلغاء");
       }
       return res.sendStatus(200);
     }
 
     // ---------- الموقع ----------
     if (userState[from] === "location") {
-      if (msg.type !== "location") return res.sendStatus(200);
+      if (msg.type !== "location") {
+        await sendMessage(from, "📍 أرسل الموقع");
+        return res.sendStatus(200);
+      }
 
       const service = userData[from];
       const techs = await getAllTechs(service.id);
@@ -321,18 +321,19 @@ app.post("/webhook", async (req, res) => {
       const orderRef = await db.collection("orders").add({
         customer: from,
         serviceName: service.name,
-        price: service.types?.[0]?.price || 0,
+        type: service.selectedType.name,
+        price: service.selectedType.price,
         technicianId: techs[0].id,
-        status: "pending"
+        status: "pending",
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
       const orderId = orderRef.id;
 
-      // 🚀 إرسال لجميع الفنيين
       for (const tech of techs) {
         await sendList(
           tech.phone,
-          `📥 طلب جديد ${service.name}`,
+          `📥 طلب جديد\n${service.name}\n${service.selectedType.name}`,
           "تنفيذ",
           [{
             title: "الطلب",
