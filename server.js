@@ -109,12 +109,12 @@ app.post("/webhook", async (req, res) => {
     // 🚫 منع طلب مزدوج
     const existing = await db.collection("orders")
       .where("phone", "==", from)
-      .where("status", "==", "pending")
+      .where("status", "in", ["pending", "accepted"])
       .get();
 
     if (!existing.empty && text !== "cancel") {
       await sendButtons(from, "⚠️ عندك طلب قيد التنفيذ", [
-        { id: "cancel", title: "❌ إلغاء" }
+        { id: "cancel", title: "❌ إلغاء الطلب" }
       ]);
       return res.sendStatus(200);
     }
@@ -266,7 +266,7 @@ app.post("/webhook", async (req, res) => {
     if (text === "cancel") {
       const orders = await db.collection("orders")
         .where("phone", "==", from)
-        .where("status", "==", "pending")
+        .where("status", "in", ["pending", "accepted"])
         .get();
 
       for (const doc of orders.docs) {
