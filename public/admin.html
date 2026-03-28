@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>لوحة الإدارة</title>
+
+<style>
+body {
+  font-family: Arial;
+  background: #111;
+  color: white;
+  text-align: center;
+}
+
+.card {
+  background: #222;
+  padding: 15px;
+  margin: 10px;
+  border-radius: 10px;
+}
+
+.stats {
+  display: flex;
+  justify-content: space-around;
+  flex-wrap: wrap;
+}
+
+.stat {
+  background: #333;
+  padding: 20px;
+  margin: 10px;
+  border-radius: 10px;
+  width: 150px;
+}
+
+</style>
+</head>
+
+<body>
+
+<h1>📊 لوحة الإدارة</h1>
+
+<button onclick="load()">تحديث</button>
+
+<div class="stats">
+  <div class="stat">📦 الطلبات<br><span id="orders">0</span></div>
+  <div class="stat">👨‍🔧 الفنيين<br><span id="techs">0</span></div>
+  <div class="stat">🟢 متاح<br><span id="available">0</span></div>
+  <div class="stat">🔴 مشغول<br><span id="busy">0</span></div>
+</div>
+
+<h2>آخر الطلبات</h2>
+<div id="list"></div>
+
+<script>
+async function load() {
+  const res = await fetch("/admin/dashboard");
+  const data = await res.json();
+
+  document.getElementById("orders").innerText = data.totalOrders;
+  document.getElementById("techs").innerText = data.totalTechs;
+  document.getElementById("available").innerText = data.available;
+  document.getElementById("busy").innerText = data.busy;
+
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+
+  data.latestOrders.forEach(o => {
+    list.innerHTML += `
+      <div class="card">
+        <h3>${o.serviceName}</h3>
+        <p>الحالة: ${o.status}</p>
+      </div>
+    `;
+  });
+}
+
+load();
+</script>
+
+</body>
+</html>
