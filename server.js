@@ -1,5 +1,4 @@
 import express from "express";
-import path from "path";
 import axios from "axios";
 import admin from "firebase-admin";
 
@@ -15,279 +14,367 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 // ---------- ENV ----------
-const TOKEN = process.env.WHATSAPP_TOKEN;
+const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
+// ---------- CONFIG ----------
+const COMMISSION = 0.2; // 20%
+
 // ---------- STATE ----------
-const state = {};
-const data = {};
-
-// ---------- STATIC ----------
-app.use(express.static(path.join(process.cwd(), "public")));
-
-app.get("/", (req, res) => {
-  res.send("🔥 Server is running");
-});
+const userState = {};
+const userData = {};
 
 // ---------- HELPERS ----------
-function chunkArray(arr, size) {
-  const result = [];
-  for (let i = 0; i < arr.length; i += size) {
-    result.push(arr.slice(i, i + size));
-  }
-  return result;
+function normalizePhone(phone) {
+  return phone.replace("+", "");
 }
 
-// ---------- SEND ----------
 async function sendMessage(to, text) {
-  await axios.post(
-    `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to,
-      text: { body: text }
-    },
-    { headers: { Authorization: `Bearer ${TOKEN}` } }
-  );
-}
-
-async function sendButtons(to, text, buttons) {
-  await axios.post(
-    `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to,
-      type: "interactive",
-      interactive: {
-        type: "button",
-        body: { text },
-        action: {
-          buttons: buttons.slice(0, 3).map(b => ({
-            type: "reply",
-            reply: {
-              id: b.id,
-              title: b.title.substring(0, 20)
-            }
-          }))
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to,
+        text: { body: text }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          "Content-Type": "application/json"
         }
       }
-    },
-    { headers: { Authorization: `Bearer ${TOKEN}` } }
-  );
+    );
+  } catch (err) {
+    console.error("sendMessage error:", err.response?.data || err.message);
+  }
+}
+
+async function sendList(to, bodyText, buttonText, sections) {
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to,
+        type: "interactive",
+        interactive: {
+          type: "list",
+          body: { text: bodyText },
+          action: {
+            button: buttonText,
+            sections: sections
+          }
+        }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+  } catch (err) {
+    console.error("sendList error:", err.response?.data || err.message);
+  }
 }
 
 // ---------- SERVICES ----------
 async function getServices() {
   const snap = await db.collection("services").get();
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
 // ---------- TECH ----------
-async function getTech(serviceId) {
-  const snap = await db.collection("technicians")
-    .where("service", "==", serviceId)
-    .where("active", "==", true)
-    .limit(1)
+async function getAvailableTechnician(serviceId) {
+  const snap = await db
+    .collection("technicians")
+    .where("available", "==", true)
     .get();
 
-  return snap.docs[0]?.data();
+  const techs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  return techs.find(t => t.services.includes(serviceId));
 }
+
+// ---------- VERIFY ----------
+app.get("/webhook", (req, res) => {
+  if (req.query["hub.verify_token"] === VERIFY_TOKEN) {
+    return res.send(req.query["hub.challenge"]);
+  }
+  return res.sendStatus(403);
+});
 
 // ---------- WEBHOOK ----------
 app.post("/webhook", async (req, res) => {
   try {
-    const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    const value = req.body.entry?.[0]?.changes?.[0]?.value;
+    const msg = value?.messages?.[0];
     if (!msg) return res.sendStatus(200);
 
-    const from = msg.from;
+    const from = normalizePhone(msg.from);
+    let incomingText = "";
 
-    const text =
-      msg.text?.body ||
-      msg.interactive?.button_reply?.id ||
-      "";
-
-    // 🚫 منع طلب مزدوج
-    const existing = await db.collection("orders")
-      .where("phone", "==", from)
-      .where("status", "in", ["pending", "accepted"])
-      .get();
-
-    if (!existing.empty && text !== "cancel") {
-      await sendButtons(from, "⚠️ عندك طلب قيد التنفيذ", [
-        { id: "cancel", title: "❌ إلغاء الطلب" }
-      ]);
-      return res.sendStatus(200);
+    if (msg.type === "text") {
+      incomingText = msg.text.body.trim();
+    } else if (msg.type === "interactive") {
+      incomingText =
+        msg.interactive.list_reply?.id ||
+        msg.interactive.button_reply?.id ||
+        "";
     }
 
-    // ---------- START ----------
-    if (!state[from] || text === "مرحبا") {
-      const services = await getServices();
-      const pages = chunkArray(services, 3);
+    console.log("STATE:", userState[from], "TEXT:", incomingText);
 
-      data[from] = { pages };
-      state[from] = "service_page_0";
+    // ===== TECH ACTIONS =====
+    if (incomingText.startsWith("accept_")) {
+      const orderId = incomingText.replace("accept_", "");
+      await db.collection("orders").doc(orderId).update({
+        status: "accepted"
+      });
 
-      const page = pages[0];
+      const order = (await db.collection("orders").doc(orderId).get()).data();
 
-      await sendButtons(
+      await sendMessage(order.phone, "👨‍🔧 تم قبول طلبك");
+
+      await sendList(
         from,
-        "👋 اختر الخدمة:",
+        "إدارة الطلب:",
+        "خيارات",
         [
-          ...page.map(s => ({
-            id: "service_" + s.id,
-            title: s.name
-          })),
-          ...(pages.length > 1 ? [{ id: "next_1", title: "➡️ المزيد" }] : [])
+          {
+            title: "الحالة",
+            rows: [
+              { id: `ontheway_${orderId}`, title: "🚗 في الطريق" },
+              { id: `done_${orderId}`, title: "✅ تم الإنجاز" }
+            ]
+          }
         ]
       );
 
       return res.sendStatus(200);
     }
 
-    // ---------- PAGINATION NEXT ----------
-    if (text.startsWith("next_")) {
-      const i = parseInt(text.replace("next_", ""));
-      const pages = data[from].pages;
+    if (incomingText.startsWith("reject_")) {
+      const orderId = incomingText.replace("reject_", "");
+      await db.collection("orders").doc(orderId).update({
+        status: "rejected"
+      });
 
-      const page = pages[i];
+      const order = (await db.collection("orders").doc(orderId).get()).data();
 
-      await sendButtons(
-        from,
-        "اختر الخدمة:",
+      await sendMessage(order.phone, "❌ تم رفض الطلب");
+
+      return res.sendStatus(200);
+    }
+
+    if (incomingText.startsWith("ontheway_")) {
+      const orderId = incomingText.replace("ontheway_", "");
+
+      await db.collection("orders").doc(orderId).update({
+        status: "on_the_way"
+      });
+
+      const order = (await db.collection("orders").doc(orderId).get()).data();
+
+      await sendMessage(order.phone, "🚗 الفني في الطريق إليك");
+
+      return res.sendStatus(200);
+    }
+
+    if (incomingText.startsWith("done_")) {
+      const orderId = incomingText.replace("done_", "");
+
+      await db.collection("orders").doc(orderId).update({
+        status: "done"
+      });
+
+      const order = (await db.collection("orders").doc(orderId).get()).data();
+
+      await sendList(
+        order.phone,
+        "⭐ كيف كانت الخدمة؟",
+        "تقييم",
         [
-          ...page.map(s => ({
-            id: "service_" + s.id,
-            title: s.name
-          })),
-          ...(i > 0 ? [{ id: "prev_" + (i - 1), title: "⬅️ رجوع" }] : []),
-          ...(i < pages.length - 1
-            ? [{ id: "next_" + (i + 1), title: "➡️ المزيد" }]
-            : [])
+          {
+            title: "التقييم",
+            rows: [
+              { id: `rate_${orderId}_5`, title: "⭐⭐⭐⭐⭐" },
+              { id: `rate_${orderId}_4`, title: "⭐⭐⭐⭐" },
+              { id: `rate_${orderId}_3`, title: "⭐⭐⭐" },
+              { id: `rate_${orderId}_2`, title: "⭐⭐" },
+              { id: `rate_${orderId}_1`, title: "⭐" }
+            ]
+          }
         ]
       );
 
       return res.sendStatus(200);
     }
 
-    // ---------- PAGINATION PREV ----------
-    if (text.startsWith("prev_")) {
-      const i = parseInt(text.replace("prev_", ""));
-      const pages = data[from].pages;
+    if (incomingText.startsWith("rate_")) {
+      const parts = incomingText.split("_");
+      const orderId = parts[1];
+      const rating = parseInt(parts[2]);
 
-      const page = pages[i];
+      const orderRef = db.collection("orders").doc(orderId);
+      const order = (await orderRef.get()).data();
 
-      await sendButtons(
-        from,
-        "اختر الخدمة:",
-        [
-          ...page.map(s => ({
-            id: "service_" + s.id,
-            title: s.name
-          })),
-          ...(i > 0 ? [{ id: "prev_" + (i - 1), title: "⬅️ رجوع" }] : []),
-          ...(i < pages.length - 1
-            ? [{ id: "next_" + (i + 1), title: "➡️ المزيد" }]
-            : [])
-        ]
-      );
+      await orderRef.update({
+        rating: rating,
+        status: "completed"
+      });
 
-      return res.sendStatus(200);
-    }
+      const techRef = db.collection("technicians").doc(order.technicianId);
+      const tech = (await techRef.get()).data();
 
-    // ---------- SERVICE ----------
-    if (text.startsWith("service_")) {
-      const id = text.replace("service_", "");
-      const services = await getServices();
-      const s = services.find(x => x.id === id);
+      const newTotal = (tech.totalRating || 0) + rating;
+      const newCount = (tech.ratingCount || 0) + 1;
+      const avg = newTotal / newCount;
 
-      data[from] = { service: s };
-      state[from] = "type";
+      const price = order.type.price || 0;
+      const commission = price * COMMISSION;
+      const net = price - commission;
 
-      await sendButtons(
-        from,
-        "اختر النوع:",
-        s.types.map((t, i) => ({
-          id: "type_" + i,
-          title: t.name
-        }))
-      );
+      const newWallet = (tech.wallet || 0) + net;
 
-      return res.sendStatus(200);
-    }
+      await techRef.update({
+        totalRating: newTotal,
+        ratingCount: newCount,
+        avgRating: avg,
+        wallet: newWallet
+      });
 
-    // ---------- TYPE ----------
-    if (text.startsWith("type_")) {
-      const index = parseInt(text.replace("type_", ""));
-      const type = data[from].service.types[index];
-
-      data[from].type = type;
-      state[from] = "confirm";
-
-      await sendButtons(
-        from,
-        `🧾 ${data[from].service.name}\n${type.name}\n${type.price} ريال`,
-        [
-          { id: "ok", title: "✅ تأكيد" },
-          { id: "cancel", title: "❌ إلغاء" }
-        ]
-      );
-
-      return res.sendStatus(200);
-    }
-
-    // ---------- CONFIRM ----------
-    if (text === "ok") {
-      const order = await db.collection("orders").add({
-        phone: from,
-        service: data[from].service.name,
-        type: data[from].type,
-        status: "pending",
+      await db.collection("transactions").add({
+        technicianId: order.technicianId,
+        orderId: orderId,
+        amount: net,
+        commission: commission,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
-      const tech = await getTech(data[from].service.id);
+      await sendMessage(
+        tech.phone,
+        `📊 تقرير الطلب
 
-      if (tech) {
-        await sendMessage(
-          tech.phone,
-          `🚨 طلب جديد\n${data[from].service.name}\n${data[from].type.name}\n📞 ${from}`
-        );
-      }
+الخدمة: ${order.serviceName}
+السعر: ${price} ريال
 
-      await sendMessage(from, "✅ تم إرسال الطلب");
+⭐ التقييم: ${rating}/5
+📈 المعدل: ${avg.toFixed(1)}
 
-      delete state[from];
-      delete data[from];
+💰 أرباحك: ${net.toFixed(2)} ريال
+🏦 رصيدك: ${newWallet.toFixed(2)} ريال
+💸 العمولة: ${commission.toFixed(2)} ريال`
+      );
 
-      return res.sendStatus(200);
-    }
-
-    // ---------- CANCEL ----------
-    if (text === "cancel") {
-      const orders = await db.collection("orders")
-        .where("phone", "==", from)
-        .where("status", "in", ["pending", "accepted"])
-        .get();
-
-      for (const doc of orders.docs) {
-        await doc.ref.update({ status: "cancelled" });
-      }
-
-      await sendMessage(from, "❌ تم إلغاء الطلب");
-
-      delete state[from];
-      delete data[from];
+      await sendMessage(order.phone, "🙏 شكراً لتقييمك");
 
       return res.sendStatus(200);
     }
 
-    return res.sendStatus(200);
+    // ===== START =====
+    if (!userState[from] || incomingText === "مرحبا" || incomingText === "0") {
+      userState[from] = "main";
 
-  } catch (e) {
-    console.error(e);
-    return res.sendStatus(200);
-  }
-});
+      const services = await getServices();
 
-// ---------- START ----------
-app.listen(process.env.PORT || 3000);
+      await sendList(
+        from,
+        "👋 مرحباً\nاختر الخدمة:",
+        "الخدمات",
+        [
+          {
+            title: "القائمة",
+            rows: services.map(s => ({
+              id: `service_${s.id}`,
+              title: s.name
+            }))
+          }
+        ]
+      );
+
+      return res.sendStatus(200);
+    }
+
+    // ===== SERVICE =====
+    if (userState[from] === "main") {
+      const services = await getServices();
+      const id = incomingText.replace("service_", "");
+      const service = services.find(s => s.id === id);
+
+      if (!service) {
+        await sendMessage(from, "❌ اختيار غير صحيح");
+        return res.sendStatus(200);
+      }
+
+      userData[from] = {
+        serviceId: service.id,
+        serviceName: service.name,
+        types: service.types
+      };
+
+      userState[from] = "type";
+
+      await sendList(
+        from,
+        `⚡ ${service.name}`,
+        "الأنواع",
+        [
+          {
+            title: "اختر النوع",
+            rows: service.types.map((t, i) => ({
+              id: `type_${i}`,
+              title: t.name,
+              description: `${t.price} ريال`
+            }))
+          }
+        ]
+      );
+
+      return res.sendStatus(200);
+    }
+
+    // ===== TYPE =====
+    if (userState[from] === "type") {
+      const index = parseInt(incomingText.replace("type_", ""));
+      const type = userData[from].types[index];
+
+      if (!type) {
+        await sendMessage(from, "❌ اختيار غير صحيح");
+        return res.sendStatus(200);
+      }
+
+      userData[from].selectedType = type;
+      userState[from] = "confirm";
+
+      await sendList(
+        from,
+        `🧾 ${type.name}\n💰 ${type.price} ريال`,
+        "تأكيد",
+        [
+          {
+            title: "تأكيد",
+            rows: [
+              { id: "confirm_yes", title: "✅ تأكيد" },
+              { id: "confirm_no", title: "❌ إلغاء" }
+            ]
+          }
+        ]
+      );
+
+      return res.sendStatus(200);
+    }
+
+    // ===== CONFIRM =====
+    if (userState[from] === "confirm") {
+      if (incomingText === "confirm_no") {
+        delete userState[from];
+        delete userData[from];
+        await sendMessage(from, "❌ تم الإلغاء");
+        return res.sendStatus(200);
+      }
+
+      if (incomingText === "confirm_yes") {
+        userState[from] = "location";
+       
