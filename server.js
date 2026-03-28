@@ -55,26 +55,41 @@ async function sendList(to, bodyText, buttonText, sections) {
   );
 }
 
-// ---------- DB ----------
+// ---------- DATABASE ----------
 async function getServices() {
   const snap = await db.collection("services").get();
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-async function getTechnicianByPhone(phone) {
-  const snap = await db.collection("technicians").where("phone", "==", phone).get();
-  if (snap.empty) return null;
-  return { id: snap.docs[0].id, ...snap.docs[0].data() };
-}
+// ---------- ADMIN ----------
+app.get("/admin/dashboard", async (req, res) => {
+  const orders = await db.collection("orders").get();
+  const techs = await db.collection("technicians").get();
 
-async function getAllTechs(serviceId) {
-  const snap = await db.collection("technicians")
-    .where("services", "array-contains", serviceId)
-    .where("active", "==", true)
-    .get();
+  let available = 0;
+  let busy = 0;
 
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-}
+  techs.forEach(doc => {
+    if (doc.data().active) available++;
+    else busy++;
+  });
+
+  const latest = orders.docs.slice(-5).map(d => {
+    const data = d.data();
+    return {
+      service: data.serviceName || "غير محدد",
+      status: data.status || "new"
+    };
+  });
+
+  res.json({
+    totalOrders: orders.size,
+    totalTechs: techs.size,
+    available,
+    busy,
+    latest
+  });
+});
 
 // ---------- VERIFY ----------
 app.get("/webhook", (req, res) => {
@@ -94,139 +109,7 @@ app.post("/webhook", async (req, res) => {
 
     if (msg.type === "text") text = msg.text.body.trim();
     else if (msg.type === "interactive") {
-      text =
-        msg.interactive?.list_reply?.id ||
-        msg.interactive?.button_reply?.id;
-    }
-
-    // ---------- تحديث موقع الفني ----------
-    if (msg.type === "location") {
-      const tech = await getTechnicianByPhone(from);
-      if (tech) {
-        await db.collection("technicians").doc(tech.id).update({
-          location: {
-            lat: msg.location.latitude,
-            lng: msg.location.longitude
-          }
-        });
-      }
-    }
-
-    // ---------- قبول الطلب ----------
-    if (text.startsWith("accept_")) {
-      const id = text.split("_")[1];
-      const ref = db.collection("orders").doc(id);
-      const snap = await ref.get();
-      if (!snap.exists) return res.sendStatus(200);
-
-      const order = snap.data();
-
-      if (order.status !== "pending") {
-        await sendMessage(from, "❌ تم أخذ الطلب");
-        return res.sendStatus(200);
-      }
-
-      await ref.update({ status: "accepted" });
-
-      await db.collection("technicians").doc(order.technicianId).update({
-        active: false
-      });
-
-      await sendMessage(order.customer, "🚗 الفني في الطريق");
-
-      await sendList(
-        from,
-        "اختر الحالة",
-        "حالة",
-        [{
-          title: "التحديث",
-          rows: [
-            { id: `onway_${id}`, title: "🚗 في الطريق" },
-            { id: `arrived_${id}`, title: "📍 وصلت" },
-            { id: `done_${id}`, title: "✅ تم" }
-          ]
-        }]
-      );
-
-      return res.sendStatus(200);
-    }
-
-    // ---------- الحالات ----------
-    if (text.startsWith("onway_") || text.startsWith("arrived_") || text.startsWith("done_")) {
-      const id = text.split("_")[1];
-      const ref = db.collection("orders").doc(id);
-      const snap = await ref.get();
-      const order = snap.data();
-
-      if (text.startsWith("onway_")) {
-        await ref.update({ status: "on_the_way" });
-        await sendMessage(order.customer, "🚗 في الطريق");
-      }
-
-      if (text.startsWith("arrived_")) {
-        await ref.update({ status: "arrived" });
-        await sendMessage(order.customer, "📍 وصل الفني");
-      }
-
-      if (text.startsWith("done_")) {
-        await ref.update({ status: "done" });
-
-        await db.collection("technicians").doc(order.technicianId).update({
-          active: true
-        });
-
-        // عمولة
-        const commission = order.price * 0.1;
-        await db.collection("technicians").doc(order.technicianId).update({
-          balance: admin.firestore.FieldValue.increment(-commission)
-        });
-
-        await sendList(order.customer, "⭐ قيّم الخدمة", "تقييم", [{
-          title: "التقييم",
-          rows: [
-            { id: `rate_5_${id}`, title: "⭐⭐⭐⭐⭐" },
-            { id: `rate_4_${id}`, title: "⭐⭐⭐⭐" },
-            { id: `rate_3_${id}`, title: "⭐⭐⭐" }
-          ]
-        }]);
-      }
-
-      return res.sendStatus(200);
-    }
-
-    // ---------- التقييم ----------
-    if (text.startsWith("rate_")) {
-      const parts = text.split("_");
-      const rating = parseInt(parts[1]);
-      const orderId = parts[2];
-
-      const orderRef = db.collection("orders").doc(orderId);
-      const orderSnap = await orderRef.get();
-      if (!orderSnap.exists) return res.sendStatus(200);
-
-      const order = orderSnap.data();
-
-      await orderRef.update({ rating });
-
-      const techRef = db.collection("technicians").doc(order.technicianId);
-      const techSnap = await techRef.get();
-
-      if (techSnap.exists) {
-        const tech = techSnap.data();
-
-        const newTotal = (tech.ratingTotal || 0) + rating;
-        const newCount = (tech.ratingCount || 0) + 1;
-        const newAvg = newTotal / newCount;
-
-        await techRef.update({
-          rating: parseFloat(newAvg.toFixed(2)),
-          ratingTotal: newTotal,
-          ratingCount: newCount
-        });
-      }
-
-      await sendMessage(from, "🙏 شكراً لتقييمك");
-      return res.sendStatus(200);
+      text = msg.interactive.list_reply?.id;
     }
 
     // ---------- البداية ----------
@@ -234,11 +117,11 @@ app.post("/webhook", async (req, res) => {
       const services = await getServices();
       userState[from] = "main";
 
-      await sendList(from, "اختر خدمة", "الخدمات", [{
-        title: "القائمة",
+      await sendList(from, "👋 اختر الخدمة", "الخدمات", [{
+        title: "الخدمات",
         rows: services.map(s => ({
           id: "service_" + s.id,
-          title: s.name.substring(0, 24)
+          title: s.name
         }))
       }]);
 
@@ -258,7 +141,7 @@ app.post("/webhook", async (req, res) => {
         title: "الأنواع",
         rows: service.types.map((t, i) => ({
           id: "type_" + i,
-          title: t.name.substring(0, 24),
+          title: t.name,
           description: `${t.price} ريال`
         }))
       }]);
@@ -275,18 +158,13 @@ app.post("/webhook", async (req, res) => {
       userData[from].selectedType = type;
       userState[from] = "confirm";
 
-      await sendList(
-        from,
-        `🧾 ${type.name}\n💰 ${type.price} ريال`,
-        "تأكيد",
-        [{
-          title: "تأكيد",
-          rows: [
-            { id: "yes", title: "✅ تأكيد" },
-            { id: "no", title: "❌ إلغاء" }
-          ]
-        }]
-      );
+      await sendList(from, `🧾 ${type.name} - ${type.price} ريال`, "تأكيد", [{
+        title: "تأكيد",
+        rows: [
+          { id: "yes", title: "✅ تأكيد" },
+          { id: "no", title: "❌ إلغاء" }
+        ]
+      }]);
 
       return res.sendStatus(200);
     }
@@ -311,38 +189,15 @@ app.post("/webhook", async (req, res) => {
       }
 
       const service = userData[from];
-      const techs = await getAllTechs(service.id);
 
-      if (techs.length === 0) {
-        await sendMessage(from, "❌ لا يوجد فني");
-        return res.sendStatus(200);
-      }
-
-      const orderRef = await db.collection("orders").add({
+      await db.collection("orders").add({
         customer: from,
         serviceName: service.name,
         type: service.selectedType.name,
         price: service.selectedType.price,
-        technicianId: techs[0].id,
         status: "pending",
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
-
-      const orderId = orderRef.id;
-
-      for (const tech of techs) {
-        await sendList(
-          tech.phone,
-          `📥 طلب جديد\n${service.name}\n${service.selectedType.name}`,
-          "تنفيذ",
-          [{
-            title: "الطلب",
-            rows: [
-              { id: `accept_${orderId}`, title: "✅ قبول" }
-            ]
-          }]
-        );
-      }
 
       await sendMessage(from, "🚀 تم إرسال الطلب");
 
@@ -360,6 +215,4 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log("Server running...");
-});
+app.listen(process.env.PORT || 3000);
