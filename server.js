@@ -377,4 +377,77 @@ app.post("/webhook", async (req, res) => {
 
       if (incomingText === "confirm_yes") {
         userState[from] = "location";
-       
+        await sendMessage(from, "📍 أرسل موقعك");
+        return res.sendStatus(200);
+      }
+    }
+
+    // ===== LOCATION =====
+    if (userState[from] === "location") {
+      if (msg.type !== "location") {
+        await sendMessage(from, "📍 أرسل الموقع");
+        return res.sendStatus(200);
+      }
+
+      const loc = msg.location;
+
+      const tech = await getAvailableTechnician(userData[from].serviceId);
+
+      const orderRef = await db.collection("orders").add({
+        phone: from,
+        serviceId: userData[from].serviceId,
+        serviceName: userData[from].serviceName,
+        type: userData[from].selectedType,
+        technicianId: tech ? tech.id : null,
+        status: tech ? "pending_tech" : "pending",
+        location: {
+          lat: loc.latitude,
+          lng: loc.longitude
+        },
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      if (tech) {
+        await sendMessage(
+          tech.phone,
+          `📥 طلب جديد
+
+الخدمة: ${userData[from].serviceName}
+النوع: ${userData[from].selectedType.name}
+السعر: ${userData[from].selectedType.price} ريال`
+        );
+
+        await sendList(
+          tech.phone,
+          "اختر:",
+          "تنفيذ",
+          [
+            {
+              title: "الطلب",
+              rows: [
+                { id: `accept_${orderRef.id}`, title: "✅ قبول" },
+                { id: `reject_${orderRef.id}`, title: "❌ رفض" }
+              ]
+            }
+          ]
+        );
+      }
+
+      await sendMessage(from, "🚀 تم إرسال الطلب");
+
+      delete userState[from];
+      delete userData[from];
+
+      return res.sendStatus(200);
+    }
+
+    return res.sendStatus(200);
+  } catch (err) {
+    console.error(err);
+    return res.sendStatus(200);
+  }
+});
+
+app.listen(process.env.PORT || 3000, () => {
+  console.log("Server running...");
+});
