@@ -103,39 +103,43 @@ async function getTech(serviceId) {
 // ---------- ADMIN DASHBOARD ----------
 app.get("/admin/dashboard", async (req, res) => {
   try {
-    const ordersSnap = await db.collection("orders").get();
+    const ordersSnap = await db.collection("orders").orderBy("createdAt", "desc").get();
     const techSnap = await db.collection("technicians").get();
 
-    let totalOrders = ordersSnap.size;
-    let totalTechs = techSnap.size;
     let available = 0;
     let busy = 0;
 
-    techSnap.forEach(doc => {
-      if (doc.data().active) available++;
+    const technicians = techSnap.docs.map(doc => {
+      const t = doc.data();
+      if (t.active) available++;
       else busy++;
+      return { id: doc.id, ...t };
     });
 
-    const latestOrders = ordersSnap.docs.slice(-5).map(d => {
-  const data = d.data();
-
-  return {
-    id: d.id,
-    serviceName: data.serviceName || "بدون اسم",
-    status: data.status || "new"
-  };
-});
+    const orders = ordersSnap.docs.map(doc => {
+      const d = doc.data();
+      return {
+        id: doc.id,
+        serviceName: d.serviceName || "غير محدد",
+        type: d.type || "غير محدد",
+        status: d.status || "new",
+        customer: d.customer || "",
+        technicianId: d.technicianId || "",
+        price: d.price || 0
+      };
+    });
 
     res.json({
-      totalOrders,
-      totalTechs,
+      totalOrders: orders.length,
+      totalTechs: technicians.length,
       available,
       busy,
-      latestOrders
+      orders,
+      technicians
     });
 
   } catch (err) {
-    res.status(500).json({ error: "error" });
+    res.status(500).json({ error: err.message });
   }
 });
 
