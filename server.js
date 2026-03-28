@@ -288,7 +288,7 @@ app.post("/webhook", async (req, res) => {
             title: "القائمة",
             rows: services.map(s => ({
               id: `service_${s.id}`,
-              title: s.name
+              title: s.name.substring(0, 24),
             }))
           }
         ]
@@ -325,7 +325,7 @@ app.post("/webhook", async (req, res) => {
             title: "اختر النوع",
             rows: service.types.map((t, i) => ({
               id: `type_${i}`,
-              title: t.name,
+              title: t.nametitle.substring(0, 24),
               description: `${t.price} ريال`
             }))
           }
