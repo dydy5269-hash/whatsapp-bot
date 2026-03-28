@@ -412,14 +412,15 @@ app.post("/webhook", async (req, res) => {
       }
 
       const orderRef = await db.collection("orders").add({
-        customer: from,
-        serviceName: service.name,
-        type: service.selectedType,
-        technicianId: tech.id,
-        status: "pending",
-        location: msg.location,
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-      });
+  customer: from,
+  serviceName: userData[from]?.name || "غير محدد",
+  type: userData[from]?.selectedType?.name || "غير محدد",
+  price: userData[from]?.selectedType?.price || 0,
+  technicianId: tech.id,
+  status: "pending",
+  location: msg.location,
+  createdAt: admin.firestore.FieldValue.serverTimestamp()
+});
 
       const orderId = orderRef.id;
 
