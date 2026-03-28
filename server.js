@@ -223,9 +223,41 @@ app.post("/webhook", async (req, res) => {
 
     // ---------- تقييم ----------
     if (text.startsWith("rate_")) {
-      await sendMessage(from, "🙏 شكراً");
-      return res.sendStatus(200);
-    }
+  const parts = text.split("_");
+  const rating = parseInt(parts[1]);
+  const orderId = parts[2];
+
+  const orderRef = db.collection("orders").doc(orderId);
+  const orderSnap = await orderRef.get();
+
+  if (!orderSnap.exists) return res.sendStatus(200);
+
+  const order = orderSnap.data();
+
+  // حفظ التقييم في الطلب
+  await orderRef.update({ rating });
+
+  const techRef = db.collection("technicians").doc(order.technicianId);
+  const techSnap = await techRef.get();
+
+  if (techSnap.exists) {
+    const tech = techSnap.data();
+
+    const newTotal = (tech.ratingTotal || 0) + rating;
+    const newCount = (tech.ratingCount || 0) + 1;
+    const newAverage = newTotal / newCount;
+
+    await techRef.update({
+      rating: parseFloat(newAverage.toFixed(2)),
+      ratingTotal: newTotal,
+      ratingCount: newCount
+    });
+  }
+
+  await sendMessage(from, " يمكنك الحصول على خدماتنا بالرجوع الى القايمه الرئيسية 🙏 شكراً لتقييمك");
+
+  return res.sendStatus(200);
+}
 
     // ---------- البداية ----------
     if (!userState[from] || text === "مرحبا") {
