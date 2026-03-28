@@ -262,37 +262,69 @@ app.post("/webhook", async (req, res) => {
 
     // ===== قبول الطلب =====
     if (text.startsWith("accept_")) {
-      const id = text.split("_")[1];
-      const ref = db.collection("orders").doc(id);
-      const snap = await ref.get();
-      const order = snap.data();
+  try {
+    const id = text.split("_")[1];
 
-      await ref.update({ status: "accepted" });
+    const ref = db.collection("orders").doc(id);
+    const snap = await ref.get();
 
-      const techRef = db.collection("technicians").doc(order.technicianId);
-      const techSnap = await techRef.get();
-      const tech = techSnap.data();
+    if (!snap.exists) {
+      console.log("❌ order not found");
+      return res.sendStatus(200);
+    }
 
-      await techRef.update({ active: false });
+    const order = snap.data();
+    console.log("ORDER:", order);
 
-      // العميل يستلم بيانات الفني
-      await sendMessage(order.customer,
-        `👨‍🔧 ${tech.name}\n📱 ${tech.phone}\n🚗 في الطريق`
+    await ref.update({ status: "accepted" });
+
+    const techRef = db.collection("technicians").doc(order.technicianId);
+    const techSnap = await techRef.get();
+
+    if (!techSnap.exists) {
+      console.log("❌ tech not found");
+      return res.sendStatus(200);
+    }
+
+    const tech = techSnap.data();
+    console.log("TECH:", tech);
+
+    // تحديث الفني
+    await techRef.update({ active: false });
+
+    // ===== إرسال للفني (بيانات العميل) =====
+    const customerPhone = order.customer;
+
+    if (!customerPhone) {
+      console.log("❌ customer phone missing");
+    } else {
+      await sendMessage(
+        tech.phone,
+        `📍 طلب جديد\n📱 رقم العميل: ${customerPhone}`
       );
+    }
 
-      // الفني يستلم بيانات العميل
-      await sendMessage(tech.phone,
-        `📱 العميل: ${order.customer}`
+    // ===== إرسال الموقع =====
+    if (order.location && order.location.latitude) {
+      await sendLocation(
+        tech.phone,
+        order.location.latitude,
+        order.location.longitude
       );
+    } else {
+      console.log("❌ location missing", order.location);
+    }
 
-      // إرسال الموقع
-      if (order.location?.latitude) {
-        await sendLocation(
-          tech.phone,
-          order.location.latitude,
-          order.location.longitude
-        );
-      }
+    // ===== إرسال للعميل (بيانات الفني) =====
+    await sendMessage(
+      order.customer,
+      `👨‍🔧 تم تعيين فني\n${tech.name}\n📱 ${tech.phone}\n🚗 في الطريق`
+    );
+
+    return res.sendStatus(200);
+
+  } catch (err) {
+    console.log("❌ ACCEPT ERROR:", err);
 
       return res.sendStatus(200);
     }
