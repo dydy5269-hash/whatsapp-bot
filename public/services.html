@@ -1,10 +1,95 @@
-import express from "express";
-import axios from "axios";
-import admin from "firebase-admin";
-import path from "path";
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>الخدمات</title>
+  <link rel="stylesheet" href="style.css">
+</head>
 
-const app = express();
-app.use(express.json());
+<body>
 
-// 👇 هذا المهم
-app.use(express.static(path.join(process.cwd(), "public")));
+<h2>⚙️ إدارة الخدمات</h2>
+
+<div>
+  <input id="serviceName" placeholder="اسم الخدمة">
+  <button onclick="addService()">➕ إضافة خدمة</button>
+</div>
+
+<hr>
+
+<h3>📋 قائمة الخدمات</h3>
+<table>
+  <thead>
+    <tr>
+      <th>الاسم</th>
+      <th>عدد الأنواع</th>
+    </tr>
+  </thead>
+  <tbody id="servicesTable"></tbody>
+</table>
+
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore,
+  collection,
+  getDocs,
+  addDoc
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+// 🔥 حط بيانات Firebase هنا
+const firebaseConfig = {
+  apiKey: "XXXX",
+  authDomain: "XXXX",
+  projectId: "XXXX"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// ---------- LOAD ----------
+async function loadServices() {
+  const snap = await getDocs(collection(db, "services"));
+  const table = document.getElementById("servicesTable");
+  table.innerHTML = "";
+
+  snap.forEach(doc => {
+    const s = doc.data();
+
+    const row = `
+      <tr>
+        <td>${s.name}</td>
+        <td>${s.types ? s.types.length : 0}</td>
+      </tr>
+    `;
+
+    table.innerHTML += row;
+  });
+}
+
+// ---------- ADD ----------
+window.addService = async () => {
+  const name = document.getElementById("serviceName").value;
+
+  if (!name) {
+    alert("اكتب اسم الخدمة");
+    return;
+  }
+
+  await addDoc(collection(db, "services"), {
+    name: name,
+    types: []
+  });
+
+  document.getElementById("serviceName").value = "";
+  loadServices();
+};
+
+// ---------- INIT ----------
+loadServices();
+
+</script>
+
+</body>
+</html>
