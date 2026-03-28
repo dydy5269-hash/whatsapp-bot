@@ -1,9 +1,13 @@
 import express from "express";
 import axios from "axios";
 import admin from "firebase-admin";
+import path from "path";
 
 const app = express();
 app.use(express.json());
+
+// ---------- STATIC FILES ----------
+app.use(express.static("public"));
 
 // ---------- FIREBASE ----------
 if (!admin.apps.length) {
@@ -96,21 +100,38 @@ async function getTech(serviceId) {
   return { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
 
-// ---------- ADMIN ----------
-app.get("/admin/technicians/stats", async (req, res) => {
-  const snap = await db.collection("technicians").get();
+// ---------- ADMIN DASHBOARD ----------
+app.get("/admin/dashboard", async (req, res) => {
+  try {
+    const ordersSnap = await db.collection("orders").get();
+    const techSnap = await db.collection("technicians").get();
 
-  let total = 0;
-  let available = 0;
-  let busy = 0;
+    let totalOrders = ordersSnap.size;
+    let totalTechs = techSnap.size;
+    let available = 0;
+    let busy = 0;
 
-  snap.forEach(doc => {
-    total++;
-    if (doc.data().active) available++;
-    else busy++;
-  });
+    techSnap.forEach(doc => {
+      if (doc.data().active) available++;
+      else busy++;
+    });
 
-  res.json({ total, available, busy });
+    const latestOrders = ordersSnap.docs.slice(-5).map(d => ({
+      id: d.id,
+      ...d.data()
+    }));
+
+    res.json({
+      totalOrders,
+      totalTechs,
+      available,
+      busy,
+      latestOrders
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: "error" });
+  }
 });
 
 // ---------- VERIFY ----------
@@ -128,29 +149,25 @@ app.post("/webhook", async (req, res) => {
     if (!msg) return res.sendStatus(200);
 
     const from = normalizePhone(msg.from);
-    let incomingText = "";
+    let text = "";
 
-    if (msg.type === "text") {
-      incomingText = msg.text.body.trim();
-    } else if (msg.type === "interactive") {
-      incomingText =
+    if (msg.type === "text") text = msg.text.body.trim();
+    else if (msg.type === "interactive") {
+      text =
         msg.interactive?.list_reply?.id ||
         msg.interactive?.button_reply?.id;
     }
 
-    // ===== TECH ACCEPT/REJECT =====
-    if (
-      incomingText.startsWith("accept_") ||
-      incomingText.startsWith("reject_")
-    ) {
-      const orderId = incomingText.split("_")[1];
+    // ===== TECH ACTION =====
+    if (text.startsWith("accept_") || text.startsWith("reject_")) {
+      const orderId = text.split("_")[1];
       const ref = db.collection("orders").doc(orderId);
       const snap = await ref.get();
       if (!snap.exists) return res.sendStatus(200);
 
       const order = snap.data();
 
-      if (incomingText.startsWith("accept_")) {
+      if (text.startsWith("accept_")) {
         await ref.update({ status: "accepted" });
 
         await db.collection("technicians").doc(order.technicianId).update({
@@ -174,45 +191,40 @@ app.post("/webhook", async (req, res) => {
             }
           ]
         );
-
-        await sendMessage(from, "✅ تم قبول الطلب");
       }
 
-      if (incomingText.startsWith("reject_")) {
+      if (text.startsWith("reject_")) {
         await ref.update({ status: "rejected" });
         await sendMessage(order.customer, "❌ تم رفض الطلب");
-        await sendMessage(from, "❌ تم رفض الطلب");
       }
 
       return res.sendStatus(200);
     }
 
-    // ===== STATUS UPDATES =====
+    // ===== STATUS =====
     if (
-      incomingText.startsWith("onway_") ||
-      incomingText.startsWith("arrived_") ||
-      incomingText.startsWith("done_")
+      text.startsWith("onway_") ||
+      text.startsWith("arrived_") ||
+      text.startsWith("done_")
     ) {
-      const orderId = incomingText.split("_")[1];
+      const orderId = text.split("_")[1];
       const ref = db.collection("orders").doc(orderId);
       const snap = await ref.get();
       if (!snap.exists) return res.sendStatus(200);
 
       const order = snap.data();
 
-      if (incomingText.startsWith("onway_")) {
+      if (text.startsWith("onway_")) {
         await ref.update({ status: "on_the_way" });
         await sendMessage(order.customer, "🚗 الفني في الطريق");
-        await sendMessage(from, "🚗 تم التحديث");
       }
 
-      if (incomingText.startsWith("arrived_")) {
+      if (text.startsWith("arrived_")) {
         await ref.update({ status: "arrived" });
         await sendMessage(order.customer, "📍 وصل الفني");
-        await sendMessage(from, "📍 تم التحديث");
       }
 
-      if (incomingText.startsWith("done_")) {
+      if (text.startsWith("done_")) {
         await ref.update({ status: "done" });
 
         await db.collection("technicians").doc(order.technicianId).update({
@@ -229,25 +241,23 @@ app.post("/webhook", async (req, res) => {
             {
               title: "التقييم",
               rows: [
-                { id: `rate_5_${orderId}`, title: "⭐️⭐️⭐️⭐️⭐️" },
-                { id: `rate_4_${orderId}`, title: "⭐️⭐️⭐️⭐️" },
-                { id: `rate_3_${orderId}`, title: "⭐️⭐️⭐️" },
-                { id: `rate_2_${orderId}`, title: "⭐️⭐️" },
-                { id: `rate_1_${orderId}`, title: "⭐️" }
+                { id: `rate_5_${orderId}`, title: "⭐⭐⭐⭐⭐" },
+                { id: `rate_4_${orderId}`, title: "⭐⭐⭐⭐" },
+                { id: `rate_3_${orderId}`, title: "⭐⭐⭐" },
+                { id: `rate_2_${orderId}`, title: "⭐⭐" },
+                { id: `rate_1_${orderId}`, title: "⭐" }
               ]
             }
           ]
         );
-
-        await sendMessage(from, "✅ تم إنهاء الطلب");
       }
 
       return res.sendStatus(200);
     }
 
     // ===== RATING =====
-    if (incomingText.startsWith("rate_")) {
-      const parts = incomingText.split("_");
+    if (text.startsWith("rate_")) {
+      const parts = text.split("_");
       const rating = parseInt(parts[1]);
       const orderId = parts[2];
 
@@ -273,7 +283,7 @@ app.post("/webhook", async (req, res) => {
     }
 
     // ===== START =====
-    if (!userState[from] || incomingText === "مرحبا") {
+    if (!userState[from] || text === "مرحبا") {
       const tech = await getTechnicianByPhone(from);
 
       if (tech) {
@@ -311,13 +321,10 @@ app.post("/webhook", async (req, res) => {
     // ===== SERVICE =====
     if (userState[from] === "main") {
       const services = await getServices();
-      const id = incomingText.replace("service_", "");
+      const id = text.replace("service_", "");
       const service = services.find(s => s.id === id);
 
-      if (!service) {
-        await sendMessage(from, "❌ خطأ");
-        return res.sendStatus(200);
-      }
+      if (!service) return res.sendStatus(200);
 
       userData[from] = service;
       userState[from] = "type";
@@ -343,13 +350,10 @@ app.post("/webhook", async (req, res) => {
 
     // ===== TYPE =====
     if (userState[from] === "type") {
-      const index = parseInt(incomingText.replace("type_", ""));
+      const index = parseInt(text.replace("type_", ""));
       const type = userData[from].types[index];
 
-      if (!type) {
-        await sendMessage(from, "❌ خطأ");
-        return res.sendStatus(200);
-      }
+      if (!type) return res.sendStatus(200);
 
       userData[from].selectedType = type;
       userState[from] = "confirm";
@@ -374,13 +378,13 @@ app.post("/webhook", async (req, res) => {
 
     // ===== CONFIRM =====
     if (userState[from] === "confirm") {
-      if (incomingText === "confirm_no") {
+      if (text === "confirm_no") {
         delete userState[from];
         await sendMessage(from, "❌ تم الإلغاء");
         return res.sendStatus(200);
       }
 
-      if (incomingText === "confirm_yes") {
+      if (text === "confirm_yes") {
         userState[from] = "location";
         await sendMessage(from, "📍 أرسل موقعك");
         return res.sendStatus(200);
@@ -398,7 +402,7 @@ app.post("/webhook", async (req, res) => {
       const tech = await getTech(service.id);
 
       if (!tech) {
-        await sendMessage(from, "❌ لا يوجد فني متاح");
+        await sendMessage(from, "❌ لا يوجد فني");
         return res.sendStatus(200);
       }
 
@@ -424,7 +428,7 @@ ${service.selectedType.price} ريال`
 
       await sendList(
         tech.phone,
-        "اختر الإجراء:",
+        "اختر:",
         "تنفيذ",
         [
           {
@@ -453,6 +457,7 @@ ${service.selectedType.price} ريال`
   }
 });
 
+// ---------- START ----------
 app.listen(process.env.PORT || 3000, () => {
   console.log("Server running...");
 });
