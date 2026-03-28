@@ -7,9 +7,11 @@ app.use(express.json());
 app.use(express.static("public"));
 
 // ---------- FIREBASE ----------
-admin.initializeApp({
-  credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_KEY))
-});
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_KEY))
+  });
+}
 const db = admin.firestore();
 
 // ---------- ENV ----------
@@ -58,50 +60,78 @@ async function sendList(to, bodyText, buttonText, sections) {
 // ---------- DATABASE ----------
 async function getServices() {
   const snap = await db.collection("services").get();
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-// ---------- توزيع ذكي ----------
-async function assignTechnician(order) {
-  const snap = await db.collection("technicians")
-    .where("services", "==", order.serviceName)
+async function getTechnicianByPhone(phone) {
+  const snap = await db.collection("technicians").where("phone", "==", phone).get();
+  if (snap.empty) return null;
+  return { id: snap.docs[0].id, ...snap.docs[0].data() };
+}
+
+// ---------- SMART DISTRIBUTION ----------
+async function getTech(serviceId, customerLocation = null) {
+  const snap = await db
+    .collection("technicians")
+    .where("services", "array-contains", serviceId)
     .where("active", "==", true)
     .get();
 
   if (snap.empty) return null;
 
-  let bestTech = null;
+  let techs = snap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
 
-  snap.forEach(doc => {
-    const tech = doc.data();
-    if (!bestTech || tech.rating > bestTech.rating) {
-      bestTech = { id: doc.id, ...tech };
-    }
+  // ترتيب حسب التقييم
+  techs.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+
+  return techs[0];
+}
+
+// ---------- ADMIN ----------
+app.get("/admin/dashboard", async (req, res) => {
+  const ordersSnap = await db.collection("orders").orderBy("createdAt", "desc").get();
+  const techSnap = await db.collection("technicians").get();
+
+  let available = 0;
+  let busy = 0;
+
+  const technicians = techSnap.docs.map(doc => {
+    const t = doc.data();
+    if (t.active) available++;
+    else busy++;
+    return { id: doc.id, ...t };
   });
 
-  return bestTech;
-}
+  const orders = ordersSnap.docs.map(doc => {
+    const d = doc.data();
+    return {
+      id: doc.id,
+      serviceName: d.serviceName || "غير محدد",
+      status: d.status || "new",
+      price: d.price || 0,
+      customer: d.customer || ""
+    };
+  });
 
-// ---------- إرسال للفني ----------
-async function sendToTechnician(order, tech) {
-  await sendMessage(
-    tech.phone,
-`📥 طلب جديد
-🔧 ${order.serviceName}
-🛠 ${order.type}
-💰 ${order.price} ريال
-
-رد:
-1 قبول
-2 رفض`
-  );
-}
+  res.json({
+    totalOrders: orders.length,
+    totalTechs: technicians.length,
+    available,
+    busy,
+    orders,
+    technicians
+  });
+});
 
 // ---------- VERIFY ----------
 app.get("/webhook", (req, res) => {
-  if (req.query["hub.verify_token"] === VERIFY_TOKEN)
+  if (req.query["hub.verify_token"] === VERIFY_TOKEN) {
     return res.send(req.query["hub.challenge"]);
-  return res.sendStatus(403);
+  }
+  res.sendStatus(403);
 });
 
 // ---------- WEBHOOK ----------
@@ -115,130 +145,121 @@ app.post("/webhook", async (req, res) => {
 
     if (msg.type === "text") text = msg.text.body.trim();
     else if (msg.type === "interactive") {
-      text = msg.interactive.list_reply?.id;
+      text = msg.interactive.list_reply?.id || msg.interactive.button_reply?.id;
     }
 
-    // ---------- بداية ----------
-    if (!userState[from] || text === "مرحبا") {
-      const services = await getServices();
-      userState[from] = "main";
+    // ===== TECH LOGIN =====
+    const tech = await getTechnicianByPhone(from);
+    if (tech && text === "مرحبا") {
+      await sendMessage(from, `👨‍🔧 ${tech.name}\n⭐ ${tech.rating}\n💰 ${tech.balance}`);
+      return res.sendStatus(200);
+    }
 
-      await sendList(from, "👋 اختر الخدمة", "الخدمات", [{
-        title: "الخدمات",
+    // ===== START =====
+    if (!userState[from] || text === "مرحبا") {
+      userState[from] = "main";
+      const services = await getServices();
+
+      await sendList(from, "👋 اختر الخدمة التي توفرها رؤية طاقة للخدمات للعملائها بادارة عمانيه ", "الخدمات", [{
+        title: "القائمة",
         rows: services.map(s => ({
           id: "service_" + s.id,
-          title: s.name
+          title: s.name.substring(0, 24)
         }))
       }]);
 
       return res.sendStatus(200);
     }
 
-    // ---------- اختيار خدمة ----------
+    // ===== SERVICE =====
     if (userState[from] === "main") {
       const services = await getServices();
-      const cleanId = text.replace("service_", "");
-
-      const service = services.find(
-        s => s.id === cleanId || s.name === cleanId
-      );
-
-      if (!service) {
-        await sendMessage(from, "⚠️ خطأ في اختيار الخدمة");
-        return res.sendStatus(200);
-      }
+      const id = text.replace("service_", "");
+      const service = services.find(s => s.id === id);
 
       userData[from] = service;
       userState[from] = "type";
 
-      await sendList(from, "⚡ اختر النوع", "الأنواع", [{
-        title: "الأنواع",
+      await sendList(from, service.name, "الأنواع", [{
+        title: "اختر",
         rows: service.types.map((t, i) => ({
           id: "type_" + i,
-          title: t.name,
-          description: `${t.price} ريال`
+          title: t.name.substring(0, 24)
         }))
       }]);
 
       return res.sendStatus(200);
     }
 
-    // ---------- اختيار نوع ----------
+    // ===== TYPE =====
     if (userState[from] === "type") {
       const index = parseInt(text.replace("type_", ""));
       const type = userData[from].types[index];
 
-      if (!type) return res.sendStatus(200);
-
       userData[from].selectedType = type;
       userState[from] = "confirm";
 
-      await sendList(from,
-        `🧾 ${type.name}\n💰 ${type.price} ريال`,
-        "تأكيد",
-        [{
-          title: "تأكيد",
-          rows: [
-            { id: "yes", title: "✅ تأكيد" },
-            { id: "no", title: "❌ إلغاء" }
-          ]
-        }]
-      );
+      await sendList(from, `${type.name}\n${type.price} ريال`, "تأكيد", [{
+        title: "تأكيد",
+        rows: [
+          { id: "confirm_yes", title: "✅ تأكيد" },
+          { id: "confirm_no", title: "❌ إلغاء" }
+        ]
+      }]);
 
       return res.sendStatus(200);
     }
 
-    // ---------- تأكيد ----------
+    // ===== CONFIRM =====
     if (userState[from] === "confirm") {
-      if (text === "yes") {
-        userState[from] = "location";
-        await sendMessage(from, "📍 أرسل موقعك");
-      } else {
+      if (text === "confirm_no") {
         delete userState[from];
-        await sendMessage(from, "❌ تم الإلغاء");
+        return sendMessage(from, "❌ تم الإلغاء");
       }
-      return res.sendStatus(200);
+
+      if (text === "confirm_yes") {
+        userState[from] = "location";
+        return sendMessage(from, "📍 أرسل موقعك");
+      }
     }
 
-    // ---------- الموقع ----------
+    // ===== LOCATION =====
     if (userState[from] === "location") {
       if (msg.type !== "location") {
-        await sendMessage(from, "📍 أرسل الموقع");
-        return res.sendStatus(200);
+        return sendMessage(from, "📍 أرسل الموقع");
       }
 
       const service = userData[from];
+      const tech = await getTech(service.id, msg.location);
+
+      if (!tech) return sendMessage(from, "❌ لا يوجد فني");
 
       const orderRef = await db.collection("orders").add({
         customer: from,
-        serviceName: service.name,
-        type: service.selectedType.name,
-        price: service.selectedType.price,
+        serviceName: service.name || "غير محدد",
+        price: service.selectedType?.price || 0,
+        technicianId: tech.id,
         status: "pending",
+        location: msg.location,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
-      const orderData = {
-        id: orderRef.id,
-        serviceName: service.name,
-        type: service.selectedType.name,
-        price: service.selectedType.price
-      };
+      const orderId = orderRef.id;
 
-      const tech = await assignTechnician(orderData);
+      await sendMessage(
+        tech.phone,
+        `📥 طلب جديد\n${service.name}\n${service.selectedType.name}`
+      );
 
-      if (tech) {
-        await sendToTechnician(orderData, tech);
+      await sendList(tech.phone, "اختر", "تنفيذ", [{
+        title: "الطلب",
+        rows: [
+          { id: `accept_${orderId}`, title: "✅ قبول" },
+          { id: `reject_${orderId}`, title: "❌ رفض" }
+        ]
+      }]);
 
-        await orderRef.update({
-          technicianId: tech.id,
-          status: "assigned"
-        });
-
-        await sendMessage(from, "🚀 تم إرسال الطلب للفني");
-      } else {
-        await sendMessage(from, "❌ لا يوجد فني متاح حالياً");
-      }
+      await sendMessage(from, "🚀 تم إرسال الطلب");
 
       delete userState[from];
       delete userData[from];
@@ -246,13 +267,32 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ---------- رد الفني ----------
-    if (text === "1") {
-      await sendMessage(from, "✅ تم قبول الطلب");
+    // ===== ACCEPT =====
+    if (text.startsWith("accept_")) {
+      const orderId = text.split("_")[1];
+      const ref = db.collection("orders").doc(orderId);
+      const order = (await ref.get()).data();
+
+      await ref.update({ status: "accepted" });
+      await db.collection("technicians").doc(order.technicianId).update({ active: false });
+
+      await sendMessage(order.customer, "🚗 الفني في الطريق");
+
+      return res.sendStatus(200);
     }
 
-    if (text === "2") {
-      await sendMessage(from, "❌ تم رفض الطلب");
+    // ===== DONE =====
+    if (text.startsWith("done_")) {
+      const orderId = text.split("_")[1];
+      const ref = db.collection("orders").doc(orderId);
+      const order = (await ref.get()).data();
+
+      await ref.update({ status: "done" });
+      await db.collection("technicians").doc(order.technicianId).update({ active: true });
+
+      await sendMessage(order.customer, "✅ تم الانتهاء");
+
+      return res.sendStatus(200);
     }
 
     return res.sendStatus(200);
@@ -263,6 +303,7 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-app.listen(process.env.PORT || 3000, () =>
-  console.log("Server running...")
-);
+// ---------- START ----------
+app.listen(process.env.PORT || 3000, () => {
+  console.log("Server running...");
+});
