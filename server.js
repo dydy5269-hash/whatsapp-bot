@@ -89,7 +89,7 @@ async function getTechnicianByPhone(phone) {
   return { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
 
-async function getTech(serviceId) {
+async function getTech(serviceId, customerLocation = null) {
   const snap = await db
     .collection("technicians")
     .where("services", "array-contains", serviceId)
@@ -97,7 +97,16 @@ async function getTech(serviceId) {
     .get();
 
   if (snap.empty) return null;
-  return { id: snap.docs[0].id, ...snap.docs[0].data() };
+
+  let techs = snap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+
+  // ترتيب حسب التقييم (الأعلى أولاً)
+  techs.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+
+  return techs[0]; // أفضل فني
 }
 
 // ---------- ADMIN DASHBOARD ----------
@@ -408,7 +417,7 @@ app.post("/webhook", async (req, res) => {
       }
 
       const service = userData[from];
-      const tech = await getTech(service.id);
+      const tech = await const tech = await getTech(service.id, msg.location);
 
       if (!tech) {
         await sendMessage(from, "❌ لا يوجد فني");
