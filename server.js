@@ -25,8 +25,8 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
 // ===== HELPERS =====
 
-/** تطبيع رقم الهاتف: إزالة كل علامات + */
-const normalize = (p) => p.replace(/+/g, “”);
+/** تطبيع رقم الهاتف: إزالة كل علامات + دائماً */
+const normalize = (p) => String(p).replace(/+/g, “”);
 
 /** جلب حالة المستخدم من Firestore */
 async function getSession(phone) {
@@ -127,11 +127,12 @@ const snap = await db.collection(“services”).get();
 return snap.docs.map((d) => ({ id: d.id, …d.data() }));
 }
 
-/** البحث عن فني بالهاتف */
+/** البحث عن فني بالهاتف — يطبّع الرقم قبل المقارنة */
 async function getTechByPhone(phone) {
+const normalized = normalize(phone); // يزيل + دائماً
 const snap = await db
 .collection(“technicians”)
-.where(“phone”, “==”, phone)
+.where(“phone”, “==”, normalized) // Firebase مخزّن بدون +
 .get();
 if (snap.empty) return null;
 return { id: snap.docs[0].id, …snap.docs[0].data() };
