@@ -1,7 +1,7 @@
-const express = require ("express");
+const express = require(“express”);
 const axios = require(“axios”);
-const admin = require (“firebase-admin”);
-const { v4: uuidv4 } = require(“uuid");
+const admin = require(“firebase-admin”);
+const { v4: uuidv4 } = require(“uuid”);
 
 const app = express();
 app.use(express.json());
@@ -146,7 +146,7 @@ if (msg.type === "text") {
 
 console.log("FROM:", from, "TEXT:", text, "TYPE:", msg.type);
 
-// ===== فني =====
+// =====  =====
 const techCheck = await getTechByPhone(from);
 if (techCheck) {
   if (text.startsWith("accept_")) { await handleAccept(text, from, techCheck); return; }
@@ -154,39 +154,39 @@ if (techCheck) {
   if (text.startsWith("done_")) { await handleDone(text, from, techCheck); return; }
 
   await sendMessage(from,
-    "بياناتك\n\n" +
-    "الاسم: " + techCheck.name + "\n" +
-    "الهاتف: " + techCheck.phone + "\n" +
-    "التقييم: " + (techCheck.rating || "لا يوجد") + "\n" +
-    "الرصيد: " + (techCheck.balance || 0) + " ريال\n" +
-    "الحالة: " + (techCheck.active ? "متاح" : "مشغول") + "\n" +
-    "الخدمات: " + ((techCheck.serviceIds || []).join(", "))
+    "\n\n" +
+    ": " + techCheck.name + "\n" +
+    ": " + techCheck.phone + "\n" +
+    ": " + (techCheck.rating || " ") + "\n" +
+    ": " + (techCheck.balance || 0) + " \n" +
+    ": " + (techCheck.active ? "" : "") + "\n" +
+    "Services: " + ((techCheck.serviceIds || []).join(", "))
   );
   return;
 }
 
-// ===== عميل =====
+// =====  =====
 const session = await getSession(from);
 
-if (!session.state || text === "مرحبا") {
+if (!session.state || text === "mrhba") {
   const activeOrder = await getActiveOrder(from);
   if (activeOrder) {
     await sendMessage(from,
-      "لديك طلب قيد التنفيذ\n\n" +
-      "رقم الطلب: " + activeOrder.orderId + "\n" +
-      "الخدمة: " + activeOrder.serviceName + "\n" +
-      "النوع: " + activeOrder.type + "\n" +
-      "السعر: " + activeOrder.price + " ريال\n" +
-      "الحالة: " + (activeOrder.status === "pending" ? "في الانتظار" : "في الطريق") + "\n\n" +
-      "يرجى انتظار إنهاء الطلب الحالي."
+      "   \n\n" +
+      " Order: " + activeOrder.orderId + "\n" +
+      ": " + activeOrder.serviceName + "\n" +
+      ": " + activeOrder.type + "\n" +
+      ": " + activeOrder.price + " \n" +
+      ": " + (activeOrder.status === "pending" ? " " : " ") + "\n\n" +
+      "   Order ."
     );
     return;
   }
 
   await clearSession(from);
   const services = await getServices();
-  await sendList(from, "مرحبا! اختر الخدمة", "الخدمات", [{
-    title: "الخدمات المتاحة",
+  await sendList(from, "mrhba! Choose ", "Services", [{
+    title: "Services",
     rows: services.map(function(s) { return { id: "service_" + s.id, title: s.name.substring(0, 24) }; })
   }]);
   await setSession(from, "main", {});
@@ -197,12 +197,12 @@ if (session.state === "main" && text.startsWith("service_")) {
   const services = await getServices();
   const id = text.replace("service_", "");
   const service = services.find(function(s) { return s.id === id; });
-  if (!service) { await sendMessage(from, "خدمة غير موجودة، ارسل مرحبا للبدء"); return; }
+  if (!service) { await sendMessage(from, "    mrhba "); return; }
   await setSession(from, "type", { service: service });
-  await sendList(from, service.name + "\nاختر النوع", "الانواع", [{
-    title: "الانواع المتاحة",
+  await sendList(from, service.name + "\nChoose ", "Types", [{
+    title: "Types",
     rows: service.types.map(function(t, i) {
-      return { id: "type_" + i, title: t.name.substring(0, 24), description: t.price + " ريال" };
+      return { id: "type_" + i, title: t.name.substring(0, 24), description: t.price + " " };
     })
   }]);
   return;
@@ -212,16 +212,16 @@ if (session.state === "type" && text.startsWith("type_")) {
   const index = parseInt(text.replace("type_", ""));
   const service = session.data && session.data.service;
   if (!service || isNaN(index) || !service.types || !service.types[index]) {
-    await sendMessage(from, "حدث خطأ، ارسل مرحبا للبدء");
+    await sendMessage(from, "   mrhba ");
     await clearSession(from);
     return;
   }
   const type = service.types[index];
   await setSession(from, "confirm", { service: service, selectedType: type });
   await sendList(from,
-    "تاكيد الطلب\n\nالخدمة: " + service.name + "\nالنوع: " + type.name + "\nالسعر: " + type.price + " ريال",
-    "الاجراء",
-    [{ title: "تاكيد", rows: [{ id: "yes", title: "تاكيد الطلب" }, { id: "no", title: "الغاء" }] }]
+    "Confirm Order\n\n: " + service.name + "\n: " + type.name + "\n: " + type.price + " ",
+    "Action",
+    [{ title: "Confirm", rows: [{ id: "yes", title: "Confirm Order" }, { id: "no", title: "Cancel" }] }]
   );
   return;
 }
@@ -229,31 +229,31 @@ if (session.state === "type" && text.startsWith("type_")) {
 if (session.state === "confirm") {
   if (text === "no") {
     await clearSession(from);
-    await sendMessage(from, "تم الغاء الطلب. ارسل مرحبا لطلب خدمة جديدة.");
+    await sendMessage(from, " Cancel Order.  mrhba   .");
     return;
   }
   if (text === "yes") {
     await setSession(from, "location", session.data);
-    await sendMessage(from, "ارسل موقعك الحالي لاتمام الطلب.");
+    await sendMessage(from, "    Order.");
     return;
   }
 }
 
 if (session.state === "location") {
   if (msg.type !== "location") {
-    await sendMessage(from, "يرجى ارسال الموقع عبر خاصية المشاركة في WhatsApp.");
+    await sendMessage(from, "       WhatsApp.");
     return;
   }
   const service = session.data && session.data.service;
   const selectedType = session.data && session.data.selectedType;
   if (!service || !selectedType) {
-    await sendMessage(from, "انتهت الجلسة، ارسل مرحبا للبدء.");
+    await sendMessage(from, "   mrhba .");
     await clearSession(from);
     return;
   }
   const tech = await getAvailableTech(service.id);
   if (!tech) {
-    await sendMessage(from, "لا يوجد فني متاح حالياً، يرجى المحاولة لاحقاً.");
+    await sendMessage(from, "       .");
     await clearSession(from);
     return;
   }
@@ -272,22 +272,22 @@ if (session.state === "location") {
   });
   const techPhone = normalize(tech.phone);
   await sendMessage(techPhone,
-    "طلب جديد!\n\nرقم الطلب: " + orderId + "\nالخدمة: " + service.name +
-    "\nالنوع: " + selectedType.name + "\nالسعر: " + selectedType.price + " ريال"
+    " !\n\n Order: " + orderId + "\n: " + service.name +
+    "\n: " + selectedType.name + "\n: " + selectedType.price + " "
   );
-  await sendList(techPhone, "هل تقبل هذا الطلب؟", "اختر", [{
-    title: "الطلب",
+  await sendList(techPhone, "   Order", "Choose", [{
+    title: "Order",
     rows: [
-      { id: "accept_" + orderId, title: "قبول الطلب" },
-      { id: "reject_" + orderId, title: "رفض الطلب" }
+      { id: "accept_" + orderId, title: " Order" },
+      { id: "reject_" + orderId, title: " Order" }
     ]
   }]);
-  await sendMessage(from, "تم ارسال طلبك!\n\nرقم طلبك: " + orderId + "\nسيتم اشعارك عند قبول الطلب.");
+  await sendMessage(from, "  !\n\n : " + orderId + "\n    Order.");
   await clearSession(from);
   return;
 }
 
-await sendMessage(from, "ارسل مرحبا للبدء.");
+await sendMessage(from, " mrhba .");
 ```
 
 } catch (err) {
@@ -295,53 +295,53 @@ console.error(“WEBHOOK ERROR:”, err);
 }
 });
 
-// ===== قبول =====
+// =====  =====
 async function handleAccept(text, techPhone, tech) {
 const orderId = text.replace(“accept_”, “”);
 const ref = db.collection(“orders”).doc(orderId);
 const snap = await ref.get();
-if (!snap.exists) { await sendMessage(techPhone, “الطلب غير موجود.”); return; }
+if (!snap.exists) { await sendMessage(techPhone, “Order  .”); return; }
 const order = snap.data();
-if (order.status !== “pending”) { await sendMessage(techPhone, “تم معالجة هذا الطلب مسبقا.”); return; }
+if (order.status !== “pending”) { await sendMessage(techPhone, “   Order .”); return; }
 await ref.update({ status: “accepted” });
 await db.collection(“technicians”).doc(order.technicianId).update({ active: false });
 const customerPhone = normalize(order.customer);
-await sendMessage(techPhone, “بيانات العميل:\nالهاتف: “ + customerPhone);
+await sendMessage(techPhone, “ :\n: “ + customerPhone);
 if (order.location && order.location.latitude) {
 await sendLocation(techPhone, order.location.latitude, order.location.longitude);
 }
-await sendList(techPhone, orderId + “\nبعد اتمام الخدمة اضغط انهاء”, “انهاء”, [{
-title: “الطلب”,
-rows: [{ id: “done_” + orderId, title: “انهاء الطلب” }]
+await sendList(techPhone, orderId + “\n    Done”, “Done”, [{
+title: “Order”,
+rows: [{ id: “done_” + orderId, title: “Done Order” }]
 }]);
 await sendMessage(customerPhone,
-“تم قبول طلبك!\n\nالفني: “ + tech.name + “\nالهاتف: “ + tech.phone +
-“\nالفني في طريقه اليك.\n\nرقم الطلب: “ + orderId
+“  !\n\n: “ + tech.name + “\n: “ + tech.phone +
+“\n   .\n\n Order: “ + orderId
 );
 }
 
-// ===== رفض =====
+// =====  =====
 async function handleReject(text, techPhone) {
 const orderId = text.replace(“reject_”, “”);
 const ref = db.collection(“orders”).doc(orderId);
 const snap = await ref.get();
-if (!snap.exists) { await sendMessage(techPhone, “الطلب غير موجود.”); return; }
+if (!snap.exists) { await sendMessage(techPhone, “Order  .”); return; }
 const order = snap.data();
-if (order.status !== “pending”) { await sendMessage(techPhone, “تم معالجة هذا الطلب مسبقا.”); return; }
+if (order.status !== “pending”) { await sendMessage(techPhone, “   Order .”); return; }
 await ref.update({ status: “rejected” });
 const customerPhone = normalize(order.customer);
-await sendMessage(techPhone, “تم رفض الطلب.”);
-await sendMessage(customerPhone, “عذرا، لم يتمكن الفني من قبول طلبك.\nرقم الطلب: “ + orderId + “\n\nارسل مرحبا لاعادة الطلب.”);
+await sendMessage(techPhone, “  Order.”);
+await sendMessage(customerPhone, “      .\n Order: “ + orderId + “\n\n mrhba  Order.”);
 }
 
-// ===== انهاء =====
+// ===== Done =====
 async function handleDone(text, techPhone, tech) {
 const orderId = text.replace(“done_”, “”);
 const ref = db.collection(“orders”).doc(orderId);
 const snap = await ref.get();
-if (!snap.exists) { await sendMessage(techPhone, “الطلب غير موجود.”); return; }
+if (!snap.exists) { await sendMessage(techPhone, “Order  .”); return; }
 const order = snap.data();
-if (order.status === “done”) { await sendMessage(techPhone, “هذا الطلب تم انهاؤه مسبقا.”); return; }
+if (order.status === “done”) { await sendMessage(techPhone, “ Order   .”); return; }
 await ref.update({ status: “done”, completedAt: admin.firestore.FieldValue.serverTimestamp() });
 const techRef = db.collection(“technicians”).doc(order.technicianId);
 const techData = (await techRef.get()).data();
@@ -349,8 +349,8 @@ const fee = order.price * 0.2;
 const newBalance = Math.max(0, (techData && techData.balance || 0) - fee);
 await techRef.update({ balance: newBalance, active: true });
 const customerPhone = normalize(order.customer);
-await sendMessage(customerPhone, “تم انجاز طلبك بنجاح!\nرقم الطلب: “ + orderId + “\nشكرا لاستخدامك خدماتنا”);
-await sendMessage(techPhone, “تم انهاء الطلب “ + orderId + “\nرسوم الخدمة: “ + fee + “ ريال\nرصيدك الحالي: “ + newBalance + “ ريال”);
+await sendMessage(customerPhone, “   !\n Order: “ + orderId + “\n  “);
+await sendMessage(techPhone, “ Done Order “ + orderId + “\n : “ + fee + “ \n : “ + newBalance + “ “);
 }
 
 app.listen(process.env.PORT || 3000, function() {
