@@ -1,91 +1,763 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8" />
-  <title>لوحة الطلبات</title>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>TAQA — لوحة التحكم</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg: #0a0e1a;
+  --surface: #111827;
+  --surface2: #1a2235;
+  --border: #1e2d45;
+  --accent: #f59e0b;
+  --accent2: #3b82f6;
+  --accent3: #10b981;
+  --danger: #ef4444;
+  --text: #f1f5f9;
+  --muted: #64748b;
+  --font-ar: 'Cairo', sans-serif;
+  --font-en: 'Outfit', sans-serif;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html[dir="rtl"] body { font-family: var(--font-ar); }
+html[dir="ltr"] body { font-family: var(--font-en); }
+body { background: var(--bg); color: var(--text); min-height:100vh; overflow-x:hidden; }
 
-  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js"></script>
+/* ── Sidebar ── */
+.sidebar {
+  position: fixed; top:0; right:0; width:240px; height:100vh;
+  background: var(--surface); border-left:1px solid var(--border);
+  display:flex; flex-direction:column; z-index:100;
+  transition: transform .3s;
+}
+html[dir="ltr"] .sidebar { right:auto; left:0; border-left:none; border-right:1px solid var(--border); }
+.logo {
+  padding: 28px 24px 20px;
+  font-size: 1.6rem; font-weight:900; color: var(--accent);
+  letter-spacing: -1px;
+  border-bottom: 1px solid var(--border);
+}
+.logo span { color: var(--text); font-weight:300; font-size:1rem; display:block; margin-top:2px; }
+.nav { flex:1; padding:16px 12px; display:flex; flex-direction:column; gap:4px; }
+.nav-item {
+  display:flex; align-items:center; gap:12px; padding:11px 14px;
+  border-radius:10px; cursor:pointer; font-size:.9rem; font-weight:600;
+  color: var(--muted); transition: all .2s; border:none; background:none; width:100%; text-align:right;
+}
+html[dir="ltr"] .nav-item { text-align:left; }
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.active { background: rgba(245,158,11,.12); color: var(--accent); }
+.nav-item .icon { font-size:1.2rem; flex-shrink:0; }
+.nav-badge { margin-right:auto; background:var(--danger); color:#fff; font-size:.65rem; padding:2px 7px; border-radius:20px; }
+html[dir="ltr"] .nav-badge { margin-right:0; margin-left:auto; }
 
-  <style>
-    body {
-      font-family: Arial;
-      background: #111;
-      color: white;
-      padding: 20px;
-    }
+.lang-toggle {
+  margin:16px 12px; padding:10px 14px; border-radius:10px;
+  background: var(--surface2); border:1px solid var(--border);
+  cursor:pointer; font-size:.85rem; font-weight:600; color:var(--muted);
+  display:flex; align-items:center; gap:8px; transition: color .2s;
+}
+.lang-toggle:hover { color:var(--text); }
 
-    .card {
-      background: #222;
-      padding: 15px;
-      margin-bottom: 10px;
-      border-radius: 10px;
-    }
+/* ── Main ── */
+.main { margin-right:240px; min-height:100vh; }
+html[dir="ltr"] .main { margin-right:0; margin-left:240px; }
 
-    button {
-      margin: 5px;
-      padding: 8px 12px;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-    }
+.topbar {
+  padding:20px 32px; display:flex; align-items:center; justify-content:space-between;
+  border-bottom:1px solid var(--border); background: var(--surface);
+  position:sticky; top:0; z-index:50;
+}
+.topbar h1 { font-size:1.25rem; font-weight:700; }
+.topbar-right { display:flex; align-items:center; gap:12px; }
+.status-dot { width:8px; height:8px; border-radius:50%; background:var(--accent3); box-shadow:0 0 8px var(--accent3); animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 
-    .accept { background: green; color: white; }
-    .start { background: orange; color: white; }
-    .done { background: blue; color: white; }
-  </style>
+.page { display:none; padding:32px; animation: fadeIn .3s; }
+.page.active { display:block; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+/* ── Stats Grid ── */
+.stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:28px; }
+.stat-card {
+  background: var(--surface); border:1px solid var(--border); border-radius:14px;
+  padding:22px; position:relative; overflow:hidden; transition: transform .2s, border-color .2s;
+}
+.stat-card:hover { transform:translateY(-2px); border-color:var(--accent); }
+.stat-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; }
+.stat-card.yellow::before { background:var(--accent); }
+.stat-card.blue::before   { background:var(--accent2); }
+.stat-card.green::before  { background:var(--accent3); }
+.stat-card.red::before    { background:var(--danger); }
+.stat-icon { font-size:1.8rem; margin-bottom:10px; }
+.stat-val { font-size:2rem; font-weight:900; line-height:1; }
+.stat-label { font-size:.8rem; color:var(--muted); margin-top:6px; font-weight:600; }
+.stat-change { font-size:.75rem; margin-top:8px; }
+.stat-change.up { color:var(--accent3); }
+.stat-change.down { color:var(--danger); }
+
+/* ── Tables ── */
+.card { background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; margin-bottom:24px; }
+.card-header { padding:18px 24px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+.card-header h3 { font-size:1rem; font-weight:700; }
+.badge { padding:4px 12px; border-radius:20px; font-size:.75rem; font-weight:700; }
+.badge.pending  { background:rgba(245,158,11,.15); color:var(--accent); }
+.badge.accepted { background:rgba(59,130,246,.15); color:var(--accent2); }
+.badge.done     { background:rgba(16,185,129,.15);  color:var(--accent3); }
+.badge.rejected { background:rgba(239,68,68,.15);   color:var(--danger); }
+table { width:100%; border-collapse:collapse; }
+th { padding:12px 20px; text-align:right; font-size:.75rem; font-weight:700; color:var(--muted); border-bottom:1px solid var(--border); background:rgba(255,255,255,.02); }
+html[dir="ltr"] th { text-align:left; }
+td { padding:14px 20px; font-size:.85rem; border-bottom:1px solid rgba(255,255,255,.04); }
+tr:last-child td { border-bottom:none; }
+tr:hover td { background:rgba(255,255,255,.02); }
+
+/* ── Buttons ── */
+.btn { padding:8px 18px; border-radius:8px; border:none; cursor:pointer; font-size:.85rem; font-weight:700; transition:all .2s; font-family:inherit; }
+.btn-primary { background:var(--accent); color:#000; }
+.btn-primary:hover { background:#d97706; }
+.btn-danger  { background:rgba(239,68,68,.15); color:var(--danger); }
+.btn-danger:hover  { background:rgba(239,68,68,.3); }
+.btn-success { background:rgba(16,185,129,.15); color:var(--accent3); }
+.btn-success:hover { background:rgba(16,185,129,.3); }
+.btn-sm { padding:5px 12px; font-size:.78rem; }
+
+/* ── Charts ── */
+.charts-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:24px; }
+@media(max-width:900px){ .charts-grid { grid-template-columns:1fr; } }
+.chart-wrap { padding:24px; }
+.chart-wrap h3 { font-size:.95rem; font-weight:700; margin-bottom:20px; }
+
+/* ── Forms ── */
+.form-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:24px; }
+.form-group { display:flex; flex-direction:column; gap:6px; }
+.form-group label { font-size:.8rem; font-weight:700; color:var(--muted); }
+.form-group input, .form-group select, .form-group textarea {
+  background:var(--surface2); border:1px solid var(--border); border-radius:8px;
+  padding:10px 14px; color:var(--text); font-size:.9rem; font-family:inherit;
+  transition: border-color .2s;
+}
+.form-group input:focus, .form-group select:focus {
+  outline:none; border-color:var(--accent);
+}
+.form-actions { padding:0 24px 24px; display:flex; gap:10px; }
+
+/* ── Tech Cards ── */
+.tech-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; padding:24px; }
+.tech-card {
+  background:var(--surface2); border:1px solid var(--border); border-radius:12px;
+  padding:20px; transition: all .2s;
+}
+.tech-card:hover { border-color:var(--accent2); transform:translateY(-2px); }
+.tech-avatar { width:48px; height:48px; border-radius:12px; background:linear-gradient(135deg,var(--accent2),var(--accent)); display:flex; align-items:center; justify-content:center; font-size:1.4rem; margin-bottom:14px; }
+.tech-name { font-weight:700; font-size:.95rem; margin-bottom:4px; }
+.tech-phone { font-size:.8rem; color:var(--muted); margin-bottom:12px; }
+.tech-stats { display:flex; gap:12px; margin-bottom:14px; }
+.tech-stat { flex:1; background:var(--surface); border-radius:8px; padding:8px; text-align:center; }
+.tech-stat-val { font-size:1.1rem; font-weight:900; }
+.tech-stat-lbl { font-size:.65rem; color:var(--muted); }
+.tech-footer { display:flex; align-items:center; justify-content:space-between; }
+.active-pill { padding:3px 10px; border-radius:20px; font-size:.72rem; font-weight:700; }
+.active-pill.on  { background:rgba(16,185,129,.15); color:var(--accent3); }
+.active-pill.off { background:rgba(239,68,68,.15);   color:var(--danger); }
+
+/* ── Services ── */
+.services-list { padding:24px; display:flex; flex-direction:column; gap:16px; }
+.service-row {
+  background:var(--surface2); border:1px solid var(--border); border-radius:12px;
+  padding:18px 20px; display:flex; align-items:center; gap:16px;
+}
+.service-icon { font-size:2rem; }
+.service-info { flex:1; }
+.service-name { font-weight:700; margin-bottom:4px; }
+.service-types { font-size:.8rem; color:var(--muted); }
+.service-actions { display:flex; gap:8px; }
+
+/* ── Financial ── */
+.fin-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-bottom:24px; }
+.fin-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; }
+.fin-amount { font-size:1.8rem; font-weight:900; color:var(--accent); }
+.fin-label  { font-size:.78rem; color:var(--muted); margin-top:4px; font-weight:600; }
+
+/* ── Modal ── */
+.modal-overlay {
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,.7);
+  z-index:200; align-items:center; justify-content:center; backdrop-filter:blur(4px);
+}
+.modal-overlay.open { display:flex; }
+.modal { background:var(--surface); border:1px solid var(--border); border-radius:16px; width:90%; max-width:520px; animation:fadeIn .2s; }
+.modal-header { padding:20px 24px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+.modal-header h3 { font-weight:700; }
+.modal-close { background:none; border:none; color:var(--muted); cursor:pointer; font-size:1.4rem; }
+
+/* ── Loader ── */
+.loader { display:flex; align-items:center; justify-content:center; padding:60px; color:var(--muted); font-size:.9rem; gap:10px; }
+.spinner { width:20px; height:20px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; }
+@keyframes spin { to{transform:rotate(360deg)} }
+
+/* ── Search ── */
+.search-bar { padding:16px 24px; border-bottom:1px solid var(--border); }
+.search-bar input { width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:10px 16px; color:var(--text); font-family:inherit; font-size:.9rem; }
+.search-bar input:focus { outline:none; border-color:var(--accent); }
+
+/* ── Filter ── */
+.filter-bar { padding:12px 24px; border-bottom:1px solid var(--border); display:flex; gap:8px; flex-wrap:wrap; }
+.filter-btn { padding:6px 14px; border-radius:20px; border:1px solid var(--border); background:none; color:var(--muted); font-size:.8rem; font-weight:700; cursor:pointer; transition:all .2s; font-family:inherit; }
+.filter-btn.active { background:var(--accent); color:#000; border-color:var(--accent); }
+
+.empty { text-align:center; padding:48px; color:var(--muted); font-size:.9rem; }
+</style>
 </head>
-
 <body>
 
-<h2>📊 الطلبات</h2>
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="logo">TAQA <span id="logo-sub">لوحة التحكم</span></div>
+  <nav class="nav">
+    <button class="nav-item active" onclick="showPage('overview')">
+      <span class="icon">📊</span><span data-ar="نظرة عامة" data-en="Overview">نظرة عامة</span>
+    </button>
+    <button class="nav-item" onclick="showPage('orders')">
+      <span class="icon">📋</span><span data-ar="الطلبات" data-en="Orders">الطلبات</span>
+      <span class="nav-badge" id="pending-badge">0</span>
+    </button>
+    <button class="nav-item" onclick="showPage('technicians')">
+      <span class="icon">👨‍🔧</span><span data-ar="الفنيون" data-en="Technicians">الفنيون</span>
+    </button>
+    <button class="nav-item" onclick="showPage('services')">
+      <span class="icon">🔧</span><span data-ar="الخدمات" data-en="Services">الخدمات</span>
+    </button>
+    <button class="nav-item" onclick="showPage('finance')">
+      <span class="icon">💰</span><span data-ar="التقارير المالية" data-en="Finance">التقارير المالية</span>
+    </button>
+  </nav>
+  <button class="lang-toggle" onclick="toggleLang()">
+    <span>🌐</span><span id="lang-label">English</span>
+  </button>
+</aside>
 
-<div id="orders"></div>
+<!-- Main -->
+<main class="main">
+  <div class="topbar">
+    <h1 id="page-title" data-ar="نظرة عامة" data-en="Overview">نظرة عامة</h1>
+    <div class="topbar-right">
+      <div class="status-dot"></div>
+      <span style="font-size:.8rem;color:var(--muted)" data-ar="متصل بـ Firebase" data-en="Connected to Firebase">متصل بـ Firebase</span>
+    </div>
+  </div>
+
+  <!-- ── Overview ── -->
+  <div id="page-overview" class="page active">
+    <div class="stats-grid" id="stats-grid">
+      <div class="loader"><div class="spinner"></div></div>
+    </div>
+    <div class="charts-grid">
+      <div class="card chart-wrap">
+        <h3 data-ar="الطلبات (آخر 7 أيام)" data-en="Orders (Last 7 Days)">الطلبات (آخر 7 أيام)</h3>
+        <canvas id="ordersChart" height="200"></canvas>
+      </div>
+      <div class="card chart-wrap">
+        <h3 data-ar="توزيع الحالات" data-en="Status Distribution">توزيع الحالات</h3>
+        <canvas id="statusChart" height="200"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3 data-ar="آخر الطلبات" data-en="Recent Orders">آخر الطلبات</h3>
+      </div>
+      <div id="recent-orders-table"></div>
+    </div>
+  </div>
+
+  <!-- ── Orders ── -->
+  <div id="page-orders" class="page">
+    <div class="card">
+      <div class="card-header">
+        <h3 data-ar="جميع الطلبات" data-en="All Orders">جميع الطلبات</h3>
+        <button class="btn btn-primary btn-sm" onclick="loadOrders()">🔄 <span data-ar="تحديث" data-en="Refresh">تحديث</span></button>
+      </div>
+      <div class="search-bar">
+        <input type="text" id="order-search" placeholder="بحث..." oninput="filterOrders()" data-ar-placeholder="بحث برقم الطلب أو العميل..." data-en-placeholder="Search by order ID or customer..."/>
+      </div>
+      <div class="filter-bar" id="order-filters">
+        <button class="filter-btn active" onclick="setOrderFilter('all',this)" data-ar="الكل" data-en="All">الكل</button>
+        <button class="filter-btn" onclick="setOrderFilter('pending',this)" data-ar="قيد الانتظار" data-en="Pending">قيد الانتظار</button>
+        <button class="filter-btn" onclick="setOrderFilter('accepted',this)" data-ar="مقبول" data-en="Accepted">مقبول</button>
+        <button class="filter-btn" onclick="setOrderFilter('done',this)" data-ar="مكتمل" data-en="Done">مكتمل</button>
+        <button class="filter-btn" onclick="setOrderFilter('rejected',this)" data-ar="مرفوض" data-en="Rejected">مرفوض</button>
+      </div>
+      <div id="orders-table"><div class="loader"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+
+  <!-- ── Technicians ── -->
+  <div id="page-technicians" class="page">
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header">
+        <h3 data-ar="الفنيون" data-en="Technicians">الفنيون</h3>
+        <button class="btn btn-primary btn-sm" onclick="openAddTechModal()">+ <span data-ar="إضافة فني" data-en="Add Technician">إضافة فني</span></button>
+      </div>
+      <div id="tech-grid" class="tech-grid"><div class="loader"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+
+  <!-- ── Services ── -->
+  <div id="page-services" class="page">
+    <div class="card">
+      <div class="card-header">
+        <h3 data-ar="الخدمات" data-en="Services">الخدمات</h3>
+        <button class="btn btn-primary btn-sm" onclick="openAddServiceModal()">+ <span data-ar="إضافة خدمة" data-en="Add Service">إضافة خدمة</span></button>
+      </div>
+      <div id="services-list" class="services-list"><div class="loader"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+
+  <!-- ── Finance ── -->
+  <div id="page-finance" class="page">
+    <div class="fin-grid" id="fin-cards"><div class="loader"><div class="spinner"></div></div></div>
+    <div class="card">
+      <div class="card-header">
+        <h3 data-ar="تفاصيل الفنيين المالية" data-en="Technician Financial Details">تفاصيل الفنيين المالية</h3>
+      </div>
+      <div id="fin-table"><div class="loader"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+</main>
+
+<!-- Add Tech Modal -->
+<div class="modal-overlay" id="tech-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 data-ar="إضافة فني جديد" data-en="Add New Technician">إضافة فني جديد</h3>
+      <button class="modal-close" onclick="closeModal('tech-modal')">×</button>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label data-ar="الاسم" data-en="Name">الاسم</label>
+        <input type="text" id="tech-name" />
+      </div>
+      <div class="form-group">
+        <label data-ar="رقم الهاتف" data-en="Phone">رقم الهاتف</label>
+        <input type="text" id="tech-phone" placeholder="966xxxxxxxxx" />
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label data-ar="الخدمات (مفصولة بفاصلة)" data-en="Services (comma separated)">الخدمات</label>
+        <input type="text" id="tech-services" placeholder="plumbing, electrical" />
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="addTechnician()" data-ar="حفظ" data-en="Save">حفظ</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('tech-modal')" data-ar="إلغاء" data-en="Cancel">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Service Modal -->
+<div class="modal-overlay" id="service-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 data-ar="إضافة خدمة جديدة" data-en="Add New Service">إضافة خدمة جديدة</h3>
+      <button class="modal-close" onclick="closeModal('service-modal')">×</button>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label data-ar="اسم الخدمة" data-en="Service Name">اسم الخدمة</label>
+        <input type="text" id="svc-name" />
+      </div>
+      <div class="form-group">
+        <label data-ar="الأيقونة (emoji)" data-en="Icon (emoji)">الأيقونة</label>
+        <input type="text" id="svc-icon" placeholder="🔧" />
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label data-ar="الأنواع (اسم:سعر مفصولة بسطر)" data-en="Types (name:price per line)">الأنواع</label>
+        <textarea id="svc-types" rows="4" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-family:inherit;resize:none" placeholder="أساسي:100&#10;متقدم:200"></textarea>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="addService()" data-ar="حفظ" data-en="Save">حفظ</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('service-modal')" data-ar="إلغاء" data-en="Cancel">إلغاء</button>
+    </div>
+  </div>
+</div>
 
 <script>
-  const firebaseConfig = {
-    apiKey: "PUT_API_KEY",
-    authDomain: "PUT_AUTH_DOMAIN",
-    projectId: "PUT_PROJECT_ID",
-  };
+// ── Firebase Config — استبدل ببيانات مشروعك ──────────────────────────────────
+const firebaseConfig = {
+  apiKey:            "AIzaSyAJAJe3NgjQIeNihq0pTreixKhdQaGxvrE",
+  authDomain:        "taqa-services.firebaseapp.com",
+  projectId:         "taqa-services",
+  storageBucket:     "taqa-services.firebasestorage.app",
+  messagingSenderId: "338454990474",
+  appId:             "1:338454990474:web:afd20c42cdeae871aea773"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
 
-  const app = firebase.initializeApp(firebaseConfig);
-  const db = firebase.firestore();
+// ── State ─────────────────────────────────────────────────────────────────────
+let currentLang   = "ar";
+let allOrders     = [];
+let orderFilter   = "all";
+let ordersChart   = null;
+let statusChart   = null;
 
-  const container = document.getElementById("orders");
+// ── Language ──────────────────────────────────────────────────────────────────
+function toggleLang() {
+  currentLang = currentLang === "ar" ? "en" : "ar";
+  document.documentElement.lang = currentLang;
+  document.documentElement.dir  = currentLang === "ar" ? "rtl" : "ltr";
+  document.getElementById("lang-label").textContent = currentLang === "ar" ? "English" : "العربية";
+  document.querySelectorAll("[data-ar]").forEach(el => {
+    el.textContent = el.dataset[currentLang];
+  });
+  document.querySelectorAll("input[data-ar-placeholder]").forEach(el => {
+    el.placeholder = el.dataset[currentLang + "Placeholder"] || el.placeholder;
+  });
+}
 
-  db.collection("orders")
-    .orderBy("createdAt", "desc")
-    .onSnapshot(snapshot => {
-      container.innerHTML = "";
-
-      snapshot.forEach(doc => {
-        const data = doc.data();
-
-        const div = document.createElement("div");
-        div.className = "card";
-
-        div.innerHTML = `
-          <b>📞 العميل:</b> ${data.phone}<br>
-          <b>🔧 الخدمة:</b> ${data.service}<br>
-          <b>📊 الحالة:</b> ${data.status}<br>
-          <b>👨‍🔧 الفني:</b> ${data.technicianName || "..."}<br><br>
-
-          <button class="accept" onclick="updateStatus('${doc.id}', 'accepted')">قبول</button>
-          <button class="start" onclick="updateStatus('${doc.id}', 'started')">بدء</button>
-          <button class="done" onclick="updateStatus('${doc.id}', 'completed')">إنهاء</button>
-        `;
-
-        container.appendChild(div);
-      });
-    });
-
-  function updateStatus(id, status) {
-    db.collection("orders").doc(id).update({
-      status: status
-    });
+// ── Navigation ────────────────────────────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+  document.getElementById("page-" + name).classList.add("active");
+  event.currentTarget.classList.add("active");
+  const titleEl = document.getElementById("page-title");
+  const clicked = event.currentTarget.querySelector("[data-ar]");
+  if (clicked) {
+    titleEl.dataset.ar = clicked.dataset.ar;
+    titleEl.dataset.en = clicked.dataset.en;
+    titleEl.textContent = clicked.dataset[currentLang];
   }
-</script>
+  if (name === "orders")      loadOrders();
+  if (name === "technicians") loadTechnicians();
+  if (name === "services")    loadServices();
+  if (name === "finance")     loadFinance();
+}
 
+// ── Status Labels ─────────────────────────────────────────────────────────────
+const statusLabels = {
+  ar: { pending:"قيد الانتظار", accepted:"مقبول", done:"مكتمل", rejected:"مرفوض" },
+  en: { pending:"Pending",       accepted:"Accepted", done:"Done",     rejected:"Rejected" }
+};
+function sl(s) { return (statusLabels[currentLang] && statusLabels[currentLang][s]) || s; }
+
+// ── Overview ──────────────────────────────────────────────────────────────────
+async function loadOverview() {
+  const [ordSnap, techSnap] = await Promise.all([
+    db.collection("orders").get(),
+    db.collection("technicians").get()
+  ]);
+  const orders = ordSnap.docs.map(d => d.data());
+  const techs  = techSnap.docs.map(d => d.data());
+
+  const total    = orders.length;
+  const pending  = orders.filter(o => o.status === "pending").length;
+  const done     = orders.filter(o => o.status === "done").length;
+  const revenue  = orders.filter(o => o.status === "done").reduce((s,o) => s + (o.price||0), 0);
+  const activeTechs = techs.filter(t => t.active).length;
+
+  document.getElementById("pending-badge").textContent = pending;
+
+  document.getElementById("stats-grid").innerHTML = `
+    <div class="stat-card yellow">
+      <div class="stat-icon">📋</div>
+      <div class="stat-val">${total}</div>
+      <div class="stat-label" data-ar="إجمالي الطلبات" data-en="Total Orders">${currentLang==="ar"?"إجمالي الطلبات":"Total Orders"}</div>
+    </div>
+    <div class="stat-card blue">
+      <div class="stat-icon">⏳</div>
+      <div class="stat-val">${pending}</div>
+      <div class="stat-label" data-ar="قيد الانتظار" data-en="Pending">${currentLang==="ar"?"قيد الانتظار":"Pending"}</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-icon">✅</div>
+      <div class="stat-val">${done}</div>
+      <div class="stat-label" data-ar="مكتملة" data-en="Completed">${currentLang==="ar"?"مكتملة":"Completed"}</div>
+    </div>
+    <div class="stat-card yellow">
+      <div class="stat-icon">💰</div>
+      <div class="stat-val">${revenue.toLocaleString()}</div>
+      <div class="stat-label" data-ar="إجمالي الإيرادات (ريال)" data-en="Total Revenue (SAR)">${currentLang==="ar"?"إجمالي الإيرادات (ريال)":"Total Revenue (SAR)"}</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-icon">👨‍🔧</div>
+      <div class="stat-val">${activeTechs}/${techs.length}</div>
+      <div class="stat-label" data-ar="فنيون متاحون" data-en="Available Techs">${currentLang==="ar"?"فنيون متاحون":"Available Techs"}</div>
+    </div>
+  `;
+
+  // Charts
+  buildOrdersChart(orders);
+  buildStatusChart(orders);
+
+  // Recent orders table
+  const recent = orders.slice(-8).reverse();
+  renderOrdersTable(recent, "recent-orders-table");
+}
+
+function buildOrdersChart(orders) {
+  const days = [];
+  const counts = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const key = d.toLocaleDateString("en-CA");
+    days.push(d.toLocaleDateString(currentLang === "ar" ? "ar-SA" : "en-US", { weekday:"short" }));
+    counts.push(orders.filter(o => {
+      if (!o.createdAt) return false;
+      const od = new Date(o.createdAt.seconds * 1000).toLocaleDateString("en-CA");
+      return od === key;
+    }).length);
+  }
+  if (ordersChart) ordersChart.destroy();
+  ordersChart = new Chart(document.getElementById("ordersChart"), {
+    type: "bar",
+    data: {
+      labels: days,
+      datasets: [{ data: counts, backgroundColor: "rgba(245,158,11,.7)", borderRadius: 6, borderSkipped: false }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: "rgba(255,255,255,.05)" }, ticks: { color: "#64748b" } },
+        y: { grid: { color: "rgba(255,255,255,.05)" }, ticks: { color: "#64748b", stepSize: 1 } }
+      }
+    }
+  });
+}
+
+function buildStatusChart(orders) {
+  const counts = ["pending","accepted","done","rejected"].map(s => orders.filter(o => o.status === s).length);
+  if (statusChart) statusChart.destroy();
+  statusChart = new Chart(document.getElementById("statusChart"), {
+    type: "doughnut",
+    data: {
+      labels: currentLang === "ar"
+        ? ["قيد الانتظار","مقبول","مكتمل","مرفوض"]
+        : ["Pending","Accepted","Done","Rejected"],
+      datasets: [{ data: counts, backgroundColor: ["#f59e0b","#3b82f6","#10b981","#ef4444"], borderWidth: 0 }]
+    },
+    options: {
+      plugins: { legend: { labels: { color: "#94a3b8", font: { size: 12 } } } },
+      cutout: "65%"
+    }
+  });
+}
+
+// ── Orders ────────────────────────────────────────────────────────────────────
+async function loadOrders() {
+  document.getElementById("orders-table").innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+  const snap = await db.collection("orders").orderBy("createdAt", "desc").get();
+  allOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  renderFilteredOrders();
+}
+
+function setOrderFilter(f, btn) {
+  orderFilter = f;
+  document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  renderFilteredOrders();
+}
+
+function filterOrders() { renderFilteredOrders(); }
+
+function renderFilteredOrders() {
+  const q = document.getElementById("order-search").value.toLowerCase();
+  let list = allOrders;
+  if (orderFilter !== "all") list = list.filter(o => o.status === orderFilter);
+  if (q) list = list.filter(o =>
+    (o.orderId || "").toLowerCase().includes(q) ||
+    (o.customer || "").includes(q) ||
+    (o.serviceName || "").toLowerCase().includes(q)
+  );
+  renderOrdersTable(list, "orders-table");
+}
+
+function renderOrdersTable(list, targetId) {
+  if (!list.length) {
+    document.getElementById(targetId).innerHTML = `<div class="empty">${currentLang==="ar"?"لا توجد طلبات":"No orders found"}</div>`;
+    return;
+  }
+  const rows = list.map(o => {
+    const date = o.createdAt ? new Date(o.createdAt.seconds * 1000).toLocaleDateString(currentLang === "ar" ? "ar-SA" : "en-US") : "-";
+    return `<tr>
+      <td style="font-weight:700;color:var(--accent)">${o.orderId || o.id}</td>
+      <td>${o.customer || "-"}</td>
+      <td>${o.serviceName || "-"}</td>
+      <td>${o.type || "-"}</td>
+      <td>${o.price || 0} SAR</td>
+      <td>${o.rating ? "⭐".repeat(o.rating) : "-"}</td>
+      <td><span class="badge ${o.status}">${sl(o.status)}</span></td>
+      <td style="color:var(--muted);font-size:.78rem">${date}</td>
+    </tr>`;
+  }).join("");
+  document.getElementById(targetId).innerHTML = `
+    <table>
+      <thead><tr>
+        <th data-ar="رقم الطلب" data-en="Order ID">${currentLang==="ar"?"رقم الطلب":"Order ID"}</th>
+        <th data-ar="العميل" data-en="Customer">${currentLang==="ar"?"العميل":"Customer"}</th>
+        <th data-ar="الخدمة" data-en="Service">${currentLang==="ar"?"الخدمة":"Service"}</th>
+        <th data-ar="النوع" data-en="Type">${currentLang==="ar"?"النوع":"Type"}</th>
+        <th data-ar="السعر" data-en="Price">${currentLang==="ar"?"السعر":"Price"}</th>
+        <th data-ar="التقييم" data-en="Rating">${currentLang==="ar"?"التقييم":"Rating"}</th>
+        <th data-ar="الحالة" data-en="Status">${currentLang==="ar"?"الحالة":"Status"}</th>
+        <th data-ar="التاريخ" data-en="Date">${currentLang==="ar"?"التاريخ":"Date"}</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── Technicians ───────────────────────────────────────────────────────────────
+async function loadTechnicians() {
+  document.getElementById("tech-grid").innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+  const snap = await db.collection("technicians").get();
+  const techs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  if (!techs.length) { document.getElementById("tech-grid").innerHTML = `<div class="empty">${currentLang==="ar"?"لا يوجد فنيون":"No technicians"}</div>`; return; }
+  document.getElementById("tech-grid").innerHTML = techs.map(t => `
+    <div class="tech-card">
+      <div class="tech-avatar">👨‍🔧</div>
+      <div class="tech-name">${t.name || "-"}</div>
+      <div class="tech-phone">📞 ${t.phone || "-"}</div>
+      <div class="tech-stats">
+        <div class="tech-stat">
+          <div class="tech-stat-val" style="color:var(--accent)">${t.rating ? t.rating.toFixed(1) : "-"}</div>
+          <div class="tech-stat-lbl">${currentLang==="ar"?"التقييم":"Rating"}</div>
+        </div>
+        <div class="tech-stat">
+          <div class="tech-stat-val" style="color:var(--accent3)">${t.ratingCount || 0}</div>
+          <div class="tech-stat-lbl">${currentLang==="ar"?"تقييمات":"Reviews"}</div>
+        </div>
+        <div class="tech-stat">
+          <div class="tech-stat-val" style="color:var(--accent2)">${t.balance || 0}</div>
+          <div class="tech-stat-lbl">SAR</div>
+        </div>
+      </div>
+      <div class="tech-footer">
+        <span class="active-pill ${t.active ? "on" : "off"}">${t.active ? (currentLang==="ar"?"متاح":"Available") : (currentLang==="ar"?"مشغول":"Busy")}</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm ${t.active ? "btn-danger" : "btn-success"}" onclick="toggleTech('${t.id}',${t.active})">
+            ${t.active ? (currentLang==="ar"?"إيقاف":"Disable") : (currentLang==="ar"?"تفعيل":"Enable")}
+          </button>
+          <button class="btn btn-sm btn-danger" onclick="deleteTech('${t.id}')">🗑</button>
+        </div>
+      </div>
+    </div>`).join("");
+}
+
+async function toggleTech(id, current) {
+  await db.collection("technicians").doc(id).update({ active: !current });
+  loadTechnicians();
+}
+async function deleteTech(id) {
+  if (!confirm(currentLang==="ar"?"هل أنت متأكد من الحذف؟":"Are you sure?")) return;
+  await db.collection("technicians").doc(id).delete();
+  loadTechnicians();
+}
+function openAddTechModal() { document.getElementById("tech-modal").classList.add("open"); }
+async function addTechnician() {
+  const name  = document.getElementById("tech-name").value.trim();
+  const phone = document.getElementById("tech-phone").value.trim();
+  const svcs  = document.getElementById("tech-services").value.split(",").map(s => s.trim()).filter(Boolean);
+  if (!name || !phone) return alert(currentLang==="ar"?"يرجى ملء الحقول المطلوبة":"Please fill required fields");
+  await db.collection("technicians").add({ name, phone, services: svcs, serviceIds: svcs, active: true, balance: 0, rating: 0, ratingCount: 0 });
+  closeModal("tech-modal");
+  loadTechnicians();
+}
+
+// ── Services ──────────────────────────────────────────────────────────────────
+async function loadServices() {
+  document.getElementById("services-list").innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+  const snap = await db.collection("services").get();
+  const svcs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  if (!svcs.length) { document.getElementById("services-list").innerHTML = `<div class="empty">${currentLang==="ar"?"لا توجد خدمات":"No services"}</div>`; return; }
+  document.getElementById("services-list").innerHTML = svcs.map(s => `
+    <div class="service-row">
+      <div class="service-icon">${s.icon || "🔧"}</div>
+      <div class="service-info">
+        <div class="service-name">${s.name}</div>
+        <div class="service-types">${(s.types||[]).map(t => `${t.name}: ${t.price} SAR`).join(" · ")}</div>
+      </div>
+      <div class="service-actions">
+        <button class="btn btn-sm btn-danger" onclick="deleteService('${s.id}')">🗑</button>
+      </div>
+    </div>`).join("");
+}
+
+function openAddServiceModal() { document.getElementById("service-modal").classList.add("open"); }
+async function addService() {
+  const name  = document.getElementById("svc-name").value.trim();
+  const icon  = document.getElementById("svc-icon").value.trim() || "🔧";
+  const lines = document.getElementById("svc-types").value.split("\n").filter(Boolean);
+  const types = lines.map(l => {
+    const [n, p] = l.split(":");
+    return { name: (n||"").trim(), price: parseFloat(p)||0 };
+  });
+  if (!name) return alert(currentLang==="ar"?"يرجى إدخال اسم الخدمة":"Please enter service name");
+  await db.collection("services").add({ name, icon, types });
+  closeModal("service-modal");
+  loadServices();
+}
+async function deleteService(id) {
+  if (!confirm(currentLang==="ar"?"هل أنت متأكد من الحذف؟":"Are you sure?")) return;
+  await db.collection("services").doc(id).delete();
+  loadServices();
+}
+
+// ── Finance ───────────────────────────────────────────────────────────────────
+async function loadFinance() {
+  const [ordSnap, techSnap] = await Promise.all([
+    db.collection("orders").where("status","==","done").get(),
+    db.collection("technicians").get()
+  ]);
+  const orders = ordSnap.docs.map(d => d.data());
+  const techs  = techSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  const totalRevenue  = orders.reduce((s,o) => s + (o.price||0), 0);
+  const totalFees     = Math.round(totalRevenue * 0.2);
+  const totalOrders   = orders.length;
+  const avgOrder      = totalOrders ? Math.round(totalRevenue / totalOrders) : 0;
+
+  document.getElementById("fin-cards").innerHTML = `
+    <div class="fin-card"><div class="fin-amount">${totalRevenue.toLocaleString()}</div><div class="fin-label">${currentLang==="ar"?"إجمالي الإيرادات (ريال)":"Total Revenue (SAR)"}</div></div>
+    <div class="fin-card"><div class="fin-amount" style="color:var(--accent3)">${totalFees.toLocaleString()}</div><div class="fin-label">${currentLang==="ar"?"إجمالي العمولات (20%)":"Total Fees (20%)"}</div></div>
+    <div class="fin-card"><div class="fin-amount" style="color:var(--accent2)">${totalOrders}</div><div class="fin-label">${currentLang==="ar"?"طلبات مكتملة":"Completed Orders"}</div></div>
+    <div class="fin-card"><div class="fin-amount" style="color:var(--danger)">${avgOrder}</div><div class="fin-label">${currentLang==="ar"?"متوسط قيمة الطلب (ريال)":"Avg Order Value (SAR)"}</div></div>
+  `;
+
+  const rows = techs.map(t => `<tr>
+    <td style="font-weight:700">${t.name||"-"}</td>
+    <td>${t.phone||"-"}</td>
+    <td style="color:var(--accent)">${t.balance||0} SAR</td>
+    <td>${t.ratingCount||0} ${currentLang==="ar"?"تقييم":"reviews"}</td>
+    <td>${t.rating ? ("⭐".repeat(Math.round(t.rating)) + " " + t.rating.toFixed(1)) : "-"}</td>
+    <td><span class="active-pill ${t.active?"on":"off"}">${t.active?(currentLang==="ar"?"متاح":"Available"):(currentLang==="ar"?"مشغول":"Busy")}</span></td>
+  </tr>`).join("");
+
+  document.getElementById("fin-table").innerHTML = `
+    <table>
+      <thead><tr>
+        <th>${currentLang==="ar"?"الاسم":"Name"}</th>
+        <th>${currentLang==="ar"?"الهاتف":"Phone"}</th>
+        <th>${currentLang==="ar"?"الرصيد":"Balance"}</th>
+        <th>${currentLang==="ar"?"عدد التقييمات":"Reviews"}</th>
+        <th>${currentLang==="ar"?"التقييم":"Rating"}</th>
+        <th>${currentLang==="ar"?"الحالة":"Status"}</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+function closeModal(id) { document.getElementById(id).classList.remove("open"); }
+document.querySelectorAll(".modal-overlay").forEach(m => {
+  m.addEventListener("click", e => { if (e.target === m) m.classList.remove("open"); });
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadOverview();
+</script>
 </body>
 </html>
