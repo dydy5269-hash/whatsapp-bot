@@ -641,4 +641,36 @@ async function handleDone(orderId, techPhone, tech) {
   await sendMessage(customerPhone,CL.ratePrompt(orderId));
 }
 
+// ─── Admin Assign Endpoint ────────────────────────────────────────────────────
+// Called from dashboard to notify tech via WhatsApp after admin assigns order
+app.post("/admin/assign", async(req,res)=>{
+  try {
+    const { orderId, techId } = req.body;
+    if(!orderId||!techId) return res.status(400).json({error:"orderId and techId required"});
+
+    const [orderSnap, techSnap] = await Promise.all([
+      db.collection("orders").doc(orderId).get(),
+      db.collection("technicians").doc(techId).get()
+    ]);
+    if(!orderSnap.exists) return res.status(404).json({error:"Order not found"});
+    if(!techSnap.exists)  return res.status(404).json({error:"Tech not found"});
+
+    const order = orderSnap.data();
+    const tech  = techSnap.data();
+    const techPhone = normalize(tech.phone);
+    const partsText = buildPartsText(order.parts||[]);
+
+    // Send WhatsApp buttons to tech
+    await sendButtons(techPhone,
+      LANGS.ar.newOrder(order.orderId, order.serviceName, order.type||"", partsText, order.totalPrice||0),
+      [{id:"accept_"+orderId, title:LANGS.ar.acceptBtn}, {id:"reject_"+orderId, title:LANGS.ar.rejectBtn}]
+    );
+
+    res.json({success:true, techName:tech.name, techPhone:tech.phone});
+  } catch(e) {
+    console.error("admin/assign:", e?.message);
+    res.status(500).json({error:e.message});
+  }
+});
+
 app.listen(process.env.PORT||3000,()=>console.log("✅ TAQA Bot running"));
