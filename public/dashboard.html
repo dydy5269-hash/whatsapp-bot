@@ -275,7 +275,11 @@ tr:hover td{background:rgba(255,255,255,.02);}
     <div class="form-grid">
       <div class="form-group"><label>الاسم</label><input type="text" id="tech-name"/></div>
       <div class="form-group"><label>رقم الهاتف</label><input type="text" id="tech-phone" placeholder="966xxxxxxxxx"/></div>
-      <div class="form-group" style="grid-column:1/-1"><label>الخدمات (مفصولة بفاصلة)</label><input type="text" id="tech-services" placeholder="electric, plumbing, ac"/></div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>🔑 معرف الفني (Document ID) — اختياري، اتركه فارغاً للتوليد التلقائي</label>
+        <input type="text" id="tech-id" placeholder="مثال: tech1 | tech2" style="direction:ltr;font-family:monospace"/>
+      </div>
+      <div class="form-group" style="grid-column:1/-1"><label>الخدمات (مفصولة بفاصلة) — يجب أن تطابق Document ID الخدمة</label><input type="text" id="tech-services" placeholder="electric, plumbing, ac" style="direction:ltr;font-family:monospace"/></div>
     </div>
     <div class="form-actions">
       <button class="btn btn-primary" onclick="addTechnician()">حفظ</button>
@@ -291,6 +295,11 @@ tr:hover td{background:rgba(255,255,255,.02);}
     <div class="form-grid">
       <div class="form-group"><label>اسم الخدمة</label><input type="text" id="svc-name"/></div>
       <div class="form-group"><label>الأيقونة (emoji)</label><input type="text" id="svc-icon" placeholder="🔧"/></div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>🔑 معرف الخدمة (Document ID) — بالإنجليزي بدون مسافات</label>
+        <input type="text" id="svc-id" placeholder="electric | plumbing | ac" style="direction:ltr;font-family:monospace"/>
+        <span style="font-size:.7rem;color:var(--muted);margin-top:2px;display:block">يجب أن يطابق serviceId في القطع والفنيين</span>
+      </div>
       <div class="form-group" style="grid-column:1/-1">
         <label>الأنواع (اسم:سعر — كل نوع في سطر)</label>
         <textarea id="svc-types" rows="4" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text);font-family:inherit;resize:none" placeholder="أساسي:100&#10;متقدم:200"></textarea>
@@ -314,6 +323,10 @@ tr:hover td{background:rgba(255,255,255,.02);}
       <div class="form-group">
         <label>الخدمة المرتبطة</label>
         <select id="part-service"><option value="">اختر خدمة...</option></select>
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>🔑 معرف القطعة (Document ID) — اختياري، اتركه فارغاً للتوليد التلقائي</label>
+        <input type="text" id="part-id" placeholder="مثال: part_electric_switch" style="direction:ltr;font-family:monospace"/>
       </div>
       <div class="form-group" style="grid-column:1/-1"><label>وصف (اختياري)</label><input type="text" id="part-desc"/></div>
     </div>
@@ -558,7 +571,7 @@ async function addTechnician(){
   const phone=document.getElementById("tech-phone").value.trim();
   const svcs=document.getElementById("tech-services").value.split(",").map(s=>s.trim()).filter(Boolean);
   if(!name||!phone){showToast(currentLang==="ar"?"يرجى ملء الحقول":"Fill fields","error");return;}
-  try{await db.collection("technicians").add({name,phone,services:svcs,serviceIds:svcs,active:true,balance:0,rating:0,ratingCount:0});showToast(currentLang==="ar"?"تمت الإضافة":"Added");closeModal("tech-modal");["tech-name","tech-phone","tech-services"].forEach(id=>document.getElementById(id).value="");loadTechnicians();}
+  try{const techId=document.getElementById("tech-id").value.trim();if(techId){await db.collection("technicians").doc(techId).set({name,phone,services:svcs,serviceIds:svcs,active:true,balance:0,rating:0,ratingCount:0});}else{await db.collection("technicians").add({name,phone,services:svcs,serviceIds:svcs,active:true,balance:0,rating:0,ratingCount:0});}showToast(currentLang==="ar"?"تمت الإضافة":"Added");closeModal("tech-modal");["tech-name","tech-phone","tech-id","tech-services"].forEach(id=>document.getElementById(id).value="");loadTechnicians();}
   catch(e){showToast(e.message,"error");}
 }
 
@@ -585,7 +598,7 @@ async function addService(){
   const icon=document.getElementById("svc-icon").value.trim()||"🔧";
   const types=document.getElementById("svc-types").value.split("\n").filter(Boolean).map(l=>{const[n,p]=l.split(":");return{name:(n||"").trim(),price:parseFloat(p)||0};});
   if(!name){showToast(currentLang==="ar"?"أدخل اسم الخدمة":"Enter name","error");return;}
-  try{await db.collection("services").add({name,icon,types});showToast(currentLang==="ar"?"تمت الإضافة":"Added");closeModal("service-modal");["svc-name","svc-icon","svc-types"].forEach(id=>document.getElementById(id).value="");loadServices();}
+  try{const svcId=document.getElementById("svc-id").value.trim().toLowerCase().replace(/\s+/g,"-");if(!svcId){showToast(currentLang==="ar"?"يرجى إدخال معرف الخدمة":"Enter service ID","error");return;}await db.collection("services").doc(svcId).set({name,icon,types});showToast(currentLang==="ar"?"تمت الإضافة":"Added");closeModal("service-modal");["svc-name","svc-icon","svc-id","svc-types"].forEach(id=>document.getElementById(id).value="");loadServices();}
   catch(e){showToast(e.message,"error");}
 }
 async function deleteService(id){if(!confirm(currentLang==="ar"?"حذف؟":"Delete?"))return;try{await db.collection("services").doc(id).delete();showToast(currentLang==="ar"?"تم الحذف":"Deleted");loadServices();}catch(e){showToast(e.message,"error");}}
@@ -645,7 +658,7 @@ function openModal(id){ document.getElementById(id).classList.add("open"); }
 function openAddPartModal(){
   editingPartId=null;
   document.getElementById("part-modal-title").textContent=currentLang==="ar"?"إضافة قطعة جديدة":"Add New Part";
-  ["part-name","part-unit","part-price","part-desc"].forEach(id=>document.getElementById(id).value="");
+  ["part-name","part-unit","part-price","part-desc","part-id"].forEach(id=>document.getElementById(id).value="");
   document.getElementById("part-service").value="";
   openModal("part-modal");
 }
@@ -676,7 +689,12 @@ async function savePart(){
       await db.collection("parts").doc(editingPartId).update(data);
       showToast(currentLang==="ar"?"تم التحديث":"Updated");
     }else{
-      await db.collection("parts").add(data);
+      const customId=document.getElementById("part-id").value.trim().toLowerCase().replace(/\s+/g,"_");
+      if(customId){
+        await db.collection("parts").doc(customId).set(data);
+      }else{
+        await db.collection("parts").add(data);
+      }
       showToast(currentLang==="ar"?"تمت الإضافة":"Added");
     }
     closeModal("part-modal");
