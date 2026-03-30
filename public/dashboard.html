@@ -319,7 +319,7 @@ tr:hover td{background:rgba(255,255,255,.02);}
     <div class="form-grid">
       <div class="form-group"><label>اسم القطعة</label><input type="text" id="part-name"/></div>
       <div class="form-group"><label>وحدة القياس</label><input type="text" id="part-unit" placeholder="قطعة / متر / لتر"/></div>
-      <div class="form-group"><label>السعر (ريال)</label><input type="number" id="part-price" placeholder="0"/></div>
+      <div class="form-group"><label>السعر (ريال عماني)</label><input type="number" id="part-price" placeholder="0"/></div>
       <div class="form-group">
         <label>الخدمة المرتبطة</label>
         <select id="part-service"><option value="">اختر خدمة...</option></select>
@@ -449,7 +449,7 @@ async function loadOverview() {
       <div class="stat-card yellow"><div class="stat-icon">📋</div><div class="stat-val">${orders.length}</div><div class="stat-label">${currentLang==="ar"?"إجمالي الطلبات":"Total Orders"}</div></div>
       <div class="stat-card blue"><div class="stat-icon">⏳</div><div class="stat-val">${pending}</div><div class="stat-label">${currentLang==="ar"?"قيد الانتظار":"Pending"}</div></div>
       <div class="stat-card green"><div class="stat-icon">✅</div><div class="stat-val">${done}</div><div class="stat-label">${currentLang==="ar"?"مكتملة":"Completed"}</div></div>
-      <div class="stat-card yellow"><div class="stat-icon">💰</div><div class="stat-val">${revenue.toLocaleString()}</div><div class="stat-label">${currentLang==="ar"?"الإيرادات (ريال)":"Revenue (SAR)"}</div></div>
+      <div class="stat-card yellow"><div class="stat-icon">💰</div><div class="stat-val">${revenue.toLocaleString()}</div><div class="stat-label">${currentLang==="ar"?"الإيرادات (ريال عماني)":"Revenue (OMR)"}</div></div>
       <div class="stat-card green"><div class="stat-icon">👨‍🔧</div><div class="stat-val">${activeTechs}/${techs.length}</div><div class="stat-label">${currentLang==="ar"?"فنيون متاحون":"Available Techs"}</div></div>
     `;
     buildOrdersChart(orders); buildStatusChart(orders);
@@ -504,7 +504,7 @@ function renderOrdersTable(list,targetId,showDelete){
       <td>${o.serviceName||"-"}</td>
       <td>${getTypeName(o)}</td>
       <td><span style="background:rgba(59,130,246,.1);color:var(--accent2);padding:2px 7px;border-radius:5px;font-size:.72rem">${partsCount} ${currentLang==="ar"?"قطعة":"parts"}</span></td>
-      <td style="font-weight:700;color:var(--accent3)">${total} SAR</td>
+      <td style="font-weight:700;color:var(--accent3)">${total} OMR</td>
       <td>${o.rating?"⭐".repeat(Math.min(o.rating,5)):"-"}</td>
       <td><span class="badge ${o.status}">${sl(o.status)}</span></td>
       <td style="color:var(--muted);font-size:.72rem">${date}</td>
@@ -552,7 +552,7 @@ async function loadTechnicians(){
         <div class="tech-stats">
           <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent)">${tc.rating?tc.rating.toFixed(1):"-"}</div><div class="tech-stat-lbl">${currentLang==="ar"?"تقييم":"Rating"}</div></div>
           <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent3)">${tc.ratingCount||0}</div><div class="tech-stat-lbl">${currentLang==="ar"?"تقييمات":"Reviews"}</div></div>
-          <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent2)">${tc.balance||0}</div><div class="tech-stat-lbl">SAR</div></div>
+          <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent2)">${tc.balance||0}</div><div class="tech-stat-lbl">OMR</div></div>
         </div>
         <div class="tech-footer">
           <span class="active-pill ${tc.active?"on":"off"}">${tc.active?(currentLang==="ar"?"متاح":"Available"):(currentLang==="ar"?"مشغول":"Busy")}</span>
@@ -587,7 +587,7 @@ async function loadServices(){
         <div class="service-icon">${s.icon||"🔧"}</div>
         <div class="service-info">
           <div class="service-name">${s.name}</div>
-          <div class="service-types">${(s.types||[]).map(tp=>`${tp.name}: ${tp.price} SAR`).join(" · ")}</div>
+          <div class="service-types">${(s.types||[]).map(tp=>`${tp.name}: ${tp.price} OMR`).join(" · ")}</div>
         </div>
         <button class="btn btn-sm btn-danger" onclick="deleteService('${s.id}')">🗑</button>
       </div>`).join("");
@@ -642,7 +642,7 @@ function renderFilteredParts(){
         <div class="part-name">${p.name}</div>
         <div class="part-meta">
           <span class="part-svc-tag">${svcMap[p.serviceId]||p.serviceId||"-"}</span>
-          ${p.unit||""} · ${p.price||0} SAR
+          ${p.unit||""} · ${p.price||0} OMR
           ${p.desc?`· ${p.desc}`:""}
         </div>
       </div>
@@ -722,10 +722,10 @@ async function loadFinance(){
     const totalFees=Math.round(totalRevenue*0.2);
     const avgOrder=orders.length?Math.round(totalRevenue/orders.length):0;
     document.getElementById("fin-cards").innerHTML=`
-      <div class="fin-card"><div class="fin-amount">${totalRevenue.toLocaleString()}</div><div class="fin-label">${currentLang==="ar"?"إجمالي الإيرادات (ريال)":"Total Revenue (SAR)"}</div></div>
+      <div class="fin-card"><div class="fin-amount">${totalRevenue.toLocaleString()}</div><div class="fin-label">${currentLang==="ar"?"إجمالي الإيرادات (ريال عماني)":"Total Revenue (OMR)"}</div></div>
       <div class="fin-card"><div class="fin-amount" style="color:var(--accent3)">${totalFees.toLocaleString()}</div><div class="fin-label">${currentLang==="ar"?"إجمالي العمولات (20%)":"Total Fees (20%)"}</div></div>
       <div class="fin-card"><div class="fin-amount" style="color:var(--accent2)">${orders.length}</div><div class="fin-label">${currentLang==="ar"?"طلبات مكتملة":"Completed Orders"}</div></div>
-      <div class="fin-card"><div class="fin-amount" style="color:var(--danger)">${avgOrder}</div><div class="fin-label">${currentLang==="ar"?"متوسط الطلب (ريال)":"Avg Order (SAR)"}</div></div>
+      <div class="fin-card"><div class="fin-amount" style="color:var(--danger)">${avgOrder}</div><div class="fin-label">${currentLang==="ar"?"متوسط الطلب (ريال عماني)":"Avg Order (OMR)"}</div></div>
     `;
     document.getElementById("fin-table").innerHTML=`
       <table><thead><tr>
@@ -735,7 +735,7 @@ async function loadFinance(){
       </tr></thead>
       <tbody>${techs.map(tc=>`<tr>
         <td style="font-weight:700">${tc.name||"-"}</td><td>${tc.phone||"-"}</td>
-        <td style="color:var(--accent)">${tc.balance||0} SAR</td>
+        <td style="color:var(--accent)">${tc.balance||0} OMR</td>
         <td>${tc.rating?("⭐".repeat(Math.round(tc.rating))+" "+tc.rating.toFixed(1)):"-"}</td>
         <td>${tc.ratingCount||0}</td>
         <td><span class="active-pill ${tc.active?"on":"off"}">${tc.active?(currentLang==="ar"?"متاح":"Available"):(currentLang==="ar"?"مشغول":"Busy")}</span></td>
