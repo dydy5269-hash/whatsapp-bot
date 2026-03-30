@@ -1262,6 +1262,63 @@ async function addUser(){
 }
 async function deleteUser(id){if(!confirm("حذف هذا المستخدم؟"))return;try{await db.collection("adminUsers").doc(id).delete();showToast("تم الحذف");loadUsers();}catch(e){showToast(e.message,"error");}}
 
+// ── Assign Tech to Order ──────────────────────────────────────────────────────
+let assignOrderDocId = null;
+
+async function openAssignModal(docId, orderId, serviceId) {
+  assignOrderDocId = docId;
+  document.getElementById("assign-modal-title").textContent = "تعيين فني — " + orderId;
+  document.getElementById("assign-order-info").innerHTML =
+    `<span style="color:var(--muted)">رقم الطلب:</span> <strong style="color:var(--accent)">${orderId}</strong>`;
+  const sel = document.getElementById("assign-tech-select");
+  sel.innerHTML = '<option value="">جارٍ التحميل...</option>';
+  document.getElementById("assign-modal").classList.add("open");
+  try {
+    const snap = await db.collection("technicians").where("active","==",true).get();
+    let techs = snap.docs.map(d=>({id:d.id,...d.data()}));
+    if (serviceId) {
+      techs = techs.filter(t=>
+        (t.services||[]).includes(serviceId)||(t.serviceIds||[]).includes(serviceId)
+      );
+    }
+    if (!techs.length) {
+      sel.innerHTML = '<option value="">لا يوجد فني متاح لهذه الخدمة</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">اختر فني...</option>' +
+      techs.map(t=>`<option value="${t.id}">👨‍🔧 ${t.name||"-"} — ⭐${t.rating?t.rating.toFixed(1):"—"} — 📍${t.region||"—"}</option>`).join("");
+  } catch(e) {
+    sel.innerHTML = '<option value="">خطأ في التحميل</option>';
+    showToast(e.message,"error");
+  }
+}
+
+async function assignTechToOrder() {
+  const techId = document.getElementById("assign-tech-select").value;
+  if (!techId) { showToast("يرجى اختيار فني","error"); return; }
+  if (!assignOrderDocId) return;
+  try {
+    await db.collection("orders").doc(assignOrderDocId).update({
+      technicianId: techId,
+      status: "pending",
+      assignedByAdmin: true,
+      rejectedTechs: [],
+      assignedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await db.collection("technicians").doc(techId).update({ active: false });
+    showToast("✅ تم تعيين الفني");
+    document.getElementById("assign-modal").classList.remove("open");
+    loadOrders();
+    // Notify via WhatsApp
+    try {
+      await fetch("https://whatsapp-bot-production-1471.up.railway.app/admin/assign", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({orderId:assignOrderDocId,techId})
+      });
+    } catch(e){ console.warn("WhatsApp notify failed:",e.message); }
+  } catch(e) { showToast(e.message,"error"); }
+}
+
 // ── Modal ─────────────────────────────────────────────────────────────────────
 function openModal(id){
   if(id==="part-modal")loadParts().then(()=>{});
