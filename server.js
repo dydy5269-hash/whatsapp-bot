@@ -32,7 +32,7 @@ const LANGS = {
     currentParts:  (list) => `🛒 القطع المختارة:\n${list}\n\nأرسل *تأكيد* للمتابعة أو اختر قطعة أخرى.`,
     noneSelected:  "لم تختر أي قطع. أرسل *تأكيد* للمتابعة بدون قطع أو اختر قطعة.",
     confirmTitle:  (sName, tName, parts, total) =>
-      `📋 ملخص الطلب\n🔧 الخدمة: ${sName}\n📌 النوع: ${tName}\n\n${parts}\n\n💰 الإجمالي: ${total} ريال`,
+      `📋 ملخص الطلب\n🔧 الخدمة: ${sName}\n📌 النوع: ${tName}\n\n${parts}\n\n💰 الإجمالي: ${total} ريال عماني`,
     confirmBtn:    "الإجراء",
     confirmRow:    "تأكيد الطلب",
     cancelRow:     "إلغاء",
@@ -47,9 +47,9 @@ const LANGS = {
     typeError:     "خطأ. أرسل *مرحبا* للبدء من جديد.",
     defaultMsg:    "أرسل *مرحبا* للبدء.",
     techInfo:      (name, phone, rating, balance, active) =>
-      `👤 الاسم: ${name}\n📞 الهاتف: ${phone}\n⭐ التقييم: ${rating || "لا يوجد"}\n💰 الرصيد: ${balance || 0} ريال\n🟢 الحالة: ${active ? "متاح" : "مشغول"}`,
+      `👤 الاسم: ${name}\n📞 الهاتف: ${phone}\n⭐ التقييم: ${rating || "لا يوجد"}\n💰 الرصيد: ${balance || 0} ريال عماني\n🟢 الحالة: ${active ? "متاح" : "مشغول"}`,
     newOrder:      (id, sName, tName, parts, total) =>
-      `🔔 طلب جديد!\n🆔 ${id}\n🔧 ${sName}\n📋 ${tName}\n\n${parts}\n\n💰 الإجمالي: ${total} ريال`,
+      `🔔 طلب جديد!\n🆔 ${id}\n🔧 ${sName}\n📋 ${tName}\n\n${parts}\n\n💰 الإجمالي: ${total} ريال عماني`,
     acceptOrder:   "هل تقبل هذا الطلب؟",
     acceptBtn:     "اختر",
     acceptRow:     "قبول الطلب",
@@ -65,7 +65,7 @@ const LANGS = {
     alreadyProcessed:"الطلب تمت معالجته مسبقاً.",
     alreadyDone:   "الطلب مكتمل مسبقاً.",
     completed:     (id) => `✅ اكتمل طلبك!\n🆔 ${id}\nشكراً لثقتك بنا! 🙏`,
-    techDone:      (id, fee, balance) => `✅ الطلب ${id} مكتمل.\n💸 العمولة: ${fee} ريال\n💰 رصيدك: ${balance} ريال`,
+    techDone:      (id, fee, balance) => `✅ الطلب ${id} مكتمل.\n💸 العمولة: ${fee} ريال عماني\n💰 رصيدك: ${balance} ريال عماني`,
     ratePrompt:    "⭐ كيف تقيّم خدمة الفني؟",
     rateBtn:       "التقييم",
     ratingDone:    (stars) => `شكراً على تقييمك! منحت الفني ${stars} ⭐`,
@@ -88,7 +88,7 @@ const LANGS = {
     currentParts:  (list) => `🛒 Selected parts:\n${list}\n\nSend *confirm* to proceed or choose another part.`,
     noneSelected:  "No parts selected. Send *confirm* to proceed without parts or choose a part.",
     confirmTitle:  (sName, tName, parts, total) =>
-      `📋 Order Summary\n🔧 Service: ${sName}\n📌 Type: ${tName}\n\n${parts}\n\n💰 Total: ${total} SAR`,
+      `📋 Order Summary\n🔧 Service: ${sName}\n📌 Type: ${tName}\n\n${parts}\n\n💰 Total: ${total} OMR`,
     confirmBtn:    "Action",
     confirmRow:    "Confirm Order",
     cancelRow:     "Cancel",
@@ -103,9 +103,9 @@ const LANGS = {
     typeError:     "Error. Send *mrhba* to restart.",
     defaultMsg:    "Send *mrhba* to start.",
     techInfo:      (name, phone, rating, balance, active) =>
-      `👤 Name: ${name}\n📞 Phone: ${phone}\n⭐ Rating: ${rating || "N/A"}\n💰 Balance: ${balance || 0} SAR\n🟢 Status: ${active ? "Available" : "Busy"}`,
+      `👤 Name: ${name}\n📞 Phone: ${phone}\n⭐ Rating: ${rating || "N/A"}\n💰 Balance: ${balance || 0} OMR\n🟢 Status: ${active ? "Available" : "Busy"}`,
     newOrder:      (id, sName, tName, parts, total) =>
-      `🔔 New Order!\n🆔 ${id}\n🔧 ${sName}\n📋 ${tName}\n\n${parts}\n\n💰 Total: ${total} SAR`,
+      `🔔 New Order!\n🆔 ${id}\n🔧 ${sName}\n📋 ${tName}\n\n${parts}\n\n💰 Total: ${total} OMR`,
     acceptOrder:   "Do you accept this order?",
     acceptBtn:     "Choose",
     acceptRow:     "Accept Order",
@@ -121,7 +121,7 @@ const LANGS = {
     alreadyProcessed:"Order already processed.",
     alreadyDone:   "Order already completed.",
     completed:     (id) => `✅ Order completed!\n🆔 ${id}\nThank you! 🙏`,
-    techDone:      (id, fee, balance) => `✅ Order ${id} done.\n💸 Fee: ${fee} SAR\n💰 Balance: ${balance} SAR`,
+    techDone:      (id, fee, balance) => `✅ Order ${id} done.\n💸 Fee: ${fee} OMR\n💰 Balance: ${balance} OMR`,
     ratePrompt:    "⭐ How would you rate the technician's service?",
     rateBtn:       "Rate",
     ratingDone:    (stars) => `Thanks for your rating! You gave ${stars} ⭐`,
@@ -280,15 +280,15 @@ function generateInvoicePDF(order, lang) {
 
     doc.fillColor("#64748b").fontSize(10).font("Helvetica");
     doc.text(isAr ? "المجموع قبل الضريبة" : "Subtotal", 350, y);
-    doc.fillColor("#f1f5f9").text(`${subtotal} SAR`, 500, y, { width: 55, align: "right" }); y += 18;
+    doc.fillColor("#f1f5f9").text(`${subtotal} OMR`, 500, y, { width: 55, align: "right" }); y += 18;
     doc.fillColor("#64748b").text(isAr ? "ضريبة القيمة المضافة (15%)" : "VAT (15%)", 350, y);
-    doc.fillColor("#f1f5f9").text(`${vat} SAR`, 500, y, { width: 55, align: "right" }); y += 18;
+    doc.fillColor("#f1f5f9").text(`${vat} OMR`, 500, y, { width: 55, align: "right" }); y += 18;
 
     // Total box
     doc.fillColor("#f59e0b").rect(340, y, 215, 30).fill();
     doc.fillColor("#000000").fontSize(12).font("Helvetica-Bold");
     doc.text(isAr ? "الإجمالي" : "Total", 355, y + 8);
-    doc.text(`${total} SAR`, 500, y + 8, { width: 55, align: "right" });
+    doc.text(`${total} OMR`, 500, y + 8, { width: 55, align: "right" });
     y += 50;
 
     // Rating note
@@ -315,7 +315,7 @@ async function getPartsByService(serviceId) {
 
 function buildPartsText(selectedParts) {
   if (!selectedParts || !selectedParts.length) return "-";
-  return selectedParts.map(p => `• ${p.name} × ${p.qty} = ${p.price * p.qty} ريال`).join("\n");
+  return selectedParts.map(p => `• ${p.name} × ${p.qty} = ${p.price * p.qty} ريال عماني`).join("\n");
 }
 
 function calcTotal(order) {
@@ -458,7 +458,7 @@ app.post("/webhook", async (req, res) => {
       await setSession(from, "type", { ...session.data, service });
       await sendList(from, `${service.name}\n${Lx.chooseType}`, Lx.typesBtn, [{
         title: Lx.chooseType,
-        rows: service.types.map((t, i) => ({ id: "type_" + i, title: t.name.substring(0, 24), description: `${t.price} SAR` }))
+        rows: service.types.map((t, i) => ({ id: "type_" + i, title: t.name.substring(0, 24), description: `${t.price} OMR` }))
       }]);
       return;
     }
@@ -512,7 +512,7 @@ app.post("/webhook", async (req, res) => {
         await setSession(from, "parts", { ...session.data, parts: selectedParts, pendingPartId: null });
         // Show current cart + menu
         const cartText = selectedParts.length
-          ? Lx.currentParts(selectedParts.map(p => `• ${p.name} × ${p.qty} — ${p.price * p.qty} SAR`).join("\n"))
+          ? Lx.currentParts(selectedParts.map(p => `• ${p.name} × ${p.qty} — ${p.price * p.qty} OMR`).join("\n"))
           : Lx.noneSelected;
         await sendMessage(from, cartText);
         await sendPartsMenu(from, availableParts, Lx);
@@ -524,7 +524,7 @@ app.post("/webhook", async (req, res) => {
         const service = session.data.service;
         const type    = session.data.selectedType;
         const total   = calcTotal({ servicePrice: session.data.servicePrice, parts: selectedParts });
-        const partsText = selectedParts.length ? selectedParts.map(p => `• ${p.name} × ${p.qty} = ${p.price * p.qty} SAR`).join("\n") : "-";
+        const partsText = selectedParts.length ? selectedParts.map(p => `• ${p.name} × ${p.qty} = ${p.price * p.qty} OMR`).join("\n") : "-";
         await setSession(from, "confirm", { ...session.data, parts: selectedParts });
         await sendList(from,
           Lx.confirmTitle(service.name, type.name, partsText, total),
@@ -612,7 +612,7 @@ async function sendPartsMenu(to, parts, Lx) {
   const rows = parts.slice(0, 10).map(p => ({
     id:    "part_" + p.id,
     title: p.name.substring(0, 24),
-    description: `${p.price} SAR / ${p.unit || "قطعة"}`
+    description: `${p.price} OMR / ${p.unit || "قطعة"}`
   }));
   await sendList(to, Lx.chooseParts, Lx.partsBtn, [{ title: Lx.partsBtn, rows }]);
 }
