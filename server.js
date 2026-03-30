@@ -617,5 +617,4 @@ const pdf=await generateInvoicePDF(order,order.lang||“ar”);
 await sendDocument(cPhone,pdf,`final_${orderId}.pdf`,CL.finalInvoice(orderId));
 await sendRatingPrompt(cPhone,orderId,order.lang||“ar”);
 }
-
 app.listen(process.env.PORT||3000,()=>console.log(“✅ TAQA Bot running”));
