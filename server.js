@@ -174,6 +174,29 @@ async function sendList(to,body,button,sections){
   try{await axios.post(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,{messaging_product:"whatsapp",to,type:"interactive",interactive:{type:"list",body:{text:body},action:{button,sections}}},{headers:{Authorization:`Bearer ${WHATSAPP_TOKEN}`,"Content-Type":"application/json"}});}
   catch(e){console.error("sendList:",e?.message);}
 }
+async function sendButtons(to, body, buttons) {
+  // WhatsApp supports max 3 buttons
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp", to, type: "interactive",
+        interactive: {
+          type: "button",
+          body: { text: body },
+          action: {
+            buttons: buttons.slice(0, 3).map((b, i) => ({
+              type: "reply",
+              reply: { id: b.id, title: b.title.substring(0, 20) }
+            }))
+          }
+        }
+      },
+      { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
+    );
+  } catch(e) { console.error("sendButtons:", e?.message); }
+}
+
 async function sendLocation(to,lat,lng){
   try{await axios.post(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,{messaging_product:"whatsapp",to,type:"location",location:{latitude:lat,longitude:lng}},{headers:{Authorization:`Bearer ${WHATSAPP_TOKEN}`,"Content-Type":"application/json"}});}
   catch(e){console.error("sendLoc:",e?.message);}
