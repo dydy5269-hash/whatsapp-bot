@@ -831,7 +831,12 @@ function renderOrdersTable(list,targetId,showDel){
   const canDelete=currentUserRole==="admin";
   const rows=list.map(o=>{
     const date=o.createdAt?new Date(o.createdAt.seconds*1000).toLocaleDateString(currentLang==="ar"?"ar-OM":"en-OM"):"-";
-    const del=showDel&&canDelete?`<td><button class="btn btn-sm btn-danger" onclick="deleteOrder('${o.id}')">🗑</button></td>`:"";
+    const assignBtn = (showDel && o.status==="pending")
+      ? `<td><button class="btn btn-sm btn-blue" onclick="openAssignModal('${o.id}','${o.orderId||o.id}','${o.serviceId||""}')" title="تعيين فني">👨‍🔧 تعيين</button></td>`
+      : (showDel ? "<td></td>" : "");
+    const del = showDel && canDelete
+      ? `<td><button class="btn btn-sm btn-danger" onclick="deleteOrder('${o.id}')">🗑</button></td>`
+      : "";
     return`<tr>
       <td style="font-weight:700;color:var(--accent);font-size:.72rem">${o.orderId||o.id}</td>
       <td style="font-size:.74rem">${o.customer||"-"}</td>
@@ -848,7 +853,7 @@ function renderOrdersTable(list,targetId,showDel){
   document.getElementById(targetId).innerHTML=`<table><thead><tr>
     <th>رقم الطلب</th><th>العميل</th><th>المنطقة</th><th>الخدمة</th><th>النوع</th>
     <th>الإجمالي</th><th>التقييم</th><th>الحالة</th><th>التاريخ</th>
-    ${showDel&&canDelete?"<th></th>":""}
+    ${showDel?"<th>تعيين</th><th></th>":""}
   </tr></thead><tbody>${rows}</tbody></table>`;
 }
 async function deleteOrder(id){if(!confirm("حذف هذا الطلب؟"))return;try{await db.collection("orders").doc(id).delete();showToast("تم الحذف");allOrders=allOrders.filter(o=>o.id!==id);renderFilteredOrders();}catch(e){showToast(e.message,"error");}}
