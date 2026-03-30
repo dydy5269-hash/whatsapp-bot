@@ -170,6 +170,7 @@ tr:hover td{background:rgba(255,255,255,.02);}
       <button class="nav-item" onclick="showPage('technicians',this)"><span class="icon">👨‍🔧</span><span class="nl" data-ar="الفنيون" data-en="Technicians">الفنيون</span></button>
       <button class="nav-item" onclick="showPage('services',this)"><span class="icon">🔧</span><span class="nl" data-ar="الخدمات" data-en="Services">الخدمات</span></button>
       <button class="nav-item" onclick="showPage('parts',this)"><span class="icon">🔩</span><span class="nl" data-ar="القطع" data-en="Parts">القطع</span></button>
+      <button class="nav-item" onclick="showPage('coupons',this)"><span class="icon">🎟</span><span class="nl" data-ar="الكوبونات" data-en="Coupons">الكوبونات</span></button>
       <button class="nav-item" onclick="showPage('finance',this)"><span class="icon">💰</span><span class="nl" data-ar="التقارير المالية" data-en="Finance">التقارير المالية</span></button>
     </nav>
     <div class="sidebar-footer">
@@ -257,6 +258,17 @@ tr:hover td{background:rgba(255,255,255,.02);}
       </div>
     </div>
 
+    <!-- Coupons -->
+    <div id="page-coupons" class="page">
+      <div class="card">
+        <div class="card-header">
+          <h3>الكوبونات</h3>
+          <button class="btn btn-primary btn-sm" onclick="openModal('coupon-modal')">+ إضافة كوبون</button>
+        </div>
+        <div class="table-wrap" id="coupons-table"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+
     <!-- Finance -->
     <div id="page-finance" class="page">
       <div class="fin-grid" id="fin-cards"><div class="loader"><div class="spinner"></div></div></div>
@@ -308,6 +320,30 @@ tr:hover td{background:rgba(255,255,255,.02);}
     <div class="form-actions">
       <button class="btn btn-primary" onclick="addService()">حفظ</button>
       <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('service-modal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- Coupon Modal -->
+<div class="modal-overlay" id="coupon-modal">
+  <div class="modal">
+    <div class="modal-header"><h3>إضافة كوبون جديد</h3><button class="modal-close" onclick="closeModal('coupon-modal')">×</button></div>
+    <div class="form-grid">
+      <div class="form-group"><label>كود الكوبون</label><input type="text" id="coupon-code" placeholder="TAQA20" style="direction:ltr;font-family:monospace;text-transform:uppercase"/></div>
+      <div class="form-group">
+        <label>نوع الخصم</label>
+        <select id="coupon-type">
+          <option value="fixed">مبلغ ثابت (OMR)</option>
+          <option value="percent">نسبة مئوية (%)</option>
+        </select>
+      </div>
+      <div class="form-group"><label>قيمة الخصم</label><input type="number" id="coupon-discount" placeholder="0" min="0"/></div>
+      <div class="form-group"><label>الحد الأقصى للاستخدام</label><input type="number" id="coupon-max" placeholder="مثال: 100 — اتركه 0 لغير محدود" min="0"/></div>
+      <div class="form-group" style="grid-column:1/-1"><label>تاريخ الانتهاء (اختياري)</label><input type="date" id="coupon-expiry"/></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="addCoupon()">حفظ</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('coupon-modal')">إلغاء</button>
     </div>
   </div>
 </div>
@@ -748,6 +784,70 @@ function closeModal(id){document.getElementById(id).classList.remove("open");}
 document.querySelectorAll(".modal-overlay").forEach(m=>{
   m.addEventListener("click",e=>{if(e.target===m)m.classList.remove("open");});
 });
+
+// ── Coupons ───────────────────────────────────────────────────────────────────
+async function loadCoupons() {
+  document.getElementById("coupons-table").innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+  try {
+    const snap = await db.collection("coupons").orderBy("createdAt","desc").get();
+    const coupons = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (!coupons.length) { document.getElementById("coupons-table").innerHTML = '<div class="empty">لا توجد كوبونات</div>'; return; }
+    const rows = coupons.map(c => {
+      const expiry = c.expiresAt ? new Date(c.expiresAt.seconds*1000).toLocaleDateString("ar-OM") : "—";
+      const discLabel = c.type === "percent" ? `${c.discount}%` : `${c.discount} OMR`;
+      const statusBadge = c.active
+        ? '<span class="badge done">مفعّل</span>'
+        : '<span class="badge rejected">معطّل</span>';
+      return `<tr>
+        <td style="font-weight:700;color:var(--accent);font-family:monospace">${c.code}</td>
+        <td>${discLabel}</td>
+        <td>${c.type === "percent" ? "نسبة" : "مبلغ ثابت"}</td>
+        <td>${c.useCount || 0} / ${c.maxUses || "∞"}</td>
+        <td style="font-size:.75rem;color:var(--muted)">${expiry}</td>
+        <td>${statusBadge}</td>
+        <td>
+          <div style="display:flex;gap:5px">
+            <button class="btn btn-sm ${c.active ? "btn-danger" : "btn-success"}" onclick="toggleCoupon('${c.id}',${c.active})">${c.active ? "تعطيل" : "تفعيل"}</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteCoupon('${c.id}')">🗑</button>
+          </div>
+        </td>
+      </tr>`;
+    }).join("");
+    document.getElementById("coupons-table").innerHTML = `
+      <table><thead><tr>
+        <th>الكود</th><th>الخصم</th><th>النوع</th><th>الاستخدام</th><th>الانتهاء</th><th>الحالة</th><th></th>
+      </tr></thead><tbody>${rows}</tbody></table>`;
+  } catch(e) { console.error(e); }
+}
+
+async function addCoupon() {
+  const code     = document.getElementById("coupon-code").value.trim().toUpperCase();
+  const type     = document.getElementById("coupon-type").value;
+  const discount = parseFloat(document.getElementById("coupon-discount").value) || 0;
+  const maxUses  = parseInt(document.getElementById("coupon-max").value) || 0;
+  const expiry   = document.getElementById("coupon-expiry").value;
+  if (!code || !discount) { showToast("يرجى إدخال الكود والخصم", "error"); return; }
+  try {
+    const data = { code, type, discount, maxUses: maxUses || null, useCount: 0, usedBy: [], active: true, createdAt: firebase.firestore.FieldValue.serverTimestamp() };
+    if (expiry) data.expiresAt = firebase.firestore.Timestamp.fromDate(new Date(expiry));
+    await db.collection("coupons").doc(code).set(data);
+    showToast("✅ تمت إضافة الكوبون");
+    closeModal("coupon-modal");
+    ["coupon-code","coupon-discount","coupon-max","coupon-expiry"].forEach(id => document.getElementById(id).value = "");
+    loadCoupons();
+  } catch(e) { showToast(e.message, "error"); }
+}
+
+async function toggleCoupon(id, current) {
+  try { await db.collection("coupons").doc(id).update({ active: !current }); showToast("✅"); loadCoupons(); }
+  catch(e) { showToast(e.message, "error"); }
+}
+
+async function deleteCoupon(id) {
+  if (!confirm("حذف هذا الكوبون؟")) return;
+  try { await db.collection("coupons").doc(id).delete(); showToast("تم الحذف"); loadCoupons(); }
+  catch(e) { showToast(e.message, "error"); }
+}
 
 // Fix: wire Add Part button to load services first
 document.querySelector("[onclick=\"openModal('part-modal')\"]").onclick = async function(){
