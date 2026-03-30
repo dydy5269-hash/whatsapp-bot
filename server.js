@@ -429,34 +429,6 @@ app.post("/webhook", async(req,res)=>{
       await sendMessage(from, LANGS[getLang(session)].trackPrompt); return;
     }
 
-    // ── Cancel order: "الغاء ORD-XXX" or "cancel ORD-XXX" ──────────────────
-    const cancelAr = text.match(/^(الغاء|إلغاء)\s+(.+)/i);
-    const cancelEn = text.match(/^cancel\s+(.+)/i);
-    if(cancelAr||cancelEn){
-      const session  = await getSession(from);
-      const lang     = getLang(session);
-      const orderId  = (cancelAr?.[2]||cancelEn?.[1]).trim().toUpperCase();
-      // Check orders collection
-      let oSnap = await db.collection("orders").doc(orderId).get();
-      if(!oSnap.exists){
-        const q = await db.collection("orders").where("orderId","==",orderId).limit(1).get();
-        if(!q.empty) oSnap = { exists:true, data:()=>q.docs[0].data(), id:q.docs[0].id, ref:q.docs[0].ref };
-      }
-      // Check waiting_orders too
-      if(!oSnap.exists){
-        const wq = await db.collection("waiting_orders").where("orderId","==",orderId).limit(1).get();
-        if(!wq.empty) oSnap = { exists:true, data:()=>wq.docs[0].data(), id:wq.docs[0].id, ref:wq.docs[0].ref, isWaiting:true };
-      }
-      if(!oSnap.exists){ await sendMessage(from, LANGS[lang].trackNotFound); return; }
-      const order = oSnap.data();
-      if(order.customer !== from){ await sendMessage(from, LANGS[lang].trackNotFound); return; }
-      if(order.status==="done"||order.status==="cancelled"){ await sendMessage(from, `الطلب ${orderId} لا يمكن إلغاؤه (${statusLabel(order.status,lang)})`); return; }
-      // Ask for reason — save pending cancel in session
-      await setSession(from, "cancel_reason", { lang, orderId, orderDocId:oSnap.id, isWaiting:oSnap.isWaiting||false });
-      await sendMessage(from, LANGS[lang].cancelPrompt(orderId));
-      return;
-    }
-
     // ── Session flow ──────────────────────────────────────────────────────────
     let session = await getSession(from);
     const isStartAr = ["مرحبا","هلا","مرحبً","ابدا"].includes(text);
