@@ -15,7 +15,7 @@
 html[dir="rtl"] body{font-family:var(--font-ar);}
 html[dir="ltr"] body{font-family:var(--font-en);}
 body{background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
-#login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg);background-image:radial-gradient(ellipse at 20% 50%,rgba(245,158,11,.1),transparent 60%),radial-gradient(ellipse at 80% 20%,rgba(59,130,246,.08),transparent 60%);}
+#login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;background-image:radial-gradient(ellipse at 20% 50%,rgba(245,158,11,.1),transparent 60%),radial-gradient(ellipse at 80% 20%,rgba(59,130,246,.08),transparent 60%);}
 .login-box{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:48px 40px;width:100%;max-width:420px;text-align:center;animation:fadeIn .4s;}
 .login-logo{font-size:3rem;font-weight:900;color:var(--accent);margin-bottom:4px;letter-spacing:-2px;}
 .login-sub{color:var(--muted);font-size:.9rem;margin-bottom:36px;}
@@ -31,169 +31,161 @@ html[dir="ltr"] .login-field{text-align:left;}
 #app{display:none;}
 .sidebar{position:fixed;top:0;right:0;width:240px;height:100vh;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;z-index:100;}
 html[dir="ltr"] .sidebar{right:auto;left:0;border-left:none;border-right:1px solid var(--border);}
-.logo{padding:24px 24px 18px;font-size:1.6rem;font-weight:900;color:var(--accent);letter-spacing:-1px;border-bottom:1px solid var(--border);}
-.logo span{color:var(--muted);font-weight:400;font-size:.78rem;display:block;margin-top:2px;}
-.nav{flex:1;padding:16px 12px;display:flex;flex-direction:column;gap:4px;overflow-y:auto;}
-.nav-item{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:10px;cursor:pointer;font-size:.88rem;font-weight:600;color:var(--muted);transition:all .2s;border:none;background:none;width:100%;text-align:right;}
+.logo{padding:22px 24px 16px;font-size:1.5rem;font-weight:900;color:var(--accent);letter-spacing:-1px;border-bottom:1px solid var(--border);}
+.logo span{color:var(--muted);font-weight:400;font-size:.75rem;display:block;margin-top:2px;}
+.nav{flex:1;padding:14px 12px;display:flex;flex-direction:column;gap:3px;overflow-y:auto;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 13px;border-radius:9px;cursor:pointer;font-size:.85rem;font-weight:600;color:var(--muted);transition:all .2s;border:none;background:none;width:100%;text-align:right;}
 html[dir="ltr"] .nav-item{text-align:left;}
 .nav-item:hover{background:var(--surface2);color:var(--text);}
 .nav-item.active{background:rgba(245,158,11,.12);color:var(--accent);}
-.nav-item .icon{font-size:1.1rem;flex-shrink:0;}
-.nav-badge{margin-right:auto;background:var(--danger);color:#fff;font-size:.65rem;padding:2px 7px;border-radius:20px;}
+.nav-item .icon{font-size:1rem;flex-shrink:0;}
+.nav-badge{margin-right:auto;background:var(--danger);color:#fff;font-size:.6rem;padding:2px 6px;border-radius:20px;}
 html[dir="ltr"] .nav-badge{margin-right:0;margin-left:auto;}
-.sidebar-footer{padding:12px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px;}
-.admin-info{padding:10px 12px;background:var(--surface2);border-radius:8px;font-size:.75rem;color:var(--muted);word-break:break-all;}
-.admin-info strong{color:var(--text);display:block;margin-bottom:2px;font-size:.8rem;}
-.logout-btn{padding:9px 14px;border-radius:8px;background:rgba(239,68,68,.1);color:var(--danger);border:none;cursor:pointer;font-size:.82rem;font-weight:700;font-family:inherit;transition:all .2s;width:100%;}
+.sidebar-footer{padding:10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:7px;}
+.admin-info{padding:9px 11px;background:var(--surface2);border-radius:8px;font-size:.72rem;color:var(--muted);word-break:break-all;}
+.admin-info strong{color:var(--text);display:block;margin-bottom:1px;font-size:.78rem;}
+.logout-btn{padding:8px 13px;border-radius:8px;background:rgba(239,68,68,.1);color:var(--danger);border:none;cursor:pointer;font-size:.8rem;font-weight:700;font-family:inherit;transition:all .2s;width:100%;}
 .logout-btn:hover{background:rgba(239,68,68,.2);}
-.lang-toggle{padding:9px 14px;border-radius:8px;background:var(--surface2);color:var(--muted);border:none;cursor:pointer;font-size:.82rem;font-weight:700;font-family:inherit;display:flex;align-items:center;gap:6px;transition:all .2s;width:100%;}
+.lang-toggle{padding:8px 13px;border-radius:8px;background:var(--surface2);color:var(--muted);border:none;cursor:pointer;font-size:.8rem;font-weight:700;font-family:inherit;display:flex;align-items:center;gap:6px;transition:all .2s;width:100%;}
 .lang-toggle:hover{color:var(--text);}
 .main{margin-right:240px;min-height:100vh;}
 html[dir="ltr"] .main{margin-right:0;margin-left:240px;}
-.topbar{padding:18px 28px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:50;}
-.topbar h1{font-size:1.2rem;font-weight:700;}
-.status-dot{width:8px;height:8px;border-radius:50%;background:var(--accent3);box-shadow:0 0 8px var(--accent3);animation:pulse 2s infinite;}
+.topbar{padding:16px 26px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:50;}
+.topbar h1{font-size:1.15rem;font-weight:700;}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--accent3);box-shadow:0 0 7px var(--accent3);animation:pulse 2s infinite;}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-.page{display:none;padding:28px;animation:fadeIn .3s;}
+.page{display:none;padding:24px;animation:fadeIn .3s;}
 .page.active{display:block;}
-@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:24px;}
-.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;position:relative;overflow:hidden;transition:transform .2s,border-color .2s;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:13px;margin-bottom:22px;}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:18px;position:relative;overflow:hidden;transition:transform .2s,border-color .2s;}
 .stat-card:hover{transform:translateY(-2px);border-color:var(--accent);}
 .stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
 .stat-card.yellow::before{background:var(--accent);}
 .stat-card.blue::before{background:var(--accent2);}
 .stat-card.green::before{background:var(--accent3);}
 .stat-card.red::before{background:var(--danger);}
-.stat-icon{font-size:1.6rem;margin-bottom:8px;}
-.stat-val{font-size:1.9rem;font-weight:900;line-height:1;}
-.stat-label{font-size:.75rem;color:var(--muted);margin-top:5px;font-weight:600;}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:22px;}
-.card-header{padding:16px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
-.card-header h3{font-size:.95rem;font-weight:700;}
-.badge{padding:3px 10px;border-radius:20px;font-size:.72rem;font-weight:700;}
+.stat-icon{font-size:1.5rem;margin-bottom:7px;}
+.stat-val{font-size:1.8rem;font-weight:900;line-height:1;}
+.stat-label{font-size:.72rem;color:var(--muted);margin-top:4px;font-weight:600;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:13px;overflow:hidden;margin-bottom:20px;}
+.card-header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+.card-header h3{font-size:.92rem;font-weight:700;}
+.badge{padding:3px 9px;border-radius:20px;font-size:.7rem;font-weight:700;}
 .badge.pending{background:rgba(245,158,11,.15);color:var(--accent);}
 .badge.accepted{background:rgba(59,130,246,.15);color:var(--accent2);}
 .badge.done{background:rgba(16,185,129,.15);color:var(--accent3);}
 .badge.rejected{background:rgba(239,68,68,.15);color:var(--danger);}
 .table-wrap{overflow-x:auto;}
-table{width:100%;border-collapse:collapse;min-width:600px;}
-th{padding:11px 18px;text-align:right;font-size:.73rem;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border);background:rgba(255,255,255,.02);white-space:nowrap;}
+table{width:100%;border-collapse:collapse;min-width:500px;}
+th{padding:10px 16px;text-align:right;font-size:.7rem;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border);background:rgba(255,255,255,.02);white-space:nowrap;}
 html[dir="ltr"] th{text-align:left;}
-td{padding:12px 18px;font-size:.83rem;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;}
+td{padding:11px 16px;font-size:.82rem;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;}
 tr:last-child td{border-bottom:none;}
 tr:hover td{background:rgba(255,255,255,.02);}
-.btn{padding:7px 16px;border-radius:8px;border:none;cursor:pointer;font-size:.82rem;font-weight:700;transition:all .2s;font-family:inherit;}
+.btn{padding:7px 15px;border-radius:8px;border:none;cursor:pointer;font-size:.8rem;font-weight:700;transition:all .2s;font-family:inherit;}
 .btn-primary{background:var(--accent);color:#000;}
 .btn-primary:hover{background:#d97706;}
 .btn-danger{background:rgba(239,68,68,.15);color:var(--danger);}
 .btn-danger:hover{background:rgba(239,68,68,.3);}
 .btn-success{background:rgba(16,185,129,.15);color:var(--accent3);}
 .btn-success:hover{background:rgba(16,185,129,.3);}
-.btn-sm{padding:5px 11px;font-size:.76rem;}
-.btn-group{display:flex;gap:7px;flex-wrap:wrap;}
-.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:22px;}
+.btn-sm{padding:4px 10px;font-size:.73rem;}
+.btn-group{display:flex;gap:6px;flex-wrap:wrap;}
+.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;}
 @media(max-width:900px){.charts-grid{grid-template-columns:1fr;}}
-.chart-wrap{padding:22px;}
-.chart-wrap h3{font-size:.92rem;font-weight:700;margin-bottom:18px;}
-.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:22px;}
-.form-group{display:flex;flex-direction:column;gap:6px;}
-.form-group label{font-size:.78rem;font-weight:700;color:var(--muted);}
-.form-group input,.form-group select,.form-group textarea{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 13px;color:var(--text);font-size:.88rem;font-family:inherit;transition:border-color .2s;}
+.chart-wrap{padding:20px;}
+.chart-wrap h3{font-size:.9rem;font-weight:700;margin-bottom:16px;}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px;padding:20px;}
+.form-group{display:flex;flex-direction:column;gap:5px;}
+.form-group label{font-size:.75rem;font-weight:700;color:var(--muted);}
+.form-group input,.form-group select,.form-group textarea{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:.86rem;font-family:inherit;transition:border-color .2s;}
 .form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:var(--accent);}
-.form-actions{padding:0 22px 22px;display:flex;gap:10px;}
-.tech-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;padding:22px;}
-.tech-card{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:18px;transition:all .2s;}
+.form-actions{padding:0 20px 20px;display:flex;gap:9px;}
+.tech-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:13px;padding:20px;}
+.tech-card{background:var(--surface2);border:1px solid var(--border);border-radius:11px;padding:16px;transition:all .2s;}
 .tech-card:hover{border-color:var(--accent2);transform:translateY(-2px);}
-.tech-avatar{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,var(--accent2),var(--accent));display:flex;align-items:center;justify-content:center;font-size:1.3rem;margin-bottom:12px;}
-.tech-name{font-weight:700;font-size:.92rem;margin-bottom:3px;}
-.tech-phone{font-size:.78rem;color:var(--muted);margin-bottom:10px;}
-.tech-stats{display:flex;gap:8px;margin-bottom:12px;}
-.tech-stat{flex:1;background:var(--surface);border-radius:7px;padding:7px;text-align:center;}
-.tech-stat-val{font-size:1rem;font-weight:900;}
-.tech-stat-lbl{font-size:.62rem;color:var(--muted);}
-.tech-footer{display:flex;align-items:center;justify-content:space-between;gap:6px;}
-.active-pill{padding:3px 9px;border-radius:20px;font-size:.7rem;font-weight:700;}
+.tech-avatar{width:40px;height:40px;border-radius:9px;background:linear-gradient(135deg,var(--accent2),var(--accent));display:flex;align-items:center;justify-content:center;font-size:1.2rem;margin-bottom:10px;}
+.tech-name{font-weight:700;font-size:.9rem;margin-bottom:2px;}
+.tech-phone{font-size:.75rem;color:var(--muted);margin-bottom:9px;}
+.tech-stats{display:flex;gap:7px;margin-bottom:10px;}
+.tech-stat{flex:1;background:var(--surface);border-radius:6px;padding:6px;text-align:center;}
+.tech-stat-val{font-size:.95rem;font-weight:900;}
+.tech-stat-lbl{font-size:.58rem;color:var(--muted);}
+.tech-footer{display:flex;align-items:center;justify-content:space-between;gap:5px;}
+.active-pill{padding:2px 8px;border-radius:20px;font-size:.67rem;font-weight:700;}
 .active-pill.on{background:rgba(16,185,129,.15);color:var(--accent3);}
 .active-pill.off{background:rgba(239,68,68,.15);color:var(--danger);}
-.services-list{padding:20px;display:flex;flex-direction:column;gap:12px;}
-.service-row{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px 18px;display:flex;align-items:center;gap:14px;}
-.service-icon{font-size:1.8rem;flex-shrink:0;}
-.service-info{flex:1;}
-.service-name{font-weight:700;margin-bottom:3px;}
-.service-types{font-size:.78rem;color:var(--muted);}
-.fin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:22px;}
-.fin-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;}
-.fin-amount{font-size:1.7rem;font-weight:900;color:var(--accent);}
-.fin-label{font-size:.75rem;color:var(--muted);margin-top:3px;font-weight:600;}
+.services-list,.parts-list{padding:18px;display:flex;flex-direction:column;gap:11px;}
+.service-row,.part-row{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;}
+.service-icon{font-size:1.7rem;flex-shrink:0;}
+.service-info,.part-info{flex:1;}
+.service-name,.part-name{font-weight:700;margin-bottom:2px;}
+.service-types,.part-meta{font-size:.75rem;color:var(--muted);}
+.fin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:13px;margin-bottom:20px;}
+.fin-card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:16px;}
+.fin-amount{font-size:1.6rem;font-weight:900;color:var(--accent);}
+.fin-label{font-size:.72rem;color:var(--muted);margin-top:3px;font-weight:600;}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(4px);}
 .modal-overlay.open{display:flex;}
-.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;width:90%;max-width:500px;animation:fadeIn .2s;max-height:90vh;overflow-y:auto;}
-.modal-header{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:15px;width:90%;max-width:480px;animation:fadeIn .2s;max-height:90vh;overflow-y:auto;}
+.modal-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
 .modal-header h3{font-weight:700;}
-.modal-close{background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.4rem;line-height:1;}
-.search-bar{padding:14px 22px;border-bottom:1px solid var(--border);}
-.search-bar input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 14px;color:var(--text);font-family:inherit;font-size:.88rem;}
+.modal-close{background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.3rem;line-height:1;}
+.search-bar{padding:12px 20px;border-bottom:1px solid var(--border);}
+.search-bar input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 13px;color:var(--text);font-family:inherit;font-size:.86rem;}
 .search-bar input:focus{outline:none;border-color:var(--accent);}
-.filter-bar{padding:10px 22px;border-bottom:1px solid var(--border);display:flex;gap:7px;flex-wrap:wrap;}
-.filter-btn{padding:5px 13px;border-radius:20px;border:1px solid var(--border);background:none;color:var(--muted);font-size:.78rem;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit;}
+.filter-bar{padding:9px 20px;border-bottom:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap;}
+.filter-btn{padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:none;color:var(--muted);font-size:.75rem;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit;}
 .filter-btn.active{background:var(--accent);color:#000;border-color:var(--accent);}
-.loader{display:flex;align-items:center;justify-content:center;padding:48px;color:var(--muted);font-size:.88rem;gap:10px;}
-.spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
+.loader{display:flex;align-items:center;justify-content:center;padding:44px;color:var(--muted);font-size:.85rem;gap:9px;}
+.spinner{width:17px;height:17px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg)}}
-.empty{text-align:center;padding:40px;color:var(--muted);font-size:.88rem;}
-.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 22px;font-size:.85rem;font-weight:600;z-index:999;animation:fadeIn .3s;box-shadow:0 8px 32px rgba(0,0,0,.4);white-space:nowrap;}
+.empty{text-align:center;padding:36px;color:var(--muted);font-size:.85rem;}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:11px 20px;font-size:.82rem;font-weight:600;z-index:999;animation:fadeIn .3s;box-shadow:0 8px 28px rgba(0,0,0,.4);white-space:nowrap;}
 .toast.success{border-color:var(--accent3);color:var(--accent3);}
 .toast.error{border-color:var(--danger);color:var(--danger);}
+.part-svc-tag{display:inline-block;padding:2px 8px;border-radius:6px;font-size:.68rem;font-weight:700;background:rgba(59,130,246,.15);color:var(--accent2);margin-right:6px;}
 </style>
 </head>
 <body>
 
-<!-- Login -->
 <div id="login-screen">
   <div class="login-box">
     <div class="login-logo">TAQA</div>
-    <div class="login-sub" id="login-sub">لوحة تحكم الإدارة</div>
-    <div class="login-field">
-      <label id="lbl-email">البريد الإلكتروني</label>
-      <input type="email" id="login-email" placeholder="admin@taqa.com"/>
-    </div>
-    <div class="login-field">
-      <label id="lbl-pass">كلمة المرور</label>
-      <input type="password" id="login-pass" placeholder="••••••••"/>
-    </div>
+    <div class="login-sub">لوحة تحكم الإدارة</div>
+    <div class="login-field"><label>البريد الإلكتروني</label><input type="email" id="login-email" placeholder="admin@taqa.com"/></div>
+    <div class="login-field"><label>كلمة المرور</label><input type="password" id="login-pass" placeholder="••••••••"/></div>
     <button class="login-btn" id="login-btn" onclick="doLogin()">تسجيل الدخول</button>
     <div class="login-error" id="login-error"></div>
   </div>
 </div>
 
-<!-- App -->
 <div id="app">
   <aside class="sidebar">
-    <div class="logo">TAQA <span id="logo-sub">لوحة التحكم</span></div>
+    <div class="logo">TAQA <span>لوحة التحكم</span></div>
     <nav class="nav">
       <button class="nav-item active" onclick="showPage('overview',this)"><span class="icon">📊</span><span class="nl" data-ar="نظرة عامة" data-en="Overview">نظرة عامة</span></button>
       <button class="nav-item" onclick="showPage('orders',this)"><span class="icon">📋</span><span class="nl" data-ar="الطلبات" data-en="Orders">الطلبات</span><span class="nav-badge" id="pending-badge" style="display:none">0</span></button>
       <button class="nav-item" onclick="showPage('technicians',this)"><span class="icon">👨‍🔧</span><span class="nl" data-ar="الفنيون" data-en="Technicians">الفنيون</span></button>
       <button class="nav-item" onclick="showPage('services',this)"><span class="icon">🔧</span><span class="nl" data-ar="الخدمات" data-en="Services">الخدمات</span></button>
+      <button class="nav-item" onclick="showPage('parts',this)"><span class="icon">🔩</span><span class="nl" data-ar="القطع" data-en="Parts">القطع</span></button>
       <button class="nav-item" onclick="showPage('finance',this)"><span class="icon">💰</span><span class="nl" data-ar="التقارير المالية" data-en="Finance">التقارير المالية</span></button>
     </nav>
     <div class="sidebar-footer">
-      <div class="admin-info"><strong id="admin-email">—</strong><span id="admin-role">مدير النظام</span></div>
+      <div class="admin-info"><strong id="admin-email">—</strong><span>مدير النظام</span></div>
       <button class="lang-toggle" onclick="toggleLang()">🌐 <span id="lang-label">English</span></button>
-      <button class="logout-btn" id="logout-btn" onclick="doLogout()">تسجيل الخروج 🚪</button>
+      <button class="logout-btn" onclick="doLogout()">تسجيل الخروج 🚪</button>
     </div>
   </aside>
 
   <main class="main">
     <div class="topbar">
       <h1 id="page-title">نظرة عامة</h1>
-      <div style="display:flex;align-items:center;gap:10px">
-        <div class="status-dot"></div>
-        <span style="font-size:.78rem;color:var(--muted)" id="conn-label">متصل بـ Firebase</span>
-      </div>
+      <div style="display:flex;align-items:center;gap:9px"><div class="status-dot"></div><span style="font-size:.75rem;color:var(--muted)">Firebase</span></div>
     </div>
 
+    <!-- Overview -->
     <div id="page-overview" class="page active">
       <div class="stats-grid" id="stats-grid"><div class="loader"><div class="spinner"></div></div></div>
       <div class="charts-grid">
@@ -201,56 +193,75 @@ tr:hover td{background:rgba(255,255,255,.02);}
         <div class="card chart-wrap"><h3 id="ch2-title">توزيع الحالات</h3><canvas id="statusChart" height="200"></canvas></div>
       </div>
       <div class="card">
-        <div class="card-header"><h3 id="recent-title">آخر الطلبات</h3></div>
+        <div class="card-header"><h3>آخر الطلبات</h3></div>
         <div class="table-wrap" id="recent-orders-table"></div>
       </div>
     </div>
 
+    <!-- Orders -->
     <div id="page-orders" class="page">
       <div class="card">
         <div class="card-header">
-          <h3 id="all-orders-title">جميع الطلبات</h3>
+          <h3>جميع الطلبات</h3>
           <div class="btn-group">
-            <button class="btn btn-danger btn-sm" onclick="deleteAllPending()" id="del-pending-btn">🗑 حذف المعلقة</button>
-            <button class="btn btn-primary btn-sm" onclick="loadOrders()" id="refresh-btn">🔄 تحديث</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteAllPending()">🗑 حذف المعلقة</button>
+            <button class="btn btn-primary btn-sm" onclick="loadOrders()">🔄 تحديث</button>
           </div>
         </div>
         <div class="search-bar"><input type="text" id="order-search" placeholder="بحث..." oninput="renderFilteredOrders()"/></div>
-        <div class="filter-bar" id="filter-bar">
-          <button class="filter-btn active" onclick="setOrderFilter('all',this)" data-ar="الكل" data-en="All">الكل</button>
-          <button class="filter-btn" onclick="setOrderFilter('pending',this)" data-ar="قيد الانتظار" data-en="Pending">قيد الانتظار</button>
-          <button class="filter-btn" onclick="setOrderFilter('accepted',this)" data-ar="مقبول" data-en="Accepted">مقبول</button>
-          <button class="filter-btn" onclick="setOrderFilter('done',this)" data-ar="مكتمل" data-en="Done">مكتمل</button>
-          <button class="filter-btn" onclick="setOrderFilter('rejected',this)" data-ar="مرفوض" data-en="Rejected">مرفوض</button>
+        <div class="filter-bar">
+          <button class="filter-btn active" onclick="setOrderFilter('all',this)">الكل</button>
+          <button class="filter-btn" onclick="setOrderFilter('pending',this)">قيد الانتظار</button>
+          <button class="filter-btn" onclick="setOrderFilter('accepted',this)">مقبول</button>
+          <button class="filter-btn" onclick="setOrderFilter('done',this)">مكتمل</button>
+          <button class="filter-btn" onclick="setOrderFilter('rejected',this)">مرفوض</button>
         </div>
         <div class="table-wrap" id="orders-table"><div class="loader"><div class="spinner"></div></div></div>
       </div>
     </div>
 
+    <!-- Technicians -->
     <div id="page-technicians" class="page">
       <div class="card">
         <div class="card-header">
-          <h3 id="techs-title">الفنيون</h3>
-          <button class="btn btn-primary btn-sm" onclick="openModal('tech-modal')" id="add-tech-btn">+ إضافة فني</button>
+          <h3>الفنيون</h3>
+          <button class="btn btn-primary btn-sm" onclick="openModal('tech-modal')">+ إضافة فني</button>
         </div>
         <div id="tech-grid" class="tech-grid"><div class="loader"><div class="spinner"></div></div></div>
       </div>
     </div>
 
+    <!-- Services -->
     <div id="page-services" class="page">
       <div class="card">
         <div class="card-header">
-          <h3 id="svcs-title">الخدمات</h3>
-          <button class="btn btn-primary btn-sm" onclick="openModal('service-modal')" id="add-svc-btn">+ إضافة خدمة</button>
+          <h3>الخدمات</h3>
+          <button class="btn btn-primary btn-sm" onclick="openModal('service-modal')">+ إضافة خدمة</button>
         </div>
         <div id="services-list" class="services-list"><div class="loader"><div class="spinner"></div></div></div>
       </div>
     </div>
 
+    <!-- Parts -->
+    <div id="page-parts" class="page">
+      <div class="card">
+        <div class="card-header">
+          <h3>القطع والمواد</h3>
+          <button class="btn btn-primary btn-sm" onclick="openModal('part-modal')">+ إضافة قطعة</button>
+        </div>
+        <div class="search-bar"><input type="text" id="part-search" placeholder="بحث في القطع..." oninput="renderFilteredParts()"/></div>
+        <div class="filter-bar" id="parts-filter-bar">
+          <button class="filter-btn active" onclick="setPartsFilter('all',this)">الكل</button>
+        </div>
+        <div id="parts-list" class="parts-list"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+
+    <!-- Finance -->
     <div id="page-finance" class="page">
       <div class="fin-grid" id="fin-cards"><div class="loader"><div class="spinner"></div></div></div>
       <div class="card">
-        <div class="card-header"><h3 id="fin-title">تفاصيل الفنيين المالية</h3></div>
+        <div class="card-header"><h3>تفاصيل الفنيين المالية</h3></div>
         <div class="table-wrap" id="fin-table"></div>
       </div>
     </div>
@@ -260,18 +271,15 @@ tr:hover td{background:rgba(255,255,255,.02);}
 <!-- Tech Modal -->
 <div class="modal-overlay" id="tech-modal">
   <div class="modal">
-    <div class="modal-header">
-      <h3 id="tech-modal-title">إضافة فني جديد</h3>
-      <button class="modal-close" onclick="closeModal('tech-modal')">x</button>
-    </div>
+    <div class="modal-header"><h3>إضافة فني جديد</h3><button class="modal-close" onclick="closeModal('tech-modal')">×</button></div>
     <div class="form-grid">
-      <div class="form-group"><label id="lbl-tname">الاسم</label><input type="text" id="tech-name"/></div>
-      <div class="form-group"><label id="lbl-tphone">رقم الهاتف</label><input type="text" id="tech-phone" placeholder="966xxxxxxxxx"/></div>
-      <div class="form-group" style="grid-column:1/-1"><label id="lbl-tsvcs">الخدمات (مفصولة بفاصلة)</label><input type="text" id="tech-services" placeholder="plumbing, electrical"/></div>
+      <div class="form-group"><label>الاسم</label><input type="text" id="tech-name"/></div>
+      <div class="form-group"><label>رقم الهاتف</label><input type="text" id="tech-phone" placeholder="966xxxxxxxxx"/></div>
+      <div class="form-group" style="grid-column:1/-1"><label>الخدمات (مفصولة بفاصلة)</label><input type="text" id="tech-services" placeholder="electric, plumbing, ac"/></div>
     </div>
     <div class="form-actions">
-      <button class="btn btn-primary" onclick="addTechnician()" id="save-tech-btn">حفظ</button>
-      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('tech-modal')" id="cancel-tech-btn">إلغاء</button>
+      <button class="btn btn-primary" onclick="addTechnician()">حفظ</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('tech-modal')">إلغاء</button>
     </div>
   </div>
 </div>
@@ -279,21 +287,39 @@ tr:hover td{background:rgba(255,255,255,.02);}
 <!-- Service Modal -->
 <div class="modal-overlay" id="service-modal">
   <div class="modal">
-    <div class="modal-header">
-      <h3 id="svc-modal-title">إضافة خدمة جديدة</h3>
-      <button class="modal-close" onclick="closeModal('service-modal')">x</button>
-    </div>
+    <div class="modal-header"><h3>إضافة خدمة جديدة</h3><button class="modal-close" onclick="closeModal('service-modal')">×</button></div>
     <div class="form-grid">
-      <div class="form-group"><label id="lbl-sname">اسم الخدمة</label><input type="text" id="svc-name"/></div>
-      <div class="form-group"><label id="lbl-sicon">الأيقونة (emoji)</label><input type="text" id="svc-icon" placeholder="🔧"/></div>
+      <div class="form-group"><label>اسم الخدمة</label><input type="text" id="svc-name"/></div>
+      <div class="form-group"><label>الأيقونة (emoji)</label><input type="text" id="svc-icon" placeholder="🔧"/></div>
       <div class="form-group" style="grid-column:1/-1">
-        <label id="lbl-stypes">الأنواع (اسم:سعر — كل نوع في سطر)</label>
-        <textarea id="svc-types" rows="4" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-family:inherit;resize:none" placeholder="أساسي:100&#10;متقدم:200"></textarea>
+        <label>الأنواع (اسم:سعر — كل نوع في سطر)</label>
+        <textarea id="svc-types" rows="4" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text);font-family:inherit;resize:none" placeholder="أساسي:100&#10;متقدم:200"></textarea>
       </div>
     </div>
     <div class="form-actions">
-      <button class="btn btn-primary" onclick="addService()" id="save-svc-btn">حفظ</button>
-      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('service-modal')" id="cancel-svc-btn">إلغاء</button>
+      <button class="btn btn-primary" onclick="addService()">حفظ</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('service-modal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- Part Modal -->
+<div class="modal-overlay" id="part-modal">
+  <div class="modal">
+    <div class="modal-header"><h3 id="part-modal-title">إضافة قطعة جديدة</h3><button class="modal-close" onclick="closeModal('part-modal')">×</button></div>
+    <div class="form-grid">
+      <div class="form-group"><label>اسم القطعة</label><input type="text" id="part-name"/></div>
+      <div class="form-group"><label>وحدة القياس</label><input type="text" id="part-unit" placeholder="قطعة / متر / لتر"/></div>
+      <div class="form-group"><label>السعر (ريال)</label><input type="number" id="part-price" placeholder="0"/></div>
+      <div class="form-group">
+        <label>الخدمة المرتبطة</label>
+        <select id="part-service"><option value="">اختر خدمة...</option></select>
+      </div>
+      <div class="form-group" style="grid-column:1/-1"><label>وصف (اختياري)</label><input type="text" id="part-desc"/></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="savePart()">حفظ</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('part-modal')">إلغاء</button>
     </div>
   </div>
 </div>
@@ -311,22 +337,26 @@ firebase.initializeApp(firebaseConfig);
 const db   = firebase.firestore();
 const auth = firebase.auth();
 
-let currentLang = "ar";
-let allOrders   = [];
-let orderFilter = "all";
-let ordersChart = null;
-let statusChart = null;
+let currentLang  = "ar";
+let allOrders    = [];
+let allParts     = [];
+let allServices  = [];
+let orderFilter  = "all";
+let partsFilter  = "all";
+let editingPartId = null;
+let ordersChart  = null;
+let statusChart  = null;
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 auth.onAuthStateChanged(user => {
   if (user) {
     document.getElementById("login-screen").style.display = "none";
-    document.getElementById("app").style.display         = "block";
-    document.getElementById("admin-email").textContent    = user.email;
+    document.getElementById("app").style.display = "block";
+    document.getElementById("admin-email").textContent = user.email;
     loadOverview();
   } else {
     document.getElementById("login-screen").style.display = "flex";
-    document.getElementById("app").style.display          = "none";
+    document.getElementById("app").style.display = "none";
   }
 });
 
@@ -335,113 +365,31 @@ async function doLogin() {
   const pass  = document.getElementById("login-pass").value.trim();
   const btn   = document.getElementById("login-btn");
   const err   = document.getElementById("login-error");
-  if (!email || !pass) { err.textContent = currentLang === "ar" ? "يرجى إدخال البريد وكلمة المرور" : "Please enter email and password"; return; }
-  btn.disabled    = true;
-  btn.textContent = currentLang === "ar" ? "جارٍ تسجيل الدخول..." : "Signing in...";
-  err.textContent = "";
+  if (!email || !pass) { err.textContent = "يرجى إدخال البريد وكلمة المرور"; return; }
+  btn.disabled = true; btn.textContent = "جارٍ تسجيل الدخول..."; err.textContent = "";
   try {
     await auth.signInWithEmailAndPassword(email, pass);
   } catch(e) {
     const msgs = {
-      "auth/user-not-found":     currentLang === "ar" ? "البريد غير موجود" : "User not found",
-      "auth/wrong-password":     currentLang === "ar" ? "كلمة المرور خاطئة" : "Wrong password",
-      "auth/invalid-email":      currentLang === "ar" ? "بريد غير صالح" : "Invalid email",
-      "auth/invalid-credential": currentLang === "ar" ? "بريد أو كلمة مرور خاطئة" : "Invalid email or password",
-      "auth/too-many-requests":  currentLang === "ar" ? "محاولات كثيرة، حاول لاحقاً" : "Too many attempts"
+      "auth/invalid-credential":"بريد أو كلمة مرور خاطئة",
+      "auth/too-many-requests":"محاولات كثيرة، حاول لاحقاً",
+      "auth/user-not-found":"البريد غير موجود",
+      "auth/wrong-password":"كلمة المرور خاطئة"
     };
-    err.textContent  = msgs[e.code] || e.message;
-    btn.disabled     = false;
-    btn.textContent  = currentLang === "ar" ? "تسجيل الدخول" : "Sign In";
+    err.textContent = msgs[e.code] || e.message;
+    btn.disabled = false; btn.textContent = "تسجيل الدخول";
   }
 }
-
-function doLogout() {
-  if (confirm(currentLang === "ar" ? "هل تريد تسجيل الخروج؟" : "Sign out?")) auth.signOut();
-}
-
+function doLogout() { if (confirm("هل تريد تسجيل الخروج؟")) auth.signOut(); }
 document.getElementById("login-pass").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
 
-// ── Language ──────────────────────────────────────────────────────────────────
-const TEXTS = {
-  ar: {
-    loginSub:"لوحة تحكم الإدارة", lblEmail:"البريد الإلكتروني", lblPass:"كلمة المرور", loginBtn:"تسجيل الدخول",
-    logoSub:"لوحة التحكم", connLabel:"متصل بـ Firebase", adminRole:"مدير النظام", logoutBtn:"تسجيل الخروج 🚪",
-    overviewTitle:"نظرة عامة", ordersTitle:"الطلبات", techsTitle:"الفنيون", svcsTitle:"الخدمات", finTitle:"التقارير المالية",
-    ch1:"الطلبات (آخر 7 أيام)", ch2:"توزيع الحالات", recentTitle:"آخر الطلبات",
-    allOrdersTitle:"جميع الطلبات", delPending:"🗑 حذف المعلقة", refresh:"🔄 تحديث",
-    addTech:"+ إضافة فني", addSvc:"+ إضافة خدمة",
-    techModalTitle:"إضافة فني جديد", lblTname:"الاسم", lblTphone:"رقم الهاتف", lblTsvcs:"الخدمات (مفصولة بفاصلة)",
-    saveTech:"حفظ", cancelTech:"إلغاء",
-    svcModalTitle:"إضافة خدمة جديدة", lblSname:"اسم الخدمة", lblSicon:"الأيقونة (emoji)", lblStypes:"الأنواع (اسم:سعر — كل نوع في سطر)",
-    saveSvc:"حفظ", cancelSvc:"إلغاء",
-    totalOrders:"إجمالي الطلبات", pending:"قيد الانتظار", completed:"مكتملة", revenue:"الإيرادات (ريال)", availTechs:"فنيون متاحون",
-    noOrders:"لا توجد طلبات", noTechs:"لا يوجد فنيون", noSvcs:"لا توجد خدمات",
-    ordId:"رقم الطلب", customer:"العميل", service:"الخدمة", type:"النوع", price:"السعر", rating:"التقييم", status:"الحالة", date:"التاريخ",
-    available:"متاح", busy:"مشغول", disable:"إيقاف", enable:"تفعيل",
-    totalRevenue:"إجمالي الإيرادات (ريال)", totalFees:"إجمالي العمولات (20%)", completedOrders:"طلبات مكتملة", avgOrder:"متوسط الطلب (ريال)",
-    finTechTitle:"تفاصيل الفنيين المالية", name:"الاسم", phone:"الهاتف", balance:"الرصيد", reviews:"تقييمات",
-    deleted:"تم الحذف ✅", added:"تمت الإضافة ✅", updated:"تم التحديث ✅",
-    confirmDelete:"هل أنت متأكد من الحذف؟", confirmDeleteOrder:"هل تريد حذف هذا الطلب؟",
-    confirmDeletePending:"هل تريد حذف الطلبات المعلقة؟", noPending:"لا توجد طلبات معلقة",
-    fillFields:"يرجى ملء الحقول المطلوبة", enterSvcName:"يرجى إدخال اسم الخدمة",
-    signOut:"هل تريد تسجيل الخروج؟",
-    statusLabels:{pending:"قيد الانتظار",accepted:"مقبول",done:"مكتمل",rejected:"مرفوض"}
-  },
-  en: {
-    loginSub:"Admin Dashboard", lblEmail:"Email", lblPass:"Password", loginBtn:"Sign In",
-    logoSub:"Dashboard", connLabel:"Connected to Firebase", adminRole:"System Admin", logoutBtn:"Sign Out 🚪",
-    overviewTitle:"Overview", ordersTitle:"Orders", techsTitle:"Technicians", svcsTitle:"Services", finTitle:"Finance",
-    ch1:"Orders (Last 7 Days)", ch2:"Status Distribution", recentTitle:"Recent Orders",
-    allOrdersTitle:"All Orders", delPending:"🗑 Delete Pending", refresh:"🔄 Refresh",
-    addTech:"+ Add Technician", addSvc:"+ Add Service",
-    techModalTitle:"Add New Technician", lblTname:"Name", lblTphone:"Phone", lblTsvcs:"Services (comma separated)",
-    saveTech:"Save", cancelTech:"Cancel",
-    svcModalTitle:"Add New Service", lblSname:"Service Name", lblSicon:"Icon (emoji)", lblStypes:"Types (name:price per line)",
-    saveSvc:"Save", cancelSvc:"Cancel",
-    totalOrders:"Total Orders", pending:"Pending", completed:"Completed", revenue:"Revenue (SAR)", availTechs:"Available Techs",
-    noOrders:"No orders found", noTechs:"No technicians", noSvcs:"No services",
-    ordId:"Order ID", customer:"Customer", service:"Service", type:"Type", price:"Price", rating:"Rating", status:"Status", date:"Date",
-    available:"Available", busy:"Busy", disable:"Disable", enable:"Enable",
-    totalRevenue:"Total Revenue (SAR)", totalFees:"Total Fees (20%)", completedOrders:"Completed Orders", avgOrder:"Avg Order (SAR)",
-    finTechTitle:"Technician Financials", name:"Name", phone:"Phone", balance:"Balance", reviews:"Reviews",
-    deleted:"Deleted ✅", added:"Added ✅", updated:"Updated ✅",
-    confirmDelete:"Are you sure?", confirmDeleteOrder:"Delete this order?",
-    confirmDeletePending:"Delete pending orders?", noPending:"No pending orders",
-    fillFields:"Please fill required fields", enterSvcName:"Please enter service name",
-    signOut:"Sign out?",
-    statusLabels:{pending:"Pending",accepted:"Accepted",done:"Done",rejected:"Rejected"}
-  }
-};
-const T = () => TEXTS[currentLang];
-const sl = s => T().statusLabels[s] || s;
-
-function applyLang() {
-  const t = T();
-  const ids = {
-    "login-sub":t.loginSub,"lbl-email":t.lblEmail,"lbl-pass":t.lblPass,"login-btn":t.loginBtn,
-    "logo-sub":t.logoSub,"conn-label":t.connLabel,"admin-role":t.adminRole,"logout-btn":t.logoutBtn,
-    "lang-label":currentLang==="ar"?"English":"العربية",
-    "page-title":document.getElementById("page-title").textContent,
-    "ch1-title":t.ch1,"ch2-title":t.ch2,"recent-title":t.recentTitle,
-    "all-orders-title":t.allOrdersTitle,"del-pending-btn":t.delPending,"refresh-btn":t.refresh,
-    "techs-title":t.techsTitle,"add-tech-btn":t.addTech,
-    "svcs-title":t.svcsTitle,"add-svc-btn":t.addSvc,
-    "fin-title":t.finTechTitle,
-    "tech-modal-title":t.techModalTitle,"lbl-tname":t.lblTname,"lbl-tphone":t.lblTphone,"lbl-tsvcs":t.lblTsvcs,
-    "save-tech-btn":t.saveTech,"cancel-tech-btn":t.cancelTech,
-    "svc-modal-title":t.svcModalTitle,"lbl-sname":t.lblSname,"lbl-sicon":t.lblSicon,"lbl-stypes":t.lblStypes,
-    "save-svc-btn":t.saveSvc,"cancel-svc-btn":t.cancelSvc
-  };
-  Object.entries(ids).forEach(([id, val]) => { const el = document.getElementById(id); if (el) el.textContent = val; });
-  document.querySelectorAll(".filter-btn").forEach(b => { b.textContent = b.dataset[currentLang] || b.textContent; });
-  document.querySelectorAll(".nl").forEach(el => { el.textContent = el.dataset[currentLang] || el.textContent; });
-}
-
+// ── Lang ──────────────────────────────────────────────────────────────────────
 function toggleLang() {
   currentLang = currentLang === "ar" ? "en" : "ar";
   document.documentElement.lang = currentLang;
   document.documentElement.dir  = currentLang === "ar" ? "rtl" : "ltr";
-  applyLang();
+  document.getElementById("lang-label").textContent = currentLang === "ar" ? "English" : "العربية";
+  document.querySelectorAll(".nl").forEach(el => { el.textContent = el.dataset[currentLang] || el.textContent; });
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────────
@@ -455,293 +403,339 @@ function showPage(name, btn) {
   if (name === "orders")      loadOrders();
   if (name === "technicians") loadTechnicians();
   if (name === "services")    loadServices();
+  if (name === "parts")       loadParts();
   if (name === "finance")     loadFinance();
 }
 
-// ── Toast ─────────────────────────────────────────────────────────────────────
-function showToast(msg, type = "success") {
-  const t = document.createElement("div");
-  t.className = "toast " + type;
-  t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(() => t.remove(), 3000);
-}
+const SL = {
+  ar:{pending:"قيد الانتظار",accepted:"مقبول",done:"مكتمل",rejected:"مرفوض"},
+  en:{pending:"Pending",accepted:"Accepted",done:"Done",rejected:"Rejected"}
+};
+const sl = s => SL[currentLang][s] || s;
 
-// ── Helper: get type name safely (fix [object Object]) ───────────────────────
-function getTypeName(o) {
-  if (!o.type) return "-";
-  if (typeof o.type === "string") return o.type;
-  if (typeof o.type === "object" && o.type.name) return o.type.name;
-  return "-";
+function showToast(msg, type="success") {
+  const t = document.createElement("div");
+  t.className = "toast " + type; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 3000);
 }
 
 // ── Overview ──────────────────────────────────────────────────────────────────
 async function loadOverview() {
   try {
-    const [ordSnap, techSnap] = await Promise.all([
-      db.collection("orders").get(),
-      db.collection("technicians").get()
-    ]);
+    const [ordSnap, techSnap] = await Promise.all([db.collection("orders").get(), db.collection("technicians").get()]);
     const orders = ordSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     const techs  = techSnap.docs.map(d => d.data());
     const pending     = orders.filter(o => o.status === "pending").length;
     const done        = orders.filter(o => o.status === "done").length;
-    const revenue     = orders.filter(o => o.status === "done").reduce((s, o) => s + (o.price || 0), 0);
+    const revenue     = orders.filter(o => o.status === "done").reduce((s,o) => s+(o.totalPrice||o.price||0), 0);
     const activeTechs = techs.filter(t => t.active).length;
     const badge = document.getElementById("pending-badge");
     badge.style.display = pending > 0 ? "inline" : "none";
     badge.textContent = pending;
-    const t = T();
     document.getElementById("stats-grid").innerHTML = `
-      <div class="stat-card yellow"><div class="stat-icon">📋</div><div class="stat-val">${orders.length}</div><div class="stat-label">${t.totalOrders}</div></div>
-      <div class="stat-card blue"><div class="stat-icon">⏳</div><div class="stat-val">${pending}</div><div class="stat-label">${t.pending}</div></div>
-      <div class="stat-card green"><div class="stat-icon">✅</div><div class="stat-val">${done}</div><div class="stat-label">${t.completed}</div></div>
-      <div class="stat-card yellow"><div class="stat-icon">💰</div><div class="stat-val">${revenue.toLocaleString()}</div><div class="stat-label">${t.revenue}</div></div>
-      <div class="stat-card green"><div class="stat-icon">👨‍🔧</div><div class="stat-val">${activeTechs}/${techs.length}</div><div class="stat-label">${t.availTechs}</div></div>
+      <div class="stat-card yellow"><div class="stat-icon">📋</div><div class="stat-val">${orders.length}</div><div class="stat-label">${currentLang==="ar"?"إجمالي الطلبات":"Total Orders"}</div></div>
+      <div class="stat-card blue"><div class="stat-icon">⏳</div><div class="stat-val">${pending}</div><div class="stat-label">${currentLang==="ar"?"قيد الانتظار":"Pending"}</div></div>
+      <div class="stat-card green"><div class="stat-icon">✅</div><div class="stat-val">${done}</div><div class="stat-label">${currentLang==="ar"?"مكتملة":"Completed"}</div></div>
+      <div class="stat-card yellow"><div class="stat-icon">💰</div><div class="stat-val">${revenue.toLocaleString()}</div><div class="stat-label">${currentLang==="ar"?"الإيرادات (ريال)":"Revenue (SAR)"}</div></div>
+      <div class="stat-card green"><div class="stat-icon">👨‍🔧</div><div class="stat-val">${activeTechs}/${techs.length}</div><div class="stat-label">${currentLang==="ar"?"فنيون متاحون":"Available Techs"}</div></div>
     `;
-    buildOrdersChart(orders);
-    buildStatusChart(orders);
+    buildOrdersChart(orders); buildStatusChart(orders);
     renderOrdersTable(orders.slice(-8).reverse(), "recent-orders-table", false);
   } catch(e) { console.error(e); }
 }
 
 function buildOrdersChart(orders) {
-  const days = [], counts = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i);
-    const key = d.toLocaleDateString("en-CA");
-    days.push(d.toLocaleDateString(currentLang === "ar" ? "ar-SA" : "en-US", { weekday: "short" }));
-    counts.push(orders.filter(o => o.createdAt && new Date(o.createdAt.seconds * 1000).toLocaleDateString("en-CA") === key).length);
+  const days=[], counts=[];
+  for(let i=6;i>=0;i--){
+    const d=new Date(); d.setDate(d.getDate()-i);
+    const key=d.toLocaleDateString("en-CA");
+    days.push(d.toLocaleDateString(currentLang==="ar"?"ar-SA":"en-US",{weekday:"short"}));
+    counts.push(orders.filter(o=>o.createdAt&&new Date(o.createdAt.seconds*1000).toLocaleDateString("en-CA")===key).length);
   }
-  if (ordersChart) ordersChart.destroy();
-  ordersChart = new Chart(document.getElementById("ordersChart"), {
-    type: "bar",
-    data: { labels: days, datasets: [{ data: counts, backgroundColor: "rgba(245,158,11,.75)", borderRadius: 6, borderSkipped: false }] },
-    options: { plugins: { legend: { display: false } }, scales: { x: { grid: { color: "rgba(255,255,255,.05)" }, ticks: { color: "#64748b" } }, y: { grid: { color: "rgba(255,255,255,.05)" }, ticks: { color: "#64748b", stepSize: 1 } } } }
-  });
+  if(ordersChart) ordersChart.destroy();
+  ordersChart=new Chart(document.getElementById("ordersChart"),{type:"bar",data:{labels:days,datasets:[{data:counts,backgroundColor:"rgba(245,158,11,.75)",borderRadius:6,borderSkipped:false}]},options:{plugins:{legend:{display:false}},scales:{x:{grid:{color:"rgba(255,255,255,.05)"},ticks:{color:"#64748b"}},y:{grid:{color:"rgba(255,255,255,.05)"},ticks:{color:"#64748b",stepSize:1}}}}});
 }
-
 function buildStatusChart(orders) {
-  const t = T();
-  const counts = ["pending","accepted","done","rejected"].map(s => orders.filter(o => o.status === s).length);
-  if (statusChart) statusChart.destroy();
-  statusChart = new Chart(document.getElementById("statusChart"), {
-    type: "doughnut",
-    data: {
-      labels: [t.statusLabels.pending, t.statusLabels.accepted, t.statusLabels.done, t.statusLabels.rejected],
-      datasets: [{ data: counts, backgroundColor: ["#f59e0b","#3b82f6","#10b981","#ef4444"], borderWidth: 0 }]
-    },
-    options: { plugins: { legend: { labels: { color: "#94a3b8", font: { size: 11 } } } }, cutout: "65%" }
-  });
+  const counts=["pending","accepted","done","rejected"].map(s=>orders.filter(o=>o.status===s).length);
+  if(statusChart) statusChart.destroy();
+  statusChart=new Chart(document.getElementById("statusChart"),{type:"doughnut",data:{labels:currentLang==="ar"?["قيد الانتظار","مقبول","مكتمل","مرفوض"]:["Pending","Accepted","Done","Rejected"],datasets:[{data:counts,backgroundColor:["#f59e0b","#3b82f6","#10b981","#ef4444"],borderWidth:0}]},options:{plugins:{legend:{labels:{color:"#94a3b8",font:{size:10}}}},cutout:"65%"}});
 }
 
 // ── Orders ────────────────────────────────────────────────────────────────────
 async function loadOrders() {
-  document.getElementById("orders-table").innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+  document.getElementById("orders-table").innerHTML='<div class="loader"><div class="spinner"></div></div>';
   try {
-    const snap = await db.collection("orders").orderBy("createdAt","desc").get();
-    allOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const snap=await db.collection("orders").orderBy("createdAt","desc").get();
+    allOrders=snap.docs.map(d=>({id:d.id,...d.data()}));
     renderFilteredOrders();
-  } catch(e) { document.getElementById("orders-table").innerHTML = `<div class="empty">خطأ في التحميل</div>`; }
+  } catch(e){document.getElementById("orders-table").innerHTML='<div class="empty">خطأ</div>';}
 }
-
-function setOrderFilter(f, btn) {
-  orderFilter = f;
-  document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
-  renderFilteredOrders();
+function setOrderFilter(f,btn){orderFilter=f;document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));btn.classList.add("active");renderFilteredOrders();}
+function renderFilteredOrders(){
+  const q=(document.getElementById("order-search").value||"").toLowerCase();
+  let list=orderFilter==="all"?allOrders:allOrders.filter(o=>o.status===orderFilter);
+  if(q) list=list.filter(o=>(o.orderId||"").toLowerCase().includes(q)||(o.customer||"").includes(q)||(o.serviceName||"").toLowerCase().includes(q));
+  renderOrdersTable(list,"orders-table",true);
 }
-
-function renderFilteredOrders() {
-  const q = (document.getElementById("order-search").value || "").toLowerCase();
-  let list = orderFilter === "all" ? allOrders : allOrders.filter(o => o.status === orderFilter);
-  if (q) list = list.filter(o => (o.orderId||"").toLowerCase().includes(q)||(o.customer||"").includes(q)||(o.serviceName||"").toLowerCase().includes(q));
-  renderOrdersTable(list, "orders-table", true);
-}
-
-function renderOrdersTable(list, targetId, showDelete) {
-  const t = T();
-  if (!list.length) { document.getElementById(targetId).innerHTML = `<div class="empty">${t.noOrders}</div>`; return; }
-  const rows = list.map(o => {
-    const date = o.createdAt ? new Date(o.createdAt.seconds * 1000).toLocaleDateString(currentLang === "ar" ? "ar-SA" : "en-US") : "-";
-    const del  = showDelete ? `<td><button class="btn btn-sm btn-danger" onclick="deleteOrder('${o.id}')">🗑</button></td>` : "";
+function getTypeName(o){if(!o.type)return"-";if(typeof o.type==="string")return o.type;if(typeof o.type==="object"&&o.type.name)return o.type.name;return"-";}
+function renderOrdersTable(list,targetId,showDelete){
+  if(!list.length){document.getElementById(targetId).innerHTML=`<div class="empty">${currentLang==="ar"?"لا توجد طلبات":"No orders"}</div>`;return;}
+  const rows=list.map(o=>{
+    const date=o.createdAt?new Date(o.createdAt.seconds*1000).toLocaleDateString(currentLang==="ar"?"ar-SA":"en-US"):"-";
+    const partsCount=(o.parts||[]).length;
+    const total=o.totalPrice||o.price||0;
+    const del=showDelete?`<td><button class="btn btn-sm btn-danger" onclick="deleteOrder('${o.id}')">🗑</button></td>`:"";
     return `<tr>
-      <td style="font-weight:700;color:var(--accent);font-size:.76rem">${o.orderId||o.id}</td>
-      <td style="font-size:.78rem">${o.customer||"-"}</td>
+      <td style="font-weight:700;color:var(--accent);font-size:.74rem">${o.orderId||o.id}</td>
+      <td style="font-size:.76rem">${o.customer||"-"}</td>
       <td>${o.serviceName||"-"}</td>
       <td>${getTypeName(o)}</td>
-      <td>${o.price||0} SAR</td>
-      <td>${o.rating ? "⭐".repeat(Math.min(o.rating,5)) : "-"}</td>
+      <td><span style="background:rgba(59,130,246,.1);color:var(--accent2);padding:2px 7px;border-radius:5px;font-size:.72rem">${partsCount} ${currentLang==="ar"?"قطعة":"parts"}</span></td>
+      <td style="font-weight:700;color:var(--accent3)">${total} SAR</td>
+      <td>${o.rating?"⭐".repeat(Math.min(o.rating,5)):"-"}</td>
       <td><span class="badge ${o.status}">${sl(o.status)}</span></td>
-      <td style="color:var(--muted);font-size:.75rem">${date}</td>
+      <td style="color:var(--muted);font-size:.72rem">${date}</td>
       ${del}
     </tr>`;
   }).join("");
-  const extraTh = showDelete ? `<th></th>` : "";
-  document.getElementById(targetId).innerHTML = `
-    <table><thead><tr>
-      <th>${t.ordId}</th><th>${t.customer}</th><th>${t.service}</th><th>${t.type}</th>
-      <th>${t.price}</th><th>${t.rating}</th><th>${t.status}</th><th>${t.date}</th>${extraTh}
-    </tr></thead><tbody>${rows}</tbody></table>`;
+  document.getElementById(targetId).innerHTML=`<table><thead><tr>
+    <th>${currentLang==="ar"?"رقم الطلب":"Order ID"}</th>
+    <th>${currentLang==="ar"?"العميل":"Customer"}</th>
+    <th>${currentLang==="ar"?"الخدمة":"Service"}</th>
+    <th>${currentLang==="ar"?"النوع":"Type"}</th>
+    <th>${currentLang==="ar"?"القطع":"Parts"}</th>
+    <th>${currentLang==="ar"?"الإجمالي":"Total"}</th>
+    <th>${currentLang==="ar"?"التقييم":"Rating"}</th>
+    <th>${currentLang==="ar"?"الحالة":"Status"}</th>
+    <th>${currentLang==="ar"?"التاريخ":"Date"}</th>
+    ${showDelete?"<th></th>":""}
+  </tr></thead><tbody>${rows}</tbody></table>`;
 }
-
-async function deleteOrder(id) {
-  if (!confirm(T().confirmDeleteOrder)) return;
-  try {
-    await db.collection("orders").doc(id).delete();
-    showToast(T().deleted);
-    allOrders = allOrders.filter(o => o.id !== id);
-    renderFilteredOrders();
-  } catch(e) { showToast(e.message, "error"); }
+async function deleteOrder(id){
+  if(!confirm(currentLang==="ar"?"حذف هذا الطلب؟":"Delete this order?"))return;
+  try{await db.collection("orders").doc(id).delete();showToast(currentLang==="ar"?"تم الحذف":"Deleted");allOrders=allOrders.filter(o=>o.id!==id);renderFilteredOrders();}
+  catch(e){showToast(e.message,"error");}
 }
-
-async function deleteAllPending() {
-  const pending = allOrders.filter(o => o.status === "pending");
-  if (!pending.length) { showToast(T().noPending, "error"); return; }
-  if (!confirm(`${T().confirmDeletePending} (${pending.length})`)) return;
-  try {
-    const batch = db.batch();
-    pending.forEach(o => batch.delete(db.collection("orders").doc(o.id)));
-    await batch.commit();
-    showToast(`${T().deleted} (${pending.length})`);
-    loadOrders();
-  } catch(e) { showToast(e.message, "error"); }
+async function deleteAllPending(){
+  const pending=allOrders.filter(o=>o.status==="pending");
+  if(!pending.length){showToast(currentLang==="ar"?"لا توجد طلبات معلقة":"No pending orders","error");return;}
+  if(!confirm(`${currentLang==="ar"?"حذف":"Delete"} ${pending.length} ${currentLang==="ar"?"طلب معلق؟":"pending orders?"}`))return;
+  try{const batch=db.batch();pending.forEach(o=>batch.delete(db.collection("orders").doc(o.id)));await batch.commit();showToast(`${currentLang==="ar"?"تم حذف":"Deleted"} ${pending.length}`);loadOrders();}
+  catch(e){showToast(e.message,"error");}
 }
 
 // ── Technicians ───────────────────────────────────────────────────────────────
-async function loadTechnicians() {
-  document.getElementById("tech-grid").innerHTML = '<div class="loader"><div class="spinner"></div></div>';
-  try {
-    const snap  = await db.collection("technicians").get();
-    const techs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    if (!techs.length) { document.getElementById("tech-grid").innerHTML = `<div class="empty">${T().noTechs}</div>`; return; }
-    const t = T();
-    document.getElementById("tech-grid").innerHTML = techs.map(tc => `
+async function loadTechnicians(){
+  document.getElementById("tech-grid").innerHTML='<div class="loader"><div class="spinner"></div></div>';
+  try{
+    const snap=await db.collection("technicians").get();
+    const techs=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(!techs.length){document.getElementById("tech-grid").innerHTML=`<div class="empty">${currentLang==="ar"?"لا يوجد فنيون":"No technicians"}</div>`;return;}
+    document.getElementById("tech-grid").innerHTML=techs.map(tc=>`
       <div class="tech-card">
         <div class="tech-avatar">👨‍🔧</div>
         <div class="tech-name">${tc.name||"-"}</div>
         <div class="tech-phone">📞 ${tc.phone||"-"}</div>
         <div class="tech-stats">
-          <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent)">${tc.rating?tc.rating.toFixed(1):"-"}</div><div class="tech-stat-lbl">${t.rating}</div></div>
-          <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent3)">${tc.ratingCount||0}</div><div class="tech-stat-lbl">${t.reviews}</div></div>
+          <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent)">${tc.rating?tc.rating.toFixed(1):"-"}</div><div class="tech-stat-lbl">${currentLang==="ar"?"تقييم":"Rating"}</div></div>
+          <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent3)">${tc.ratingCount||0}</div><div class="tech-stat-lbl">${currentLang==="ar"?"تقييمات":"Reviews"}</div></div>
           <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent2)">${tc.balance||0}</div><div class="tech-stat-lbl">SAR</div></div>
         </div>
         <div class="tech-footer">
-          <span class="active-pill ${tc.active?"on":"off"}">${tc.active?t.available:t.busy}</span>
-          <div style="display:flex;gap:5px">
-            <button class="btn btn-sm ${tc.active?"btn-danger":"btn-success"}" onclick="toggleTech('${tc.id}',${tc.active})">${tc.active?t.disable:t.enable}</button>
+          <span class="active-pill ${tc.active?"on":"off"}">${tc.active?(currentLang==="ar"?"متاح":"Available"):(currentLang==="ar"?"مشغول":"Busy")}</span>
+          <div style="display:flex;gap:4px">
+            <button class="btn btn-sm ${tc.active?"btn-danger":"btn-success"}" onclick="toggleTech('${tc.id}',${tc.active})">${tc.active?(currentLang==="ar"?"إيقاف":"Disable"):(currentLang==="ar"?"تفعيل":"Enable")}</button>
             <button class="btn btn-sm btn-danger" onclick="deleteTech('${tc.id}')">🗑</button>
           </div>
         </div>
       </div>`).join("");
-  } catch(e) { console.error(e); }
+  }catch(e){console.error(e);}
 }
-
-async function toggleTech(id, current) {
-  try { await db.collection("technicians").doc(id).update({ active: !current }); showToast(T().updated); loadTechnicians(); }
-  catch(e) { showToast(e.message, "error"); }
-}
-
-async function deleteTech(id) {
-  if (!confirm(T().confirmDelete)) return;
-  try { await db.collection("technicians").doc(id).delete(); showToast(T().deleted); loadTechnicians(); }
-  catch(e) { showToast(e.message, "error"); }
-}
-
-async function addTechnician() {
-  const name  = document.getElementById("tech-name").value.trim();
-  const phone = document.getElementById("tech-phone").value.trim();
-  const svcs  = document.getElementById("tech-services").value.split(",").map(s => s.trim()).filter(Boolean);
-  if (!name || !phone) { showToast(T().fillFields, "error"); return; }
-  try {
-    await db.collection("technicians").add({ name, phone, services: svcs, serviceIds: svcs, active: true, balance: 0, rating: 0, ratingCount: 0 });
-    showToast(T().added);
-    closeModal("tech-modal");
-    ["tech-name","tech-phone","tech-services"].forEach(id => document.getElementById(id).value = "");
-    loadTechnicians();
-  } catch(e) { showToast(e.message, "error"); }
+async function toggleTech(id,current){try{await db.collection("technicians").doc(id).update({active:!current});showToast("✅");loadTechnicians();}catch(e){showToast(e.message,"error");}}
+async function deleteTech(id){if(!confirm(currentLang==="ar"?"حذف؟":"Delete?"))return;try{await db.collection("technicians").doc(id).delete();showToast(currentLang==="ar"?"تم الحذف":"Deleted");loadTechnicians();}catch(e){showToast(e.message,"error");}}
+async function addTechnician(){
+  const name=document.getElementById("tech-name").value.trim();
+  const phone=document.getElementById("tech-phone").value.trim();
+  const svcs=document.getElementById("tech-services").value.split(",").map(s=>s.trim()).filter(Boolean);
+  if(!name||!phone){showToast(currentLang==="ar"?"يرجى ملء الحقول":"Fill fields","error");return;}
+  try{await db.collection("technicians").add({name,phone,services:svcs,serviceIds:svcs,active:true,balance:0,rating:0,ratingCount:0});showToast(currentLang==="ar"?"تمت الإضافة":"Added");closeModal("tech-modal");["tech-name","tech-phone","tech-services"].forEach(id=>document.getElementById(id).value="");loadTechnicians();}
+  catch(e){showToast(e.message,"error");}
 }
 
 // ── Services ──────────────────────────────────────────────────────────────────
-async function loadServices() {
-  document.getElementById("services-list").innerHTML = '<div class="loader"><div class="spinner"></div></div>';
-  try {
-    const snap = await db.collection("services").get();
-    const svcs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    if (!svcs.length) { document.getElementById("services-list").innerHTML = `<div class="empty">${T().noSvcs}</div>`; return; }
-    document.getElementById("services-list").innerHTML = svcs.map(s => `
+async function loadServices(){
+  document.getElementById("services-list").innerHTML='<div class="loader"><div class="spinner"></div></div>';
+  try{
+    const snap=await db.collection("services").get();
+    allServices=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(!allServices.length){document.getElementById("services-list").innerHTML=`<div class="empty">${currentLang==="ar"?"لا توجد خدمات":"No services"}</div>`;return;}
+    document.getElementById("services-list").innerHTML=allServices.map(s=>`
       <div class="service-row">
         <div class="service-icon">${s.icon||"🔧"}</div>
         <div class="service-info">
           <div class="service-name">${s.name}</div>
-          <div class="service-types">${(s.types||[]).map(tp => `${tp.name}: ${tp.price} SAR`).join(" · ")}</div>
+          <div class="service-types">${(s.types||[]).map(tp=>`${tp.name}: ${tp.price} SAR`).join(" · ")}</div>
         </div>
         <button class="btn btn-sm btn-danger" onclick="deleteService('${s.id}')">🗑</button>
       </div>`).join("");
-  } catch(e) { console.error(e); }
+  }catch(e){console.error(e);}
+}
+async function addService(){
+  const name=document.getElementById("svc-name").value.trim();
+  const icon=document.getElementById("svc-icon").value.trim()||"🔧";
+  const types=document.getElementById("svc-types").value.split("\n").filter(Boolean).map(l=>{const[n,p]=l.split(":");return{name:(n||"").trim(),price:parseFloat(p)||0};});
+  if(!name){showToast(currentLang==="ar"?"أدخل اسم الخدمة":"Enter name","error");return;}
+  try{await db.collection("services").add({name,icon,types});showToast(currentLang==="ar"?"تمت الإضافة":"Added");closeModal("service-modal");["svc-name","svc-icon","svc-types"].forEach(id=>document.getElementById(id).value="");loadServices();}
+  catch(e){showToast(e.message,"error");}
+}
+async function deleteService(id){if(!confirm(currentLang==="ar"?"حذف؟":"Delete?"))return;try{await db.collection("services").doc(id).delete();showToast(currentLang==="ar"?"تم الحذف":"Deleted");loadServices();}catch(e){showToast(e.message,"error");}}
+
+// ── Parts ─────────────────────────────────────────────────────────────────────
+async function loadParts(){
+  document.getElementById("parts-list").innerHTML='<div class="loader"><div class="spinner"></div></div>';
+  try{
+    const [partsSnap, svcsSnap] = await Promise.all([db.collection("parts").get(), db.collection("services").get()]);
+    allParts    = partsSnap.docs.map(d=>({id:d.id,...d.data()}));
+    allServices = svcsSnap.docs.map(d=>({id:d.id,...d.data()}));
+
+    // Build filter buttons
+    const filterBar = document.getElementById("parts-filter-bar");
+    filterBar.innerHTML = `<button class="filter-btn ${partsFilter==="all"?"active":""}" onclick="setPartsFilter('all',this)">${currentLang==="ar"?"الكل":"All"}</button>`;
+    allServices.forEach(s=>{
+      filterBar.innerHTML+=`<button class="filter-btn ${partsFilter===s.id?"active":""}" onclick="setPartsFilter('${s.id}',this)">${s.name}</button>`;
+    });
+
+    // Populate service select in modal
+    const sel = document.getElementById("part-service");
+    sel.innerHTML = `<option value="">${currentLang==="ar"?"اختر خدمة...":"Choose service..."}</option>`;
+    allServices.forEach(s=>{ sel.innerHTML+=`<option value="${s.id}">${s.name}</option>`; });
+
+    renderFilteredParts();
+  }catch(e){console.error(e);}
 }
 
-async function addService() {
-  const name  = document.getElementById("svc-name").value.trim();
-  const icon  = document.getElementById("svc-icon").value.trim() || "🔧";
-  const lines = document.getElementById("svc-types").value.split("\n").filter(Boolean);
-  const types = lines.map(l => { const [n,p] = l.split(":"); return { name:(n||"").trim(), price:parseFloat(p)||0 }; });
-  if (!name) { showToast(T().enterSvcName, "error"); return; }
-  try {
-    await db.collection("services").add({ name, icon, types });
-    showToast(T().added);
-    closeModal("service-modal");
-    ["svc-name","svc-icon","svc-types"].forEach(id => document.getElementById(id).value = "");
-    loadServices();
-  } catch(e) { showToast(e.message, "error"); }
+function setPartsFilter(f,btn){partsFilter=f;document.querySelectorAll("#parts-filter-bar .filter-btn").forEach(b=>b.classList.remove("active"));btn.classList.add("active");renderFilteredParts();}
+
+function renderFilteredParts(){
+  const q=(document.getElementById("part-search").value||"").toLowerCase();
+  let list=partsFilter==="all"?allParts:allParts.filter(p=>p.serviceId===partsFilter);
+  if(q) list=list.filter(p=>(p.name||"").toLowerCase().includes(q)||(p.desc||"").toLowerCase().includes(q));
+  if(!list.length){document.getElementById("parts-list").innerHTML=`<div class="empty">${currentLang==="ar"?"لا توجد قطع":"No parts"}</div>`;return;}
+  const svcMap={};allServices.forEach(s=>svcMap[s.id]=s.name);
+  document.getElementById("parts-list").innerHTML=list.map(p=>`
+    <div class="part-row">
+      <div class="service-icon">🔩</div>
+      <div class="part-info">
+        <div class="part-name">${p.name}</div>
+        <div class="part-meta">
+          <span class="part-svc-tag">${svcMap[p.serviceId]||p.serviceId||"-"}</span>
+          ${p.unit||""} · ${p.price||0} SAR
+          ${p.desc?`· ${p.desc}`:""}
+        </div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-success" onclick="editPart('${p.id}')">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="deletePart('${p.id}')">🗑</button>
+      </div>
+    </div>`).join("");
 }
 
-async function deleteService(id) {
-  if (!confirm(T().confirmDelete)) return;
-  try { await db.collection("services").doc(id).delete(); showToast(T().deleted); loadServices(); }
-  catch(e) { showToast(e.message, "error"); }
+function openModal(id){ document.getElementById(id).classList.add("open"); }
+
+function openAddPartModal(){
+  editingPartId=null;
+  document.getElementById("part-modal-title").textContent=currentLang==="ar"?"إضافة قطعة جديدة":"Add New Part";
+  ["part-name","part-unit","part-price","part-desc"].forEach(id=>document.getElementById(id).value="");
+  document.getElementById("part-service").value="";
+  openModal("part-modal");
 }
+
+function editPart(id){
+  const part=allParts.find(p=>p.id===id);
+  if(!part)return;
+  editingPartId=id;
+  document.getElementById("part-modal-title").textContent=currentLang==="ar"?"تعديل القطعة":"Edit Part";
+  document.getElementById("part-name").value=part.name||"";
+  document.getElementById("part-unit").value=part.unit||"";
+  document.getElementById("part-price").value=part.price||0;
+  document.getElementById("part-desc").value=part.desc||"";
+  document.getElementById("part-service").value=part.serviceId||"";
+  openModal("part-modal");
+}
+
+async function savePart(){
+  const name      = document.getElementById("part-name").value.trim();
+  const unit      = document.getElementById("part-unit").value.trim()||"قطعة";
+  const price     = parseFloat(document.getElementById("part-price").value)||0;
+  const serviceId = document.getElementById("part-service").value;
+  const desc      = document.getElementById("part-desc").value.trim();
+  if(!name||!serviceId){showToast(currentLang==="ar"?"يرجى ملء الاسم والخدمة":"Fill name and service","error");return;}
+  try{
+    const data={name,unit,price,serviceId,desc};
+    if(editingPartId){
+      await db.collection("parts").doc(editingPartId).update(data);
+      showToast(currentLang==="ar"?"تم التحديث":"Updated");
+    }else{
+      await db.collection("parts").add(data);
+      showToast(currentLang==="ar"?"تمت الإضافة":"Added");
+    }
+    closeModal("part-modal");
+    loadParts();
+  }catch(e){showToast(e.message,"error");}
+}
+
+async function deletePart(id){
+  if(!confirm(currentLang==="ar"?"حذف هذه القطعة؟":"Delete this part?"))return;
+  try{await db.collection("parts").doc(id).delete();showToast(currentLang==="ar"?"تم الحذف":"Deleted");loadParts();}
+  catch(e){showToast(e.message,"error");}
+}
+
+// Override openModal for part-modal to load services first
+const origOpenModal = openModal;
+document.getElementById("part-modal").addEventListener("click",()=>{});
 
 // ── Finance ───────────────────────────────────────────────────────────────────
-async function loadFinance() {
-  try {
-    const [ordSnap, techSnap] = await Promise.all([
-      db.collection("orders").where("status","==","done").get(),
-      db.collection("technicians").get()
-    ]);
-    const orders = ordSnap.docs.map(d => d.data());
-    const techs  = techSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const totalRevenue = orders.reduce((s,o) => s+(o.price||0), 0);
-    const totalFees    = Math.round(totalRevenue * 0.2);
-    const avgOrder     = orders.length ? Math.round(totalRevenue/orders.length) : 0;
-    const t = T();
-    document.getElementById("fin-cards").innerHTML = `
-      <div class="fin-card"><div class="fin-amount">${totalRevenue.toLocaleString()}</div><div class="fin-label">${t.totalRevenue}</div></div>
-      <div class="fin-card"><div class="fin-amount" style="color:var(--accent3)">${totalFees.toLocaleString()}</div><div class="fin-label">${t.totalFees}</div></div>
-      <div class="fin-card"><div class="fin-amount" style="color:var(--accent2)">${orders.length}</div><div class="fin-label">${t.completedOrders}</div></div>
-      <div class="fin-card"><div class="fin-amount" style="color:var(--danger)">${avgOrder}</div><div class="fin-label">${t.avgOrder}</div></div>
+async function loadFinance(){
+  try{
+    const [ordSnap,techSnap]=await Promise.all([db.collection("orders").where("status","==","done").get(),db.collection("technicians").get()]);
+    const orders=ordSnap.docs.map(d=>d.data());
+    const techs=techSnap.docs.map(d=>({id:d.id,...d.data()}));
+    const totalRevenue=orders.reduce((s,o)=>s+(o.totalPrice||o.price||0),0);
+    const totalFees=Math.round(totalRevenue*0.2);
+    const avgOrder=orders.length?Math.round(totalRevenue/orders.length):0;
+    document.getElementById("fin-cards").innerHTML=`
+      <div class="fin-card"><div class="fin-amount">${totalRevenue.toLocaleString()}</div><div class="fin-label">${currentLang==="ar"?"إجمالي الإيرادات (ريال)":"Total Revenue (SAR)"}</div></div>
+      <div class="fin-card"><div class="fin-amount" style="color:var(--accent3)">${totalFees.toLocaleString()}</div><div class="fin-label">${currentLang==="ar"?"إجمالي العمولات (20%)":"Total Fees (20%)"}</div></div>
+      <div class="fin-card"><div class="fin-amount" style="color:var(--accent2)">${orders.length}</div><div class="fin-label">${currentLang==="ar"?"طلبات مكتملة":"Completed Orders"}</div></div>
+      <div class="fin-card"><div class="fin-amount" style="color:var(--danger)">${avgOrder}</div><div class="fin-label">${currentLang==="ar"?"متوسط الطلب (ريال)":"Avg Order (SAR)"}</div></div>
     `;
-    document.getElementById("fin-table").innerHTML = `
+    document.getElementById("fin-table").innerHTML=`
       <table><thead><tr>
-        <th>${t.name}</th><th>${t.phone}</th><th>${t.balance}</th><th>${t.rating}</th><th>${t.reviews}</th><th>${t.status}</th>
+        <th>${currentLang==="ar"?"الاسم":"Name"}</th><th>${currentLang==="ar"?"الهاتف":"Phone"}</th>
+        <th>${currentLang==="ar"?"الرصيد":"Balance"}</th><th>${currentLang==="ar"?"التقييم":"Rating"}</th>
+        <th>${currentLang==="ar"?"تقييمات":"Reviews"}</th><th>${currentLang==="ar"?"الحالة":"Status"}</th>
       </tr></thead>
-      <tbody>${techs.map(tc => `<tr>
-        <td style="font-weight:700">${tc.name||"-"}</td>
-        <td>${tc.phone||"-"}</td>
+      <tbody>${techs.map(tc=>`<tr>
+        <td style="font-weight:700">${tc.name||"-"}</td><td>${tc.phone||"-"}</td>
         <td style="color:var(--accent)">${tc.balance||0} SAR</td>
         <td>${tc.rating?("⭐".repeat(Math.round(tc.rating))+" "+tc.rating.toFixed(1)):"-"}</td>
         <td>${tc.ratingCount||0}</td>
-        <td><span class="active-pill ${tc.active?"on":"off"}">${tc.active?t.available:t.busy}</span></td>
+        <td><span class="active-pill ${tc.active?"on":"off"}">${tc.active?(currentLang==="ar"?"متاح":"Available"):(currentLang==="ar"?"مشغول":"Busy")}</span></td>
       </tr>`).join("")}</tbody></table>`;
-  } catch(e) { console.error(e); }
+  }catch(e){console.error(e);}
 }
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
-function openModal(id)  { document.getElementById(id).classList.add("open"); }
-function closeModal(id) { document.getElementById(id).classList.remove("open"); }
-document.querySelectorAll(".modal-overlay").forEach(m => {
-  m.addEventListener("click", e => { if (e.target === m) m.classList.remove("open"); });
+function closeModal(id){document.getElementById(id).classList.remove("open");}
+document.querySelectorAll(".modal-overlay").forEach(m=>{
+  m.addEventListener("click",e=>{if(e.target===m)m.classList.remove("open");});
 });
+
+// Fix: wire Add Part button to load services first
+document.querySelector("[onclick=\"openModal('part-modal')\"]").onclick = async function(){
+  await loadParts();
+  openAddPartModal();
+};
 </script>
 </body>
 </html>
