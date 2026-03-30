@@ -44,7 +44,12 @@ const LANGS = {
     locationOnly:   "📍 يرجى إرسال موقعك باستخدام ميزة الموقع في واتساب.",
     sessionExpired: "انتهت الجلسة. أرسل *مرحبا* للبدء.",
     noTech:         "⚠️ لا يوجد فني متاح الآن. حاول لاحقاً.",
-    noTechRegion:   (r) => `⚠️ لا يوجد فني متاح في *${r}* الآن. حاول لاحقاً.`,
+    noTechRegion:   (r) => `⚠️ لا يوجد فني متاح في *${r}* الآن.\n\n📝 تم حفظ طلبك في قائمة الانتظار وسيتم إشعارك فور توفر فني.\n🆔 رقم الطلب سيُرسَل إليك الآن.`,
+    noTechAny:      "⚠️ لا يوجد فني متاح الآن.\n\n📝 تم حفظ طلبك في قائمة الانتظار وسيتم إشعارك فور توفر فني.",
+    techAvailableNotify: (id, techName) => `✅ *تم العثور على فني لطلبك!*\n🆔 ${id}\n👨‍🔧 الفني: ${techName}\nسيتواصل معك قريباً.`,
+    cancelPrompt:   (id) => `هل تريد إلغاء الطلب *${id}*؟\nأرسل سبب الإلغاء أو *لا* للعودة.`,
+    cancelDone:     (id, reason) => `تم إلغاء طلبك\n🆔 ${id}\nالسبب: ${reason}\nشكراً لتواصلك معنا.`,
+    cancelNo:       "تم الإبقاء على طلبك. أرسل *مرحبا* للعودة.",
     regionDetected: (r) => `📍 تم تحديد موقعك في: *${r}*`,
     orderSent:      (id) => `✅ *تم إرسال طلبك!*\n🆔 رقم الطلب: ${id}\nسيتم إشعارك عند القبول.\n📄 ستصلك الفاتورة قريباً.\n\nلمتابعة طلبك:\n*حالة ${id}*`,
     activeOrder:    (id, sName, status) => `لديك طلب نشط:\n🆔 ${id}\n🔧 ${sName}\nالحالة: ${statusLabel(status,"ar")}`,
@@ -69,6 +74,12 @@ const LANGS = {
     ratingDone:     (s) => `شكراً على تقييمك! ${"⭐".repeat(s)}`,
     invoiceCaption: (id) => `📄 فاتورة الطلب ${id}`,
     finalInvoice:   (id) => `📄 الفاتورة النهائية للطلب ${id}`,
+    waitingQueue:   (id) => `⏳ *تم تسجيل طلبك في قائمة الانتظار!*\n🆔 رقم الطلب: ${id}\n\nسيتم إشعارك فوراً عند توفر فني.\n\nلمتابعة طلبك:\n*حالة ${id}*`,
+    techAvailable:  (id) => `✅ *تم توفر فني لطلبك!*\n🆔 ${id}\nجارٍ إرسال الطلب للفني...`,
+    cancelPrompt:   (id) => `هل تريد إلغاء الطلب ${id}؟\nأرسل سبب الإلغاء أو أرسل *لا* للرجوع.`,
+    cancelDone:     (id) => `✅ تم إلغاء الطلب ${id}.\nشكراً لك.`,
+    cancelNo:       "تم الإبقاء على طلبك.",
+    orderMenu:      (o) => `📋 *تفاصيل الطلب*\n🆔 ${o.orderId}\n🔧 ${o.serviceName}\n📌 ${o.type||""}\n💰 ${(o.totalPrice||0).toFixed(3)} OMR\n📊 الحالة: ${statusLabel(o.status,"ar")}\n📍 المنطقة: ${o.region||"-"}\n\nأرسل *إلغاء_${o.orderId}* لإلغاء الطلب.`,
     trackResult:    (o) => `📋 *تفاصيل الطلب*\n🆔 ${o.orderId}\n🔧 ${o.serviceName}\n📌 ${o.type||""}\n💰 ${(o.totalPrice||o.price||0).toFixed(3)} OMR\n📊 الحالة: ${statusLabel(o.status,"ar")}\n📍 المنطقة: ${o.region||"-"}\n📅 ${o.createdAt?new Date(o.createdAt.seconds*1000).toLocaleDateString("ar-OM"):"-"}`,
     trackNotFound:  "❌ لم يتم العثور على طلب بهذا الرقم.",
     trackPrompt:    "🔍 أرسل رقم الطلب:\nمثال: *حالة ORD-XXXXXXXX*",
@@ -98,7 +109,12 @@ const LANGS = {
     locationOnly:   "📍 Please send your location using WhatsApp location feature.",
     sessionExpired: "Session expired. Send *mrhba* to start.",
     noTech:         "⚠️ No technician available now. Try again later.",
-    noTechRegion:   (r) => `⚠️ No technician available in *${r}* now. Try later.`,
+    noTechRegion:   (r) => `⚠️ No technician available in *${r}* now.\n\n📝 Your order has been saved in the waiting queue. You will be notified when a technician is available.`,
+    noTechAny:      "⚠️ No technician available now.\n\n📝 Your order has been saved in the waiting queue. You will be notified when a technician is available.",
+    techAvailableNotify: (id, techName) => `✅ *A technician has been found for your order!*\n🆔 ${id}\n👨‍🔧 Tech: ${techName}\nThey will contact you shortly.`,
+    cancelPrompt:   (id) => `Do you want to cancel order *${id}*?\nSend the reason or *no* to go back.`,
+    cancelDone:     (id, reason) => `Order cancelled\n🆔 ${id}\nReason: ${reason}\nThank you for contacting us.`,
+    cancelNo:       "Your order is still active. Send *mrhba* to return.",
     regionDetected: (r) => `📍 Your location detected in: *${r}*`,
     orderSent:      (id) => `✅ *Order sent!*\n🆔 Order ID: ${id}\nYou'll be notified when accepted.\n📄 Invoice coming shortly.\n\nTrack order:\n*status ${id}*`,
     activeOrder:    (id, sName, status) => `Active order:\n🆔 ${id}\n🔧 ${sName}\nStatus: ${statusLabel(status,"en")}`,
@@ -123,6 +139,12 @@ const LANGS = {
     ratingDone:     (s) => `Thanks for rating! ${"⭐".repeat(s)}`,
     invoiceCaption: (id) => `📄 Invoice for Order ${id}`,
     finalInvoice:   (id) => `📄 Final Invoice for Order ${id}`,
+    waitingQueue:   (id) => `⏳ *Your order is in the waiting queue!*\n🆔 Order ID: ${id}\n\nYou'll be notified as soon as a technician is available.\n\nTrack your order:\n*status ${id}*`,
+    techAvailable:  (id) => `✅ *A technician is now available for your order!*\n🆔 ${id}\nSending order to technician...`,
+    cancelPrompt:   (id) => `Do you want to cancel order ${id}?\nSend the reason or send *no* to go back.`,
+    cancelDone:     (id) => `✅ Order ${id} has been cancelled.\nThank you.`,
+    cancelNo:       "Your order is still active.",
+    orderMenu:      (o) => `📋 *Order Details*\n🆔 ${o.orderId}\n🔧 ${o.serviceName}\n📌 ${o.type||""}\n💰 ${(o.totalPrice||0).toFixed(3)} OMR\n📊 Status: ${statusLabel(o.status,"en")}\n📍 Region: ${o.region||"-"}\n\nSend *cancel_${o.orderId}* to cancel this order.`,
     trackResult:    (o) => `📋 *Order Details*\n🆔 ${o.orderId}\n🔧 ${o.serviceName}\n📌 ${o.type||""}\n💰 ${(o.totalPrice||o.price||0).toFixed(3)} OMR\n📊 Status: ${statusLabel(o.status,"en")}\n📍 Region: ${o.region||"-"}\n📅 ${o.createdAt?new Date(o.createdAt.seconds*1000).toLocaleDateString("en-OM"):"-"}`,
     trackNotFound:  "❌ No order found with this ID.",
     trackPrompt:    "🔍 Send your order ID:\nExample: *status ORD-XXXXXXXX*",
@@ -371,6 +393,27 @@ app.post("/webhook", async(req,res)=>{
     }
 
     // ── Order tracking ────────────────────────────────────────────────────────
+    // Cancel order: إلغاء_ORD-XXX or cancel_ORD-XXX
+    const cancelAr = text.match(/^إلغاء_(.+)/i);
+    const cancelEn = text.match(/^cancel_(.+)/i);
+    if(cancelAr||cancelEn){
+      const session=await getSession(from);
+      const lang=getLang(session);
+      const orderId=(cancelAr?.[1]||cancelEn?.[1]).trim().toUpperCase();
+      const oSnap=await db.collection("orders").doc(orderId).get();
+      if(!oSnap.exists){ await sendMessage(from,LANGS[lang].trackNotFound); return; }
+      const order=oSnap.data();
+      if(order.customer!==from){ await sendMessage(from,LANGS[lang].trackNotFound); return; }
+      if(["done","rejected","cancelled"].includes(order.status)){
+        await sendMessage(from, LANGS[lang].trackResult(order)); return;
+      }
+      // Ask for cancel reason
+      await setSession(from,"cancel_reason",{lang,orderId,order});
+      await sendMessage(from, LANGS[lang].cancelPrompt(orderId));
+      return;
+    }
+
+    // Cancel reason state handled below in session flow
     const trackAr = text.match(/^حالة\s+(.+)/i);
     const trackEn = text.match(/^status\s+(.+)/i);
     if(trackAr||trackEn){
@@ -386,12 +429,71 @@ app.post("/webhook", async(req,res)=>{
       await sendMessage(from, LANGS[getLang(session)].trackPrompt); return;
     }
 
+    // ── Cancel order: "الغاء ORD-XXX" or "cancel ORD-XXX" ──────────────────
+    const cancelAr = text.match(/^(الغاء|إلغاء)\s+(.+)/i);
+    const cancelEn = text.match(/^cancel\s+(.+)/i);
+    if(cancelAr||cancelEn){
+      const session  = await getSession(from);
+      const lang     = getLang(session);
+      const orderId  = (cancelAr?.[2]||cancelEn?.[1]).trim().toUpperCase();
+      // Check orders collection
+      let oSnap = await db.collection("orders").doc(orderId).get();
+      if(!oSnap.exists){
+        const q = await db.collection("orders").where("orderId","==",orderId).limit(1).get();
+        if(!q.empty) oSnap = { exists:true, data:()=>q.docs[0].data(), id:q.docs[0].id, ref:q.docs[0].ref };
+      }
+      // Check waiting_orders too
+      if(!oSnap.exists){
+        const wq = await db.collection("waiting_orders").where("orderId","==",orderId).limit(1).get();
+        if(!wq.empty) oSnap = { exists:true, data:()=>wq.docs[0].data(), id:wq.docs[0].id, ref:wq.docs[0].ref, isWaiting:true };
+      }
+      if(!oSnap.exists){ await sendMessage(from, LANGS[lang].trackNotFound); return; }
+      const order = oSnap.data();
+      if(order.customer !== from){ await sendMessage(from, LANGS[lang].trackNotFound); return; }
+      if(order.status==="done"||order.status==="cancelled"){ await sendMessage(from, `الطلب ${orderId} لا يمكن إلغاؤه (${statusLabel(order.status,lang)})`); return; }
+      // Ask for reason — save pending cancel in session
+      await setSession(from, "cancel_reason", { lang, orderId, orderDocId:oSnap.id, isWaiting:oSnap.isWaiting||false });
+      await sendMessage(from, LANGS[lang].cancelPrompt(orderId));
+      return;
+    }
+
     // ── Session flow ──────────────────────────────────────────────────────────
     let session = await getSession(from);
     const isStartAr = ["مرحبا","هلا","مرحبً","ابدا"].includes(text);
     const isStartEn = ["mrhba","hello","hi","start"].includes(text.toLowerCase());
     const isStart   = isStartAr || isStartEn;
     const newLang   = isStartAr?"ar":isStartEn?"en":null;
+
+    // ── STATE: cancel_reason ────────────────────────────────────────────────
+    if(session.state==="cancel_reason"){
+      const lang     = session.data.lang||"ar";
+      const Lc       = LANGS[lang];
+      const orderId  = session.data.orderId;
+      const docId    = session.data.orderDocId;
+      const isWaiting= session.data.isWaiting||false;
+
+      if(text.toLowerCase()==="لا"||text.toLowerCase()==="no"){
+        await clearSession(from);
+        await sendMessage(from, Lc.cancelNo);
+        return;
+      }
+      const reason = text;
+      const cancelData = { status:"cancelled", cancelledAt:admin.firestore.FieldValue.serverTimestamp(), cancelReason:reason, cancelledBy:"customer" };
+      if(isWaiting){
+        await db.collection("waiting_orders").doc(docId).update(cancelData);
+      } else {
+        await db.collection("orders").doc(docId).update(cancelData);
+        // Free up tech if accepted
+        const oSnap = await db.collection("orders").doc(docId).get();
+        const oData = oSnap.data();
+        if(oData?.technicianId && oData?.status==="accepted"){
+          await db.collection("technicians").doc(oData.technicianId).update({active:true});
+        }
+      }
+      await clearSession(from);
+      await sendMessage(from, Lc.cancelDone(orderId, reason));
+      return;
+    }
 
     if(!session.state||isStart){
       const lang     = newLang||getLang(session)||"ar";
@@ -509,7 +611,24 @@ app.post("/webhook", async(req,res)=>{
       if(regionName) await sendMessage(from,Lx.regionDetected(regionName));
 
       const techs=await getAvailableTechs(service.id,regionName||"",[]);
-      if(!techs.length){ await sendMessage(from,regionName?Lx.noTechRegion(regionName):Lx.noTech); await clearSession(from); return; }
+      if(!techs.length){
+        // Save to waiting queue
+        const waitId = generateOrderId();
+        await db.collection("waiting_orders").doc(waitId).set({
+          orderId: waitId, customer: from,
+          serviceName: service.name, serviceId: service.id,
+          type: selectedType.name, servicePrice: session.data.servicePrice||selectedType.price,
+          parts, totalPrice, discount,
+          couponCode: session.data.couponCode||null,
+          region: regionName||null, lang: userLang,
+          location:{latitude:msg.location.latitude,longitude:msg.location.longitude},
+          status: "waiting",
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        await sendMessage(from, regionName ? Lx.noTechRegion(regionName) : Lx.noTechAny);
+        await sendMessage(from, Lx.orderSent(waitId));
+        await clearSession(from); return;
+      }
 
       const chosenTech=techs[0];
       const orderId=generateOrderId();
@@ -544,6 +663,33 @@ app.post("/webhook", async(req,res)=>{
       const pdf=await generateInvoicePDF({orderId,customer:from,serviceName:service.name,type:selectedType.name,servicePrice:session.data.servicePrice||selectedType.price,parts,discount},userLang);
       await sendDocument(from,pdf,`invoice_${orderId}.pdf`,Lx.invoiceCaption(orderId));
       await clearSession(from);
+      return;
+    }
+
+    // ── cancel_reason state ─────────────────────────────────────────────────
+    if(session.state==="cancel_reason"){
+      const lang    = session.data.lang||"ar";
+      const orderId = session.data.orderId;
+      const Lx2     = LANGS[lang];
+      if(text==="لا"||text.toLowerCase()==="no"){
+        await clearSession(from);
+        await sendMessage(from, Lx2.cancelNo);
+        return;
+      }
+      // Save cancellation with reason
+      await db.collection("orders").doc(orderId).update({
+        status:"cancelled",
+        cancelReason:text,
+        cancelledAt:admin.firestore.FieldValue.serverTimestamp(),
+        cancelledBy:"customer"
+      });
+      // Free tech if assigned
+      const order=session.data.order;
+      if(order.technicianId&&order.status==="accepted"){
+        await db.collection("technicians").doc(order.technicianId).update({active:true});
+      }
+      await clearSession(from);
+      await sendMessage(from, Lx2.cancelDone(orderId));
       return;
     }
 
@@ -632,6 +778,8 @@ async function handleDone(orderId, techPhone, tech) {
   const fee=Math.round((order.totalPrice||0)*0.2*1000)/1000;
   const newBal=Math.max(0,Math.round(((techData?.balance||0)-fee)*1000)/1000);
   await techRef.update({balance:newBal,active:true});
+  // Check waiting queue for this service
+  processWaitingQueue(order.serviceId, order.region||null).catch(console.error);
   await sendMessage(techPhone,LANGS.ar.techDone(orderId,fee,newBal));
   const customerPhone=normalize(order.customer);
   const CL=LANGS[order.lang||"ar"];
@@ -671,6 +819,93 @@ app.post("/admin/assign", async(req,res)=>{
     console.error("admin/assign:", e?.message);
     res.status(500).json({error:e.message});
   }
+});
+
+// ── Waiting Queue Checker (called via endpoint or on tech activation) ─────────
+// When a tech becomes available, check waiting_orders and assign
+async function processWaitingQueue(serviceId, region) {
+  try {
+    let q = db.collection("waiting_orders").where("status","==","waiting").where("serviceId","==",serviceId);
+    const snap = await q.get();
+    if(snap.empty) return;
+
+    for(const doc of snap.docs){
+      const order = doc.data();
+      const techs = await getAvailableTechs(serviceId, order.region||"", []);
+      if(!techs.length) continue;
+
+      const tech   = techs[0];
+      const orderId = order.orderId;
+
+      // Move to orders collection
+      await db.collection("orders").doc(orderId).set({
+        ...order,
+        technicianId: tech.id,
+        rejectedTechs: [],
+        status: "pending",
+        movedFromWaiting: true,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      await doc.ref.update({status:"assigned"});
+      await db.collection("technicians").doc(tech.id).update({active:false});
+
+      // Notify customer
+      const CL = LANGS[order.lang||"ar"];
+      await sendMessage(normalize(order.customer), CL.techAvailableNotify(orderId, tech.name));
+
+      // Notify tech
+      const partsText = buildPartsText(order.parts||[]);
+      await sendButtons(normalize(tech.phone),
+        LANGS.ar.newOrder(orderId, order.serviceName, order.type||"", partsText, order.totalPrice||0),
+        [{id:"accept_"+orderId, title:LANGS.ar.acceptBtn},{id:"reject_"+orderId, title:LANGS.ar.rejectBtn}]
+      );
+    }
+  } catch(e){ console.error("processWaitingQueue:", e?.message); }
+}
+
+// ── Admin endpoint: trigger waiting queue (call after adding a tech) ──────────
+app.post("/admin/process-waiting", async(req,res)=>{
+  try {
+    const { serviceId, region } = req.body;
+    await processWaitingQueue(serviceId||null, region||null);
+    res.json({success:true});
+  } catch(e){ res.status(500).json({error:e.message}); }
+});
+
+// Patch handleDone to process waiting queue after tech freed
+const _origHandleDone = handleDone;
+
+// ── Waiting Queue Checker — runs every 2 min ──────────────────────────────────
+async function checkWaitingQueue() {
+  try {
+    const snap = await db.collection("orders").where("status","==","waiting").get();
+    if(snap.empty) return;
+    for(const doc of snap.docs){
+      const order = doc.data();
+      const techs = await getAvailableTechs(order.serviceId, order.region||"", order.rejectedTechs||[]);
+      if(!techs.length) continue;
+      const tech  = techs[0];
+      const CL    = LANGS[order.lang||"ar"];
+      // Notify customer
+      await sendMessage(normalize(order.customer), CL.techAvailable(order.orderId));
+      // Update order
+      await doc.ref.update({ status:"pending", technicianId:tech.id });
+      // Notify tech with buttons
+      const partsText = buildPartsText(order.parts||[]);
+      await sendButtons(normalize(tech.phone),
+        LANGS.ar.newOrder(order.orderId,order.serviceName,order.type||"",partsText,order.totalPrice||0),
+        [{id:"accept_"+order.orderId,title:LANGS.ar.acceptBtn},{id:"reject_"+order.orderId,title:LANGS.ar.rejectBtn}]
+      );
+      console.log("Waiting order assigned:", order.orderId, "->", tech.name);
+    }
+  } catch(e){ console.error("checkWaitingQueue:", e?.message); }
+}
+setInterval(checkWaitingQueue, 2*60*1000); // every 2 minutes
+
+// ── Admin endpoint to manually trigger queue check ────────────────────────────
+app.post("/admin/check-queue", async(req,res)=>{
+  await checkWaitingQueue();
+  res.json({success:true});
 });
 
 app.listen(process.env.PORT||3000,()=>console.log("✅ TAQA Bot running"));
