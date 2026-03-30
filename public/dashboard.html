@@ -1266,5 +1266,28 @@ function openModal(id){
 function closeModal(id){document.getElementById(id).classList.remove("open");}
 document.querySelectorAll(".modal-overlay").forEach(m=>{m.addEventListener("click",e=>{if(e.target===m)m.classList.remove("open");});});
 </script>
+<!-- Assign Tech Modal -->
+<div class="modal-overlay" id="assign-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="assign-modal-title">تعيين فني للطلب</h3>
+      <button class="modal-close" onclick="closeModal('assign-modal')">×</button>
+    </div>
+    <div style="padding:20px">
+      <div id="assign-order-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:.85rem;"></div>
+      <div class="form-group">
+        <label>اختر الفني</label>
+        <select id="assign-tech-select" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-family:inherit;width:100%">
+          <option value="">اختر فني...</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="assignTechToOrder()">✅ تعيين الفني</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('assign-modal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
