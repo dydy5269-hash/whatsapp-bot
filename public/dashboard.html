@@ -842,7 +842,7 @@ function renderOrdersTable(list,targetId,showDel){
       <td>${o.rating?"⭐".repeat(Math.min(o.rating,5)):"-"}</td>
       <td><span class="badge ${o.status}">${sl(o.status)}</span></td>
       <td style="color:var(--muted);font-size:.7rem">${date}</td>
-      ${del}
+      ${assignBtn}${del}
     </tr>`;
   }).join("");
   document.getElementById(targetId).innerHTML=`<table><thead><tr>
