@@ -28,7 +28,7 @@ const LANGS = {
     chooseParts:    "🔩 اختر القطع المطلوبة\n(أرسل رقم القطعة، يمكنك اختيار أكثر من قطعة):",
     partsMenu:      (parts) => parts.map((p,i)=>`${i+1}. ${p.name} — ${(parseFloat(p.price)||0).toFixed(3)} OMR / ${p.unit||"قطعة"}${p.stock!==undefined?` (متوفر: ${p.stock})`:""}`).join("\n") + "\n\n0 — متابعة بدون قطع",
     partAdded:      (name, qty, total) => `✅ تمت إضافة: *${name}* × ${qty}\nإجمالي القطع: ${total.toFixed(3)} OMR\n\nأرسل رقم قطعة أخرى أو *0* للمتابعة.`,
-    qtyPrompt:      (name, price) => `كم عدد قطع *${name}*؟\n(${price.toFixed(3)} OMR للقطعة)\nأرسل الرقم:`,
+    qtyPrompt:      (name, price, stock, maxQty) => { const fmt=n=>(parseFloat(n)||0).toFixed(3); const rows=[]; const max=maxQty||5; for(let i=1;i<=max;i++) rows.push(`${i} — ${i} قطعة × ${fmt(price)} = ${fmt(i*parseFloat(price))} OMR`); return `🔩 *${name}*\nاختر الكمية:\n\n${rows.join('\n')}${stock!==undefined?`\n\nالمتوفر: ${stock} قطعة`:''}`; },
     invalidInput:   "يرجى إرسال رقم صحيح.",
     invalidPart:    (max) => `يرجى إرسال رقم بين 0 و ${max}.`,
     outOfStock:     (name, stock) => `⚠️ عذراً، *${name}* متوفر ${stock} فقط. أرسل رقماً أقل أو 0 للمتابعة.`,
@@ -522,8 +522,8 @@ app.post("/webhook", async(req,res)=>{
         // Ask if customer wants parts
         await setSession(from,"parts_ask",{...session.data,selectedType:type,parts:[],servicePrice:type.price,availableParts:parts});
         const partsAskMsg = getLang(session)==="ar"
-          ? `🔩 *هل تريد إضافة قطع غيار؟*\n\nالقطع المتاحة لهذه الخدمة:\n${Lx.partsMenu(parts)}\n\nأرسل رقم القطعة للإضافة أو *0* للمتابعة بدون قطع.`
-          : `🔩 *Do you want to add spare parts?*\n\nAvailable parts:\n${Lx.partsMenu(parts)}\n\nSend part number to add or *0* to continue without parts.`;
+          ? `🔩 *هل تريد إضافة قطع غيار؟*\n\nالقطع المتاحة:\n${Lx.partsMenu(parts)}\n\nأرسل رقم القطعة للإضافة أو *0* للمتابعة بدون قطع.`
+          : `🔩 *Do you want to add spare parts?*\n\nAvailable parts:\n${Lx.partsMenu(parts)}\n\nSend part number or *0* to continue without parts.`;
         await sendMessage(from, partsAskMsg);
       }
       return;
