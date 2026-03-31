@@ -526,14 +526,8 @@ app.post("/webhook", async(req,res)=>{
       return;
     }
 
-    // ── parts_ask — initial parts selection ─────────────────────────────────────
-    if(session.state==="parts_ask"){
-      // Redirect to parts handler by changing state
-      await setSession(from,"parts",session.data);
-      session.state = "parts";
-    }
-
-    // ── parts ─────────────────────────────────────────────────────────────────
+    // ── parts_ask & parts — unified handler ─────────────────────────────────────
+    if(session.state==="parts_ask") session.state="parts";
     if(session.state==="parts"){
       const avail   = session.data.availableParts||[];
       const selected= session.data.parts||[];
@@ -546,8 +540,13 @@ app.post("/webhook", async(req,res)=>{
         const ex=selected.find(p=>p.id===part.id);
         if(ex) ex.qty+=qty; else selected.push({id:part.id,name:part.name,price:part.price,unit:part.unit||"قطعة",qty});
         const ptotal=selected.reduce((s,p)=>s+p.price*p.qty,0);
-        await setSession(from,"parts",{...session.data,parts:selected,pendingPartIdx:undefined});
-        await sendMessage(from,Lx.partAdded(part.name,qty,ptotal));
+        const newData = {...session.data, parts:selected, pendingPartIdx:undefined};
+        await setSession(from,"parts", newData);
+        const avail2 = newData.availableParts||[];
+        const addedMsg = getLang(session)==="ar"
+          ? `✅ تمت إضافة: *${part.name}* × ${qty}\n💡 إجمالي القطع: ${ptotal.toFixed(3)} OMR\n\nأرسل رقم قطعة أخرى أو *0* للمتابعة:\n\n${avail2.map((p,i)=>`${i+1}. ${p.name} — ${p.price.toFixed(3)} OMR`).join("\n")}\n\n0 — المتابعة للتأكيد`
+          : `✅ Added: *${part.name}* × ${qty}\n💡 Parts total: ${ptotal.toFixed(3)} OMR\n\nSend another number or *0* to continue:\n\n${avail2.map((p,i)=>`${i+1}. ${p.name} — ${p.price.toFixed(3)} OMR`).join("\n")}\n\n0 — Continue to confirm`;
+        await sendMessage(from, addedMsg);
         return;
       }
 
