@@ -20,13 +20,13 @@ const normalize = (p) => String(p).replace(/\+/g, "");
 // ─── Language ─────────────────────────────────────────────────────────────────
 const LANGS = {
   ar: {
-    welcome:        "أهلاً وسهلاً بك في شركة رؤية طاقة للخدمات الهندسية! 👋\nاختر الخدمة المطلوبة:",
+    welcome:        "أهلاً وسهلاً! 👋\nاختر الخدمة المطلوبة:",
     chooseService:  "الخدمات المتاحة",
     servicesBtn:    "الخدمات",
     chooseType:     (name) => `🔧 *${name}*\nاختر نوع الخدمة:`,
     typesBtn:       "الأنواع",
     chooseParts:    "🔩 اختر القطع المطلوبة\n(أرسل رقم القطعة، يمكنك اختيار أكثر من قطعة):",
-    partsMenu:      (parts) => parts.map((p,i)=>`${i+1}. ${p.name} — ${p.price.toFixed(3)} OMR / ${p.unit||"قطعة"}${p.stock!==undefined?` (متوفر: ${p.stock})`:""}`).join("\n") + "\n\n0 — متابعة بدون قطع",
+    partsMenu:      (parts) => parts.map((p,i)=>`${i+1}. ${p.name} — ${(parseFloat(p.price)||0).toFixed(3)} OMR / ${p.unit||"قطعة"}${p.stock!==undefined?` (متوفر: ${p.stock})`:""}`).join("\n") + "\n\n0 — متابعة بدون قطع",
     partAdded:      (name, qty, total) => `✅ تمت إضافة: *${name}* × ${qty}\nإجمالي القطع: ${total.toFixed(3)} OMR\n\nأرسل رقم قطعة أخرى أو *0* للمتابعة.`,
     qtyPrompt:      (name, price) => `كم عدد قطع *${name}*؟\n(${price.toFixed(3)} OMR للقطعة)\nأرسل الرقم:`,
     invalidInput:   "يرجى إرسال رقم صحيح.",
@@ -92,9 +92,9 @@ const LANGS = {
     chooseType:     (name) => `🔧 *${name}*\nChoose service type:`,
     typesBtn:       "Types",
     chooseParts:    "🔩 Choose required parts\n(Send part number, you can choose multiple):",
-    partsMenu:      (parts) => parts.map((p,i)=>`${i+1}. ${p.name} — ${p.price.toFixed(3)} OMR / ${p.unit||"piece"}${p.stock!==undefined?` (available: ${p.stock})`:""}`).join("\n") + "\n\n0 — Continue without parts",
+    partsMenu:      (parts) => parts.map((p,i)=>`${i+1}. ${p.name} — ${(parseFloat(p.price)||0).toFixed(3)} OMR / ${p.unit||"piece"}${p.stock!==undefined?` (available: ${p.stock})`:""}`).join("\n") + "\n\n0 — Continue without parts",
     partAdded:      (name, qty, total) => `✅ Added: *${name}* × ${qty}\nParts total: ${total.toFixed(3)} OMR\n\nSend another number or *0* to continue.`,
-    qtyPrompt:      (name, price, stock) => `How many *${name}*?\n(${price.toFixed(3)} OMR each)${stock!==undefined?`\nAvailable: ${stock}`:""  }\nSend number:`,
+    qtyPrompt:      (name, price, stock) => `How many *${name}*?\n(${(parseFloat(price)||0).toFixed(3)} OMR each)${stock!==undefined?`\nAvailable: ${stock}`:""}\nSend number:`,
     invalidInput:   "Please send a valid number.",
     invalidPart:    (max) => `Please send a number between 0 and ${max}.`,
     outOfStock:     (name, stock) => `⚠️ Sorry, only ${stock} *${name}* available. Send a smaller number or 0 to continue.`,
@@ -352,7 +352,7 @@ function buildPartsText(parts) {
   return parts.map(p=>`• ${p.name} × ${p.qty} = ${(p.price*p.qty).toFixed(3)} OMR`).join("\n");
 }
 function calcTotal(servicePrice, parts) {
-  return Math.round(((servicePrice||0)+(parts||[]).reduce((s,p)=>s+p.price*p.qty,0))*1000)/1000;
+  return Math.round(((parseFloat(servicePrice)||0)+(parts||[]).reduce((s,p)=>s+(parseFloat(p.price)||0)*p.qty,0))*1000)/1000;
 }
 
 // ─── Webhook ──────────────────────────────────────────────────────────────────
@@ -562,13 +562,18 @@ app.post("/webhook", async(req,res)=>{
         }
         const ex=selected.find(p=>p.id===part.id);
         if(ex) ex.qty+=qty; else selected.push({id:part.id,name:part.name,price:part.price,unit:part.unit||"قطعة",qty,stock:part.stock});
-        const ptotal=selected.reduce((s,p)=>s+p.price*p.qty,0);
+        const ptotal = selected.reduce((s,p)=>s+(parseFloat(p.price)||0)*p.qty, 0);
         const newData = {...session.data, parts:selected, pendingPartIdx:undefined};
         await setSession(from,"parts", newData);
         const avail2 = newData.availableParts||[];
-        const addedMsg = getLang(session)==="ar"
-          ? `✅ تمت إضافة: *${part.name}* × ${qty}\n💡 إجمالي القطع: ${ptotal.toFixed(3)} OMR\n\nأرسل رقم قطعة أخرى أو *0* للمتابعة:\n\n${avail2.map((p,i)=>`${i+1}. ${p.name} — ${p.price.toFixed(3)} OMR`).join("\n")}\n\n0 — المتابعة للتأكيد`
-          : `✅ Added: *${part.name}* × ${qty}\n💡 Parts total: ${ptotal.toFixed(3)} OMR\n\nSend another number or *0* to continue:\n\n${avail2.map((p,i)=>`${i+1}. ${p.name} — ${p.price.toFixed(3)} OMR`).join("\n")}\n\n0 — Continue to confirm`;
+        const fmt = (n) => (parseFloat(n)||0).toFixed(3);
+        const partsListTxt = avail2.map((p,i)=>
+          `${i+1}. ${p.name} — ${fmt(p.price)} OMR${p.stock!==undefined?` (متوفر: ${p.stock})`:""}`
+        ).join("\n");
+        const isAr2 = getLang(session)==="ar";
+        const addedMsg = isAr2
+          ? `✅ تمت إضافة: *${part.name}* × ${qty}\n💡 إجمالي القطع: ${fmt(ptotal)} OMR\n\nأرسل رقم قطعة أخرى أو *0* للمتابعة:\n\n${partsListTxt}\n\n0 — المتابعة للتأكيد`
+          : `✅ Added: *${part.name}* × ${qty}\n💡 Parts total: ${fmt(ptotal)} OMR\n\nSend another number or *0* to continue:\n\n${partsListTxt}\n\n0 — Continue to confirm`;
         await sendMessage(from, addedMsg);
         return;
       }
