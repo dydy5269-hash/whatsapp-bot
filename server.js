@@ -20,7 +20,7 @@ const normalize = (p) => String(p).replace(/\+/g, "");
 // ─── Language ─────────────────────────────────────────────────────────────────
 const LANGS = {
   ar: {
-    welcome:        "أهلاً وسهلاً! 👋\nاختر الخدمة المطلوبة:",
+    welcome:        "أهلاً وسهلاً بكم في رؤية طاقة للخدمات الهندسية ! 👋\nاختر الخدمة المطلوبة:",
     chooseService:  "الخدمات المتاحة",
     servicesBtn:    "الخدمات",
     chooseType:     (name) => `🔧 *${name}*\nاختر نوع الخدمة:`,
@@ -94,7 +94,7 @@ const LANGS = {
     chooseParts:    "🔩 Choose required parts\n(Send part number, you can choose multiple):",
     partsMenu:      (parts) => parts.map((p,i)=>`${i+1}. ${p.name} — ${(parseFloat(p.price)||0).toFixed(3)} OMR / ${p.unit||"piece"}${p.stock!==undefined?` (available: ${p.stock})`:""}`).join("\n") + "\n\n0 — Continue without parts",
     partAdded:      (name, qty, total) => `✅ Added: *${name}* × ${qty}\nParts total: ${total.toFixed(3)} OMR\n\nSend another number or *0* to continue.`,
-    qtyPrompt:      (name, price, stock) => `How many *${name}*?\n(${(parseFloat(price)||0).toFixed(3)} OMR each)${stock!==undefined?`\nAvailable: ${stock}`:""}\nSend number:`,
+    qtyPrompt:      (name, price, stock, maxQty) => { const fmt=n=>(parseFloat(n)||0).toFixed(3); const rows=[]; for(let i=1;i<=maxQty;i++) rows.push(`${i} — ${i} piece × ${fmt(price)} = ${fmt(i*parseFloat(price))} OMR`); return `🔩 *${name}*\nChoose quantity:\n\n${rows.join('\n')}${stock!==undefined?`\n\nAvailable: ${stock}`:''}`; },
     invalidInput:   "Please send a valid number.",
     invalidPart:    (max) => `Please send a number between 0 and ${max}.`,
     outOfStock:     (name, stock) => `⚠️ Sorry, only ${stock} *${name}* available. Send a smaller number or 0 to continue.`,
@@ -547,18 +547,14 @@ app.post("/webhook", async(req,res)=>{
           await sendMessage(from, menuMsg);
           return;
         }
-        const qty=parseInt(text);
-        if(isNaN(qty)||qty<1){ await sendMessage(from,Lx.invalidInput); return; }
-        const part=avail[pending];
-        // Stock check
-        if(part.stock !== undefined){
-          const alreadySelected = selected.find(p=>p.id===part.id)?.qty||0;
-          const maxAllowed = part.stock - alreadySelected;
-          if(qty > maxAllowed){
-            await sendMessage(from, Lx.outOfStock(part.name, maxAllowed>0?maxAllowed:0));
-            if(maxAllowed<=0) await setSession(from,"parts",{...session.data,pendingPartIdx:undefined});
-            return;
-          }
+        const qty = parseInt(text);
+        const maxQty2 = session.data.pendingMaxQty || 5;
+        const part = avail[pending];
+        if(isNaN(qty) || qty < 1 || qty > maxQty2){
+          await sendMessage(from, getLang(session)==="ar"
+            ? `يرجى إرسال رقم بين 1 و ${maxQty2}.`
+            : `Please send a number between 1 and ${maxQty2}.`);
+          return;
         }
         const ex=selected.find(p=>p.id===part.id);
         if(ex) ex.qty+=qty; else selected.push({id:part.id,name:part.name,price:part.price,unit:part.unit||"قطعة",qty,stock:part.stock});
@@ -583,8 +579,9 @@ app.post("/webhook", async(req,res)=>{
       const num=parseInt(text);
       if(isNaN(num)||num<1||num>avail.length){ await sendMessage(from,Lx.invalidPart(avail.length)); return; }
       const part=avail[num-1];
-      await setSession(from,"parts",{...session.data,pendingPartIdx:num-1});
-      await sendMessage(from,Lx.qtyPrompt(part.name,part.price,part.stock));
+      const maxQty = part.stock !== undefined ? Math.min(part.stock, 5) : 5;
+      await setSession(from,"parts",{...session.data,pendingPartIdx:num-1,pendingMaxQty:maxQty});
+      await sendMessage(from, Lx.qtyPrompt(part.name, part.price, part.stock, maxQty));
       return;
     }
 
