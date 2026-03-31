@@ -52,7 +52,7 @@ const LANGS = {
     cancelDone:     (id, reason) => `تم إلغاء طلبك\n🆔 ${id}\nالسبب: ${reason}\nشكراً لتواصلك معنا.`,
     cancelNo:       "تم الإبقاء على طلبك. أرسل *مرحبا* للعودة.",
     regionDetected: (r) => `📍 تم تحديد موقعك في: *${r}*`,
-    orderSent:      (id) => `✅ *تم إرسال طلبك!*\n🆔 رقم الطلب: ${id}\nسيتم إشعارك عند القبول.\n📄 ستصلك الفاتورة قريباً.\n\nلمتابعة طلبك:\n*حالة ${id}*`,
+    orderSent:      (id) => `✅ *تم إرسال طلبك!*\n🆔 رقم الطلب: ${id}\nسيتم إشعارك عند قبول الطلب.\n\nلمتابعة طلبك:\n*حالة ${id}*`,
     activeOrder:    (id, sName, status) => `لديك طلب نشط:\n🆔 ${id}\n🔧 ${sName}\nالحالة: ${statusLabel(status,"ar")}`,
     defaultMsg:     "أرسل *مرحبا* للبدء.\nأو *حالة [رقم الطلب]* للمتابعة.",
     techInfo:       (t) => `👤 الاسم: ${t.name}\n📞 الهاتف: ${t.phone}\n⭐ التقييم: ${t.rating?`${t.rating} (${t.ratingCount||0})`:"لا يوجد"}\n💰 الرصيد: ${(t.balance||0).toFixed(3)} OMR\n🟢 الحالة: ${t.active?"متاح":"مشغول"}\n📍 المنطقة: ${t.region||"غير محدد"}`,
@@ -74,7 +74,7 @@ const LANGS = {
     ratePrompt:     (id) => `⭐ *قيّم خدمة الفني*\nأرسل رقماً من 1 إلى 5:\n\n1 — ⭐ ضعيف\n2 — ⭐⭐ مقبول\n3 — ⭐⭐⭐ جيد\n4 — ⭐⭐⭐⭐ جيد جداً\n5 — ⭐⭐⭐⭐⭐ ممتاز`,
     ratingDone:     (s) => `شكراً على تقييمك! ${"⭐".repeat(s)}`,
     invoiceCaption: (id) => `📄 فاتورة الطلب ${id}`,
-    finalInvoice:   (id) => `📄 الفاتورة النهائية للطلب ${id}`,
+    finalInvoice:   (id) => `📄 *فاتورة الطلب ${id}*\nيرجى مراجعة الفاتورة وإتمام الدفع للفني.`,
     waitingQueue:   (id) => `⏳ *تم تسجيل طلبك في قائمة الانتظار!*\n🆔 رقم الطلب: ${id}\n\nسيتم إشعارك فوراً عند توفر فني.\n\nلمتابعة طلبك:\n*حالة ${id}*`,
     techAvailable:  (id) => `✅ *تم توفر فني لطلبك!*\n🆔 ${id}\nجارٍ إرسال الطلب للفني...`,
     cancelPrompt:   (id) => `هل تريد إلغاء الطلب ${id}؟\nأرسل سبب الإلغاء أو أرسل *لا* للرجوع.`,
@@ -118,7 +118,7 @@ const LANGS = {
     cancelDone:     (id, reason) => `Order cancelled\n🆔 ${id}\nReason: ${reason}\nThank you for contacting us.`,
     cancelNo:       "Your order is still active. Send *mrhba* to return.",
     regionDetected: (r) => `📍 Your location detected in: *${r}*`,
-    orderSent:      (id) => `✅ *Order sent!*\n🆔 Order ID: ${id}\nYou'll be notified when accepted.\n📄 Invoice coming shortly.\n\nTrack order:\n*status ${id}*`,
+    orderSent:      (id) => `✅ *Order sent!*\n🆔 Order ID: ${id}\nYou'll be notified when accepted.\n\nTrack your order:\n*status ${id}*`,
     activeOrder:    (id, sName, status) => `Active order:\n🆔 ${id}\n🔧 ${sName}\nStatus: ${statusLabel(status,"en")}`,
     defaultMsg:     "Send *mrhba* to start.\nOr *status [order ID]* to track.",
     techInfo:       (t) => `👤 Name: ${t.name}\n📞 Phone: ${t.phone}\n⭐ Rating: ${t.rating?`${t.rating} (${t.ratingCount||0})`:"N/A"}\n💰 Balance: ${(t.balance||0).toFixed(3)} OMR\n🟢 Status: ${t.active?"Available":"Busy"}\n📍 Region: ${t.region||"N/A"}`,
@@ -140,7 +140,7 @@ const LANGS = {
     ratePrompt:     (id) => `⭐ *Rate the technician*\nSend a number from 1 to 5:\n\n1 — ⭐ Poor\n2 — ⭐⭐ Fair\n3 — ⭐⭐⭐ Good\n4 — ⭐⭐⭐⭐ Very Good\n5 — ⭐⭐⭐⭐⭐ Excellent`,
     ratingDone:     (s) => `Thanks for rating! ${"⭐".repeat(s)}`,
     invoiceCaption: (id) => `📄 Invoice for Order ${id}`,
-    finalInvoice:   (id) => `📄 Final Invoice for Order ${id}`,
+    finalInvoice:   (id) => `📄 *Invoice for Order ${id}*\nPlease review and complete payment to the technician.`,
     waitingQueue:   (id) => `⏳ *Your order is in the waiting queue!*\n🆔 Order ID: ${id}\n\nYou'll be notified as soon as a technician is available.\n\nTrack your order:\n*status ${id}*`,
     techAvailable:  (id) => `✅ *A technician is now available for your order!*\n🆔 ${id}\nSending order to technician...`,
     cancelPrompt:   (id) => `Do you want to cancel order ${id}?\nSend the reason or send *no* to go back.`,
@@ -566,20 +566,13 @@ app.post("/webhook", async(req,res)=>{
         const ptotal = selected.reduce((s,p)=>s+(parseFloat(p.price)||0)*p.qty, 0);
         const newData = {...session.data, parts:selected, pendingPartIdx:undefined};
         await setSession(from,"parts", newData);
-        const avail2 = (newData.availableParts||[]);
         const fmt = (n) => (parseFloat(n)||0).toFixed(3);
-        // Recalculate remaining stock for each part
-        const partsListTxt = avail2.map((p,i)=>{
-          const usedQty = selected.find(s=>s.id===p.id)?.qty||0;
-          const remaining = p.stock!==undefined ? p.stock-usedQty : undefined;
-          const stockTxt = remaining!==undefined ? ` (متوفر: ${Math.max(0,remaining)})` : "";
-          return `${i+1}. ${p.name} — ${fmt(p.price)} OMR${stockTxt}`;
-        }).join("\n");
-        const isAr2 = getLang(session)==="ar";
-        const addedMsg = isAr2
-          ? `✅ تمت إضافة: *${part.name}* × ${qty}\n💡 إجمالي القطع: ${fmt(ptotal)} OMR\n\nأرسل رقم قطعة أخرى أو *0* للمتابعة:\n\n${partsListTxt}\n\n0 — المتابعة للتأكيد`
-          : `✅ Added: *${part.name}* × ${qty}\n💡 Parts total: ${fmt(ptotal)} OMR\n\nSend another number or *0* to continue:\n\n${partsListTxt}\n\n0 — Continue to confirm`;
-        await sendMessage(from, addedMsg);
+        // Go directly to confirm after adding part
+        const confirmMsg = getLang(session)==="ar"
+          ? `✅ تمت إضافة: *${part.name}* × ${qty} = ${fmt(qty*(parseFloat(part.price)||0))} OMR`
+          : `✅ Added: *${part.name}* × ${qty} = ${fmt(qty*(parseFloat(part.price)||0))} OMR`;
+        await sendMessage(from, confirmMsg);
+        await goNextAfterParts(from, newData, Lx);
         return;
       }
 
@@ -678,8 +671,7 @@ app.post("/webhook", async(req,res)=>{
       );
 
       await sendMessage(from,Lx.orderSent(orderId));
-      const pdf=await generateInvoicePDF({orderId,customer:from,serviceName:service.name,type:selectedType.name,servicePrice:session.data.servicePrice||selectedType.price,parts,discount},userLang);
-      await sendDocument(from,pdf,`invoice_${orderId}.pdf`,Lx.invoiceCaption(orderId));
+      // Invoice sent only after completion (for payment)
       await clearSession(from);
       return;
     }
