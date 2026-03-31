@@ -553,10 +553,11 @@ html[dir="ltr"] .notif-item.unread{border-right:none;border-left:3px solid var(-
     <div class="form-grid">
       <div class="form-group"><label>اسم القطعة</label><input type="text" id="part-name"/></div>
       <div class="form-group"><label>وحدة القياس</label><input type="text" id="part-unit" placeholder="قطعة / متر / لتر"/></div>
-      <div class="form-group"><label>السعر (OMR)</label><input type="number" id="part-price" placeholder="0"/></div>
+      <div class="form-group"><label>السعر (OMR)</label><input type="number" id="part-price" placeholder="0" step="0.001"/></div>
       <div class="form-group"><label>الخدمة المرتبطة</label><select id="part-service"><option value="">اختر...</option></select></div>
+      <div class="form-group"><label>📦 المخزون (عدد القطع)</label><input type="number" id="part-stock" placeholder="اتركه فارغاً = غير محدود" min="0"/></div>
+      <div class="form-group"><label>وصف (اختياري)</label><input type="text" id="part-desc"/></div>
       <div class="form-group" style="grid-column:1/-1"><label>🔑 Document ID (اختياري)</label><input type="text" id="part-id" placeholder="part_switch" style="direction:ltr;font-family:monospace"/></div>
-      <div class="form-group" style="grid-column:1/-1"><label>وصف (اختياري)</label><input type="text" id="part-desc"/></div>
     </div>
     <div class="form-actions">
       <button class="btn btn-primary" onclick="savePart()">حفظ</button>
@@ -1163,16 +1164,18 @@ function renderFilteredParts(){
       </div>
     </div>`).join("");
 }
-function openAddPartModal(){editingPartId=null;document.getElementById("part-modal-title").textContent="إضافة قطعة";["part-name","part-unit","part-price","part-desc","part-id"].forEach(id=>document.getElementById(id).value="");document.getElementById("part-service").value="";openModal("part-modal");}
-function editPart(id){const p=allParts.find(x=>x.id===id);if(!p)return;editingPartId=id;document.getElementById("part-modal-title").textContent="تعديل القطعة";document.getElementById("part-name").value=p.name||"";document.getElementById("part-unit").value=p.unit||"";document.getElementById("part-price").value=p.price||0;document.getElementById("part-desc").value=p.desc||"";document.getElementById("part-service").value=p.serviceId||"";document.getElementById("part-id").value="";openModal("part-modal");}
+function openAddPartModal(){editingPartId=null;document.getElementById("part-modal-title").textContent="إضافة قطعة";["part-name","part-unit","part-price","part-desc","part-id","part-stock"].forEach(id=>document.getElementById(id).value="");document.getElementById("part-service").value="";openModal("part-modal");}
+function editPart(id){const p=allParts.find(x=>x.id===id);if(!p)return;editingPartId=id;document.getElementById("part-modal-title").textContent="تعديل القطعة";document.getElementById("part-name").value=p.name||"";document.getElementById("part-unit").value=p.unit||"";document.getElementById("part-price").value=p.price||0;document.getElementById("part-desc").value=p.desc||"";document.getElementById("part-service").value=p.serviceId||"";document.getElementById("part-stock").value=p.stock!==undefined?p.stock:"";document.getElementById("part-id").value="";openModal("part-modal");}
 async function savePart(){
   const name=document.getElementById("part-name").value.trim();
   const unit=document.getElementById("part-unit").value.trim()||"قطعة";
   const price=parseFloat(document.getElementById("part-price").value)||0;
   const serviceId=document.getElementById("part-service").value;
   const desc=document.getElementById("part-desc").value.trim();
+  const stockInput=document.getElementById("part-stock").value;
+  const stockVal=stockInput!==""?parseInt(stockInput):undefined;
   if(!name||!serviceId){showToast("يرجى ملء الاسم والخدمة","error");return;}
-  const data={name,unit,price,serviceId,desc};
+  const data={name,unit,price,serviceId,desc};if(stockVal!==undefined)data.stock=stockVal;
   try{
     if(editingPartId){await db.collection("parts").doc(editingPartId).update(data);showToast("✅ تم التحديث");}
     else{const cId=document.getElementById("part-id").value.trim().toLowerCase().replace(/\s+/g,"_");if(cId)await db.collection("parts").doc(cId).set(data);else await db.collection("parts").add(data);showToast("✅ تمت الإضافة");}
