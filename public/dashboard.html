@@ -865,7 +865,11 @@ function renderOrdersTable(list,targetId,showDel){
       <td><span class="region-pill">${o.region||"-"}</span></td>
       <td>${o.serviceName||"-"}</td>
       <td>${getTypeName(o)}</td>
-      <td style="font-weight:700;color:var(--accent3)">${(o.totalPrice||o.price||0).toFixed?.(3)||0} OMR</td>
+      <td style="font-weight:700;color:var(--accent3)">
+        ${(o.totalPrice||o.price||0).toFixed?.(3)||0} OMR
+        ${(o.parts&&o.parts.length)?`<br><span style="font-size:.65rem;color:var(--muted)">خدمة: ${(o.servicePrice||0).toFixed(3)} + قطع: ${o.parts.reduce((s,p)=>s+p.price*p.qty,0).toFixed(3)}</span>`:""}
+        ${o.discount?`<br><span style="font-size:.65rem;color:var(--accent3)">خصم: -${(o.discount||0).toFixed(3)}</span>`:""}
+      </td>
       <td>${o.rating?"⭐".repeat(Math.min(o.rating,5)):"-"}</td>
       <td><span class="badge ${o.status}">${sl(o.status)}</span></td>
       <td style="color:var(--muted);font-size:.7rem">${date}</td>
