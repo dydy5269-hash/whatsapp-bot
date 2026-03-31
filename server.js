@@ -20,17 +20,18 @@ const normalize = (p) => String(p).replace(/\+/g, "");
 // ─── Language ─────────────────────────────────────────────────────────────────
 const LANGS = {
   ar: {
-    welcome:        "أهلاً وسهلاً! 👋\nاختر الخدمة المطلوبة:",
+    welcome:        "أهلاً وسهلاً بك في شركة رؤية طاقة للخدمات الهندسية! 👋\nاختر الخدمة المطلوبة:",
     chooseService:  "الخدمات المتاحة",
     servicesBtn:    "الخدمات",
     chooseType:     (name) => `🔧 *${name}*\nاختر نوع الخدمة:`,
     typesBtn:       "الأنواع",
     chooseParts:    "🔩 اختر القطع المطلوبة\n(أرسل رقم القطعة، يمكنك اختيار أكثر من قطعة):",
-    partsMenu:      (parts) => parts.map((p,i)=>`${i+1}. ${p.name} — ${p.price.toFixed(3)} OMR / ${p.unit||"قطعة"}`).join("\n") + "\n\n0 — متابعة بدون قطع",
+    partsMenu:      (parts) => parts.map((p,i)=>`${i+1}. ${p.name} — ${p.price.toFixed(3)} OMR / ${p.unit||"قطعة"}${p.stock!==undefined?` (متوفر: ${p.stock})`:""}`).join("\n") + "\n\n0 — متابعة بدون قطع",
     partAdded:      (name, qty, total) => `✅ تمت إضافة: *${name}* × ${qty}\nإجمالي القطع: ${total.toFixed(3)} OMR\n\nأرسل رقم قطعة أخرى أو *0* للمتابعة.`,
     qtyPrompt:      (name, price) => `كم عدد قطع *${name}*؟\n(${price.toFixed(3)} OMR للقطعة)\nأرسل الرقم:`,
     invalidInput:   "يرجى إرسال رقم صحيح.",
     invalidPart:    (max) => `يرجى إرسال رقم بين 0 و ${max}.`,
+    outOfStock:     (name, stock) => `⚠️ عذراً، *${name}* متوفر ${stock} فقط. أرسل رقماً أقل أو 0 للمتابعة.`,
     couponPrompt:   "🎟 هل لديك كوبون خصم؟\nأرسل الكود أو *0* للمتابعة بدون خصم.",
     couponValid:    (code, disc, total) => `✅ كوبون *${code}* مقبول!\n💸 الخصم: ${disc.toFixed(3)} OMR\n💰 الإجمالي بعد الخصم: ${total.toFixed(3)} OMR`,
     couponInvalid:  "❌ الكوبون غير صالح أو منتهي.\nأرسل *0* للمتابعة.",
@@ -91,11 +92,12 @@ const LANGS = {
     chooseType:     (name) => `🔧 *${name}*\nChoose service type:`,
     typesBtn:       "Types",
     chooseParts:    "🔩 Choose required parts\n(Send part number, you can choose multiple):",
-    partsMenu:      (parts) => parts.map((p,i)=>`${i+1}. ${p.name} — ${p.price.toFixed(3)} OMR / ${p.unit||"piece"}`).join("\n") + "\n\n0 — Continue without parts",
+    partsMenu:      (parts) => parts.map((p,i)=>`${i+1}. ${p.name} — ${p.price.toFixed(3)} OMR / ${p.unit||"piece"}${p.stock!==undefined?` (available: ${p.stock})`:""}`).join("\n") + "\n\n0 — Continue without parts",
     partAdded:      (name, qty, total) => `✅ Added: *${name}* × ${qty}\nParts total: ${total.toFixed(3)} OMR\n\nSend another number or *0* to continue.`,
-    qtyPrompt:      (name, price) => `How many *${name}*?\n(${price.toFixed(3)} OMR each)\nSend number:`,
+    qtyPrompt:      (name, price, stock) => `How many *${name}*?\n(${price.toFixed(3)} OMR each)${stock!==undefined?`\nAvailable: ${stock}`:""  }\nSend number:`,
     invalidInput:   "Please send a valid number.",
     invalidPart:    (max) => `Please send a number between 0 and ${max}.`,
+    outOfStock:     (name, stock) => `⚠️ Sorry, only ${stock} *${name}* available. Send a smaller number or 0 to continue.`,
     couponPrompt:   "🎟 Do you have a coupon?\nSend the code or *0* to continue without discount.",
     couponValid:    (code, disc, total) => `✅ Coupon *${code}* applied!\n💸 Discount: ${disc.toFixed(3)} OMR\n💰 Total: ${total.toFixed(3)} OMR`,
     couponInvalid:  "❌ Invalid or expired coupon.\nSend *0* to continue.",
@@ -296,7 +298,8 @@ async function getActiveOrder(phone) {
 }
 async function getPartsByService(serviceId) {
   const snap = await db.collection("parts").where("serviceId","==",serviceId).get();
-  return snap.docs.map(d=>({id:d.id,...d.data()}));
+  return snap.docs.map(d=>({id:d.id,...d.data()}))
+    .filter(p => p.stock === undefined || p.stock > 0); // exclude out-of-stock
 }
 async function checkActiveCoupons() {
   try { const s=await db.collection("coupons").where("active","==",true).limit(1).get(); return !s.empty; }
@@ -547,8 +550,18 @@ app.post("/webhook", async(req,res)=>{
         const qty=parseInt(text);
         if(isNaN(qty)||qty<1){ await sendMessage(from,Lx.invalidInput); return; }
         const part=avail[pending];
+        // Stock check
+        if(part.stock !== undefined){
+          const alreadySelected = selected.find(p=>p.id===part.id)?.qty||0;
+          const maxAllowed = part.stock - alreadySelected;
+          if(qty > maxAllowed){
+            await sendMessage(from, Lx.outOfStock(part.name, maxAllowed>0?maxAllowed:0));
+            if(maxAllowed<=0) await setSession(from,"parts",{...session.data,pendingPartIdx:undefined});
+            return;
+          }
+        }
         const ex=selected.find(p=>p.id===part.id);
-        if(ex) ex.qty+=qty; else selected.push({id:part.id,name:part.name,price:part.price,unit:part.unit||"قطعة",qty});
+        if(ex) ex.qty+=qty; else selected.push({id:part.id,name:part.name,price:part.price,unit:part.unit||"قطعة",qty,stock:part.stock});
         const ptotal=selected.reduce((s,p)=>s+p.price*p.qty,0);
         const newData = {...session.data, parts:selected, pendingPartIdx:undefined};
         await setSession(from,"parts", newData);
@@ -566,7 +579,7 @@ app.post("/webhook", async(req,res)=>{
       if(isNaN(num)||num<1||num>avail.length){ await sendMessage(from,Lx.invalidPart(avail.length)); return; }
       const part=avail[num-1];
       await setSession(from,"parts",{...session.data,pendingPartIdx:num-1});
-      await sendMessage(from,Lx.qtyPrompt(part.name,part.price));
+      await sendMessage(from,Lx.qtyPrompt(part.name,part.price,part.stock));
       return;
     }
 
@@ -800,6 +813,19 @@ async function handleDone(orderId, techPhone, tech) {
   const fee=Math.round((order.totalPrice||0)*0.2*1000)/1000;
   const newBal=Math.max(0,Math.round(((techData?.balance||0)-fee)*1000)/1000);
   await techRef.update({balance:newBal,active:true});
+  // Deduct parts stock
+  if(order.parts && order.parts.length){
+    const batch = db.batch();
+    for(const p of order.parts){
+      if(!p.id) continue;
+      const pRef = db.collection("parts").doc(p.id);
+      const pSnap = await pRef.get();
+      if(pSnap.exists && pSnap.data().stock !== undefined){
+        batch.update(pRef, { stock: Math.max(0, pSnap.data().stock - p.qty) });
+      }
+    }
+    await batch.commit();
+  }
   // Check waiting queue for this service
   processWaitingQueue(order.serviceId, order.region||null).catch(console.error);
   await sendMessage(techPhone,LANGS.ar.techDone(orderId,fee,newBal));
