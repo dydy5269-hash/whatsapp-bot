@@ -520,9 +520,9 @@ app.post("/webhook", async(req,res)=>{
         await goNextAfterParts(from,{...session.data,selectedType:type,parts:[],servicePrice:type.price},Lx);
       } else {
         // Ask if customer wants parts
-        await setSession(from,"parts_ask",{...session.data,selectedType:type,parts:[],servicePrice:type.price,availableParts:parts});
+        await setSession(from,"parts_ask",{...session.data,selectedType:type,parts:[],servicePrice:type.price,serviceId:service.id});
         const partsAskMsg = getLang(session)==="ar"
-          ? `🔩 *هل تريد إضافة قطع غيار؟*\n\nالقطع المتاحة:\n${Lx.partsMenu(parts)}\n\nأرسل رقم القطعة للإضافة أو *0* للمتابعة بدون قطع.`
+          ? `🔩 *هل تريد إضافة قطع غيار؟*\n\nالقطع المتاحة لهذه الخدمة:\n${Lx.partsMenu(parts)}\n\nأرسل رقم القطعة أو *0* للمتابعة بدون قطع.`
           : `🔩 *Do you want to add spare parts?*\n\nAvailable parts:\n${Lx.partsMenu(parts)}\n\nSend part number or *0* to continue without parts.`;
         await sendMessage(from, partsAskMsg);
       }
@@ -536,7 +536,8 @@ app.post("/webhook", async(req,res)=>{
       await setSession(from, "parts", session.data);
     }
     if(session.state==="parts"){
-      const avail   = session.data.availableParts||[];
+      // Fetch parts fresh from DB (don't store in session to avoid bloat)
+      const avail = await getPartsByService(session.data.serviceId||session.data.service?.id||"");
       const selected= JSON.parse(JSON.stringify(session.data.parts||[]));
       const pending = session.data.pendingPartIdx;
 
@@ -545,10 +546,11 @@ app.post("/webhook", async(req,res)=>{
         if(text==="0"){
           await setSession(from,"parts",{...session.data,pendingPartIdx:undefined});
           const avail2=session.data.availableParts||[];
+          const freshParts = await getPartsByService(session.data.serviceId||session.data.service?.id||"");
           const fmt0=(n)=>(parseFloat(n)||0).toFixed(3);
           const menuMsg=getLang(session)==="ar"
-            ? `اختر رقم القطعة أو *0* للمتابعة:\n\n${avail2.map((p,i)=>`${i+1}. ${p.name} — ${fmt0(p.price)} OMR${p.stock!==undefined?` (متوفر: ${p.stock})`:""}`).join("\n")}\n\n0 — متابعة بدون إضافة`
-            : `Choose part number or *0* to continue:\n\n${avail2.map((p,i)=>`${i+1}. ${p.name} — ${fmt0(p.price)} OMR${p.stock!==undefined?` (available: ${p.stock})`:""}`).join("\n")}\n\n0 — Continue`;
+            ? `اختر رقم القطعة أو *0* للمتابعة:\n\n${freshParts.map((p,i)=>`${i+1}. ${p.name} — ${fmt0(p.price)} OMR${p.stock!==undefined?` (متوفر: ${p.stock})`:""}`).join("\n")}\n\n0 — متابعة بدون إضافة`
+            : `Choose part number or *0* to continue:\n\n${freshParts.map((p,i)=>`${i+1}. ${p.name} — ${fmt0(p.price)} OMR${p.stock!==undefined?` (available: ${p.stock})`:""}`).join("\n")}\n\n0 — Continue`;
           await sendMessage(from, menuMsg);
           return;
         }
@@ -564,7 +566,9 @@ app.post("/webhook", async(req,res)=>{
         const ex=selected.find(p=>p.id===part.id);
         if(ex) ex.qty+=qty; else selected.push({id:part.id,name:part.name,price:part.price,unit:part.unit||"قطعة",qty,stock:part.stock});
         const ptotal = selected.reduce((s,p)=>s+(parseFloat(p.price)||0)*p.qty, 0);
-        const newData = {...session.data, parts:selected, pendingPartIdx:undefined};
+        // Save session WITHOUT availableParts to keep it lean
+        const { availableParts: _removed, ...cleanData } = session.data;
+        const newData = {...cleanData, parts:selected, pendingPartIdx:undefined};
         await setSession(from,"parts", newData);
         const fmt = (n) => (parseFloat(n)||0).toFixed(3);
         // Go directly to confirm after adding part
