@@ -20,7 +20,7 @@ const normalize = (p) => String(p).replace(/\+/g, "");
 // ─── Language ─────────────────────────────────────────────────────────────────
 const LANGS = {
   ar: {
-    welcome:        " أهلاً وسهلاً بك في شركة رؤية طاقة للخدمات ! 👋\nاختر الخدمة المطلوبة:",
+    welcome:        "أهلاً وسهلاً! 👋\nاختر الخدمة المطلوبة:",
     chooseService:  "الخدمات المتاحة",
     servicesBtn:    "الخدمات",
     chooseType:     (name) => `🔧 *${name}*\nاختر نوع الخدمة:`,
@@ -35,8 +35,8 @@ const LANGS = {
     couponValid:    (code, disc, total) => `✅ كوبون *${code}* مقبول!\n💸 الخصم: ${disc.toFixed(3)} OMR\n💰 الإجمالي بعد الخصم: ${total.toFixed(3)} OMR`,
     couponInvalid:  "❌ الكوبون غير صالح أو منتهي.\nأرسل *0* للمتابعة.",
     couponUsed:     "❌ هذا الكوبون استُخدم مسبقاً.\nأرسل *0* للمتابعة.",
-    confirmTitle:   (sName, tName, parts, total, disc) =>
-      `📋 *ملخص الطلب*\n🔧 الخدمة: ${sName}\n📌 النوع: ${tName}${parts!=="-"?`\n\n🔩 القطع:\n${parts}`:""}${disc?`\n🎟 خصم: -${disc.toFixed(3)} OMR`:""}\n\n💰 *الإجمالي: ${total.toFixed(3)} OMR*`,
+    confirmTitle:   (sName, tName, parts, servicePrice, partsTotal, disc, total) =>
+      `📋 *ملخص الطلب*\n🔧 الخدمة: ${sName} — ${servicePrice.toFixed(3)} OMR\n📌 النوع: ${tName}${parts!=="-"?`\n\n🔩 القطع:\n${parts}\n💡 إجمالي القطع: ${partsTotal.toFixed(3)} OMR`:""}${disc?`\n\n🎟 الخصم: -${disc.toFixed(3)} OMR`:""}\n\n💰 *الإجمالي الكلي: ${total.toFixed(3)} OMR*`,
     confirmYes:     "✅ تأكيد الطلب",
     confirmNo:      "❌ إلغاء",
     confirmed:      "✅ تم التأكيد!\n📍 أرسل موقعك الحالي لإتمام الطلب.",
@@ -70,7 +70,7 @@ const LANGS = {
     alreadyDone:    "الطلب مكتمل مسبقاً.",
     completed:      (id) => `✅ *اكتمل طلبك!*\n🆔 ${id}\nشكراً لثقتك بنا! 🙏`,
     techDone:       (id, fee, bal) => `✅ الطلب ${id} مكتمل.\n💸 العمولة: ${fee.toFixed(3)} OMR\n💰 رصيدك: ${bal.toFixed(3)} OMR`,
-    ratePrompt:     (id) => `⭐ قيّم خدمة الفني:\n1 ⭐ ضعيف\n2 ⭐⭐ مقبول\n3 ⭐⭐⭐ جيد\n4 ⭐⭐⭐⭐ جيد جداً\n5 ⭐⭐⭐⭐⭐ ممتاز\n\nأرسل: *تقييم_${id}_[الرقم]*`,
+    ratePrompt:     (id) => `⭐ *قيّم خدمة الفني*\nأرسل رقماً من 1 إلى 5:\n\n1 — ⭐ ضعيف\n2 — ⭐⭐ مقبول\n3 — ⭐⭐⭐ جيد\n4 — ⭐⭐⭐⭐ جيد جداً\n5 — ⭐⭐⭐⭐⭐ ممتاز`,
     ratingDone:     (s) => `شكراً على تقييمك! ${"⭐".repeat(s)}`,
     invoiceCaption: (id) => `📄 فاتورة الطلب ${id}`,
     finalInvoice:   (id) => `📄 الفاتورة النهائية للطلب ${id}`,
@@ -100,8 +100,8 @@ const LANGS = {
     couponValid:    (code, disc, total) => `✅ Coupon *${code}* applied!\n💸 Discount: ${disc.toFixed(3)} OMR\n💰 Total: ${total.toFixed(3)} OMR`,
     couponInvalid:  "❌ Invalid or expired coupon.\nSend *0* to continue.",
     couponUsed:     "❌ Coupon already used.\nSend *0* to continue.",
-    confirmTitle:   (sName, tName, parts, total, disc) =>
-      `📋 *Order Summary*\n🔧 Service: ${sName}\n📌 Type: ${tName}${parts!=="-"?`\n\n🔩 Parts:\n${parts}`:""}${disc?`\n🎟 Discount: -${disc.toFixed(3)} OMR`:""}\n\n💰 *Total: ${total.toFixed(3)} OMR*`,
+    confirmTitle:   (sName, tName, parts, servicePrice, partsTotal, disc, total) =>
+      `📋 *Order Summary*\n🔧 Service: ${sName} — ${servicePrice.toFixed(3)} OMR\n📌 Type: ${tName}${parts!=="-"?`\n\n🔩 Parts:\n${parts}\n💡 Parts total: ${partsTotal.toFixed(3)} OMR`:""}${disc?`\n\n🎟 Discount: -${disc.toFixed(3)} OMR`:""}\n\n💰 *Grand Total: ${total.toFixed(3)} OMR*`,
     confirmYes:     "✅ Confirm Order",
     confirmNo:      "❌ Cancel",
     confirmed:      "✅ Confirmed!\n📍 Please send your location to complete the order.",
@@ -135,7 +135,7 @@ const LANGS = {
     alreadyDone:    "Order already completed.",
     completed:      (id) => `✅ *Order completed!*\n🆔 ${id}\nThank you! 🙏`,
     techDone:       (id, fee, bal) => `✅ Order ${id} done.\n💸 Fee: ${fee.toFixed(3)} OMR\n💰 Balance: ${bal.toFixed(3)} OMR`,
-    ratePrompt:     (id) => `⭐ Rate the technician:\n1 ⭐ Poor\n2 ⭐⭐ Fair\n3 ⭐⭐⭐ Good\n4 ⭐⭐⭐⭐ Very Good\n5 ⭐⭐⭐⭐⭐ Excellent\n\nSend: *rate_${id}_[number]*`,
+    ratePrompt:     (id) => `⭐ *Rate the technician*\nSend a number from 1 to 5:\n\n1 — ⭐ Poor\n2 — ⭐⭐ Fair\n3 — ⭐⭐⭐ Good\n4 — ⭐⭐⭐⭐ Very Good\n5 — ⭐⭐⭐⭐⭐ Excellent`,
     ratingDone:     (s) => `Thanks for rating! ${"⭐".repeat(s)}`,
     invoiceCaption: (id) => `📄 Invoice for Order ${id}`,
     finalInvoice:   (id) => `📄 Final Invoice for Order ${id}`,
@@ -378,7 +378,8 @@ app.post("/webhook", async(req,res)=>{
     const tech = await getTechByPhone(from);
     if(tech) { await handleTechMessage(from, text, msg, tech); return; }
 
-    // ── Rating: تقييم_ORD-XXX_5 ──────────────────────────────────────────────
+    // ── Rating: handled via session state "rating" ─────────────────────────────
+    // Legacy support: تقييم_ORD-XXX_5
     const rateMatch = text.match(/^(تقييم|rate)_(.+)_([1-5])$/i);
     if(rateMatch){
       const orderId=rateMatch[2]; const stars=parseInt(rateMatch[3]);
@@ -512,12 +513,24 @@ app.post("/webhook", async(req,res)=>{
       const type  = service.types[idx];
       const parts = await getPartsByService(service.id);
       if(!parts.length){
+        // No parts for this service — skip
         await goNextAfterParts(from,{...session.data,selectedType:type,parts:[],servicePrice:type.price},Lx);
       } else {
-        await setSession(from,"parts",{...session.data,selectedType:type,parts:[],servicePrice:type.price,availableParts:parts});
-        await sendMessage(from, Lx.chooseParts+"\n\n"+Lx.partsMenu(parts));
+        // Ask if customer wants parts
+        await setSession(from,"parts_ask",{...session.data,selectedType:type,parts:[],servicePrice:type.price,availableParts:parts});
+        const partsAskMsg = getLang(session)==="ar"
+          ? `🔩 *هل تريد إضافة قطع غيار؟*\n\nالقطع المتاحة لهذه الخدمة:\n${Lx.partsMenu(parts)}\n\nأرسل رقم القطعة للإضافة أو *0* للمتابعة بدون قطع.`
+          : `🔩 *Do you want to add spare parts?*\n\nAvailable parts:\n${Lx.partsMenu(parts)}\n\nSend part number to add or *0* to continue without parts.`;
+        await sendMessage(from, partsAskMsg);
       }
       return;
+    }
+
+    // ── parts_ask — initial parts selection ─────────────────────────────────────
+    if(session.state==="parts_ask"){
+      // Redirect to parts handler by changing state
+      await setSession(from,"parts",session.data);
+      session.state = "parts";
     }
 
     // ── parts ─────────────────────────────────────────────────────────────────
@@ -638,6 +651,31 @@ app.post("/webhook", async(req,res)=>{
       return;
     }
 
+    // ── rating state — customer replies 1-5 ────────────────────────────────────
+    if(session.state==="rating"){
+      const stars = parseInt(text);
+      if(isNaN(stars)||stars<1||stars>5){
+        await sendMessage(from, getLang(session)==="ar"?"يرجى إرسال رقم بين 1 و 5":"Please send a number between 1 and 5");
+        return;
+      }
+      const { orderId, technicianId, lang } = session.data;
+      try {
+        // Update tech rating
+        await updateTechRating(technicianId, stars);
+        // Save rating in order
+        const oSnap = await db.collection("orders").doc(orderId).get();
+        if(oSnap.exists && !oSnap.data().rating){
+          await db.collection("orders").doc(orderId).update({ rating: stars });
+        }
+        await clearSession(from);
+        await sendMessage(from, LANGS[lang||"ar"].ratingDone(stars));
+      } catch(e) {
+        console.error("rating state error:", e?.message);
+        await clearSession(from);
+      }
+      return;
+    }
+
     // ── cancel_reason state ─────────────────────────────────────────────────
     if(session.state==="cancel_reason"){
       const lang    = session.data.lang||"ar";
@@ -678,15 +716,18 @@ async function goNextAfterParts(from, data, Lx) {
 
 // ─── goToConfirm — sends BUTTONS ─────────────────────────────────────────────
 async function goToConfirm(from, session, Lx, discount, couponCode) {
-  const service=session.data.service; const type=session.data.selectedType;
-  const parts=session.data.parts||[];
-  const raw=calcTotal(session.data.servicePrice,parts);
-  const total=Math.max(0,Math.round((raw-(discount||0))*1000)/1000);
-  const partsTxt=buildPartsText(parts);
-  await setSession(from,"confirm",{...session.data,discount:discount||0,couponCode});
-  // Send confirm as BUTTONS
+  const service     = session.data.service;
+  const type        = session.data.selectedType;
+  const parts       = session.data.parts||[];
+  const servicePrice= session.data.servicePrice||0;
+  const partsTotal  = parts.reduce((s,p)=>s+p.price*p.qty,0);
+  const raw         = Math.round((servicePrice+partsTotal)*1000)/1000;
+  const disc        = discount||0;
+  const total       = Math.max(0,Math.round((raw-disc)*1000)/1000);
+  const partsTxt    = buildPartsText(parts);
+  await setSession(from,"confirm",{...session.data,discount:disc,couponCode,totalPrice:total});
   await sendButtons(from,
-    Lx.confirmTitle(service.name,type.name,partsTxt,total,discount>0?discount:null),
+    Lx.confirmTitle(service.name, type.name, partsTxt, servicePrice, partsTotal, disc>0?disc:null, total),
     [{id:"confirm_yes",title:Lx.confirmYes},{id:"confirm_no",title:Lx.confirmNo}]
   );
 }
@@ -758,7 +799,12 @@ async function handleDone(orderId, techPhone, tech) {
   await sendMessage(customerPhone,CL.completed(orderId));
   const pdf=await generateInvoicePDF(order,order.lang||"ar");
   await sendDocument(customerPhone,pdf,`final_invoice_${orderId}.pdf`,CL.finalInvoice(orderId));
-  await sendMessage(customerPhone,CL.ratePrompt(orderId));
+  // Save rating session so customer just replies with 1-5
+  await db.collection("sessions").doc(normalize(order.customer)).set({
+    state: "rating",
+    data: { lang: order.lang||"ar", orderId, technicianId: order.technicianId }
+  });
+  await sendMessage(customerPhone, CL.ratePrompt(orderId));
 }
 
 // ─── Admin Assign Endpoint ────────────────────────────────────────────────────
