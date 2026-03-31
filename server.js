@@ -541,9 +541,10 @@ app.post("/webhook", async(req,res)=>{
         if(text==="0"){
           await setSession(from,"parts",{...session.data,pendingPartIdx:undefined});
           const avail2=session.data.availableParts||[];
+          const fmt0=(n)=>(parseFloat(n)||0).toFixed(3);
           const menuMsg=getLang(session)==="ar"
-            ? `اختر رقم القطعة أو *0* للمتابعة:\n\n${avail2.map((p,i)=>`${i+1}. ${p.name} — ${p.price.toFixed(3)} OMR`).join("\n")}\n\n0 — متابعة بدون إضافة`
-            : `Choose part number or *0* to continue:\n\n${avail2.map((p,i)=>`${i+1}. ${p.name} — ${p.price.toFixed(3)} OMR`).join("\n")}\n\n0 — Continue`;
+            ? `اختر رقم القطعة أو *0* للمتابعة:\n\n${avail2.map((p,i)=>`${i+1}. ${p.name} — ${fmt0(p.price)} OMR${p.stock!==undefined?` (متوفر: ${p.stock})`:""}`).join("\n")}\n\n0 — متابعة بدون إضافة`
+            : `Choose part number or *0* to continue:\n\n${avail2.map((p,i)=>`${i+1}. ${p.name} — ${fmt0(p.price)} OMR${p.stock!==undefined?` (available: ${p.stock})`:""}`).join("\n")}\n\n0 — Continue`;
           await sendMessage(from, menuMsg);
           return;
         }
@@ -561,11 +562,15 @@ app.post("/webhook", async(req,res)=>{
         const ptotal = selected.reduce((s,p)=>s+(parseFloat(p.price)||0)*p.qty, 0);
         const newData = {...session.data, parts:selected, pendingPartIdx:undefined};
         await setSession(from,"parts", newData);
-        const avail2 = newData.availableParts||[];
+        const avail2 = (newData.availableParts||[]);
         const fmt = (n) => (parseFloat(n)||0).toFixed(3);
-        const partsListTxt = avail2.map((p,i)=>
-          `${i+1}. ${p.name} — ${fmt(p.price)} OMR${p.stock!==undefined?` (متوفر: ${p.stock})`:""}`
-        ).join("\n");
+        // Recalculate remaining stock for each part
+        const partsListTxt = avail2.map((p,i)=>{
+          const usedQty = selected.find(s=>s.id===p.id)?.qty||0;
+          const remaining = p.stock!==undefined ? p.stock-usedQty : undefined;
+          const stockTxt = remaining!==undefined ? ` (متوفر: ${Math.max(0,remaining)})` : "";
+          return `${i+1}. ${p.name} — ${fmt(p.price)} OMR${stockTxt}`;
+        }).join("\n");
         const isAr2 = getLang(session)==="ar";
         const addedMsg = isAr2
           ? `✅ تمت إضافة: *${part.name}* × ${qty}\n💡 إجمالي القطع: ${fmt(ptotal)} OMR\n\nأرسل رقم قطعة أخرى أو *0* للمتابعة:\n\n${partsListTxt}\n\n0 — المتابعة للتأكيد`
