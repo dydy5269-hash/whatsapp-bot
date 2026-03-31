@@ -534,6 +534,16 @@ app.post("/webhook", async(req,res)=>{
       const pending = session.data.pendingPartIdx;
 
       if(pending!==undefined){
+        // "0" while waiting for qty = cancel part selection, go back to menu
+        if(text==="0"){
+          await setSession(from,"parts",{...session.data,pendingPartIdx:undefined});
+          const avail2=session.data.availableParts||[];
+          const menuMsg=getLang(session)==="ar"
+            ? `اختر رقم القطعة أو *0* للمتابعة:\n\n${avail2.map((p,i)=>`${i+1}. ${p.name} — ${p.price.toFixed(3)} OMR`).join("\n")}\n\n0 — متابعة بدون إضافة`
+            : `Choose part number or *0* to continue:\n\n${avail2.map((p,i)=>`${i+1}. ${p.name} — ${p.price.toFixed(3)} OMR`).join("\n")}\n\n0 — Continue`;
+          await sendMessage(from, menuMsg);
+          return;
+        }
         const qty=parseInt(text);
         if(isNaN(qty)||qty<1){ await sendMessage(from,Lx.invalidInput); return; }
         const part=avail[pending];
