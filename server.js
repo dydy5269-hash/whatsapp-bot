@@ -530,10 +530,14 @@ app.post("/webhook", async(req,res)=>{
     }
 
     // ── parts_ask & parts — unified handler ─────────────────────────────────────
-    if(session.state==="parts_ask") session.state="parts";
+    if(session.state==="parts_ask"){
+      // Convert to parts state permanently in DB
+      session.state = "parts";
+      await setSession(from, "parts", session.data);
+    }
     if(session.state==="parts"){
       const avail   = session.data.availableParts||[];
-      const selected= session.data.parts||[];
+      const selected= JSON.parse(JSON.stringify(session.data.parts||[]));
       const pending = session.data.pendingPartIdx;
 
       if(pending!==undefined){
