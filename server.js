@@ -625,6 +625,13 @@ app.post("/webhook", async(req,res)=>{
       const regionName=await detectRegion(msg.location.latitude,msg.location.longitude);
       if(regionName) await sendMessage(from,Lx.regionDetected(regionName));
 
+      // Define these first — used in both waiting and normal flow
+      const parts=session.data.parts||[];
+      const rawTotal=calcTotal(session.data.servicePrice||selectedType.price,parts);
+      const discount=session.data.discount||0;
+      const totalPrice=Math.max(0,Math.round((rawTotal-discount)*1000)/1000);
+      const partsText=buildPartsText(parts);
+
       const techs=await getAvailableTechs(service.id,regionName||"",[]);
       if(!techs.length){
         // Save to waiting queue
@@ -647,11 +654,6 @@ app.post("/webhook", async(req,res)=>{
 
       const chosenTech=techs[0];
       const orderId=generateOrderId();
-      const parts=session.data.parts||[];
-      const rawTotal=calcTotal(session.data.servicePrice||selectedType.price,parts);
-      const discount=session.data.discount||0;
-      const totalPrice=Math.max(0,Math.round((rawTotal-discount)*1000)/1000);
-      const partsText=buildPartsText(parts);
 
       await db.collection("orders").doc(orderId).set({
         orderId, customer:from,
@@ -967,5 +969,14 @@ app.post("/admin/check-queue", async(req,res)=>{
   await checkWaitingQueue();
   res.json({success:true});
 });
+
+
+
+
+
+
+
+
+
 
 app.listen(process.env.PORT||3000,()=>console.log("✅ TAQA Bot running"));
