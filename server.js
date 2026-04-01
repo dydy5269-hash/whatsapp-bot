@@ -356,9 +356,10 @@ function buildPartsText(parts) {
   return parts.map(p=>`• ${p.name} × ${p.qty} = ${(p.price*p.qty).toFixed(3)} OMR`).join("\n");
 }
 function calcTotal(servicePrice, parts) {
-  const totalQty = (parts||[]).reduce((s,p)=>s+(p.qty||1), 0) || 1;
+  const hasParts = parts && parts.length > 0;
+  const totalQty = hasParts ? parts.reduce((s,p)=>s+(p.qty||1), 0) : 1;
   const svcTotal = (parseFloat(servicePrice)||0) * totalQty;
-  const partsTotal = (parts||[]).reduce((s,p)=>s+(parseFloat(p.price)||0)*(p.qty||1), 0);
+  const partsTotal = hasParts ? parts.reduce((s,p)=>s+(parseFloat(p.price)||0)*(p.qty||1), 0) : 0;
   return Math.round((svcTotal + partsTotal)*1000)/1000;
 }
 
@@ -814,10 +815,12 @@ async function goToConfirm(from, session, Lx, discount, couponCode) {
   const type         = session.data.selectedType;
   const parts        = session.data.parts||[];
   const basePrice    = parseFloat(session.data.servicePrice)||0;
-  // Total qty of all selected parts
-  const totalQty     = parts.reduce((s,p)=>s+(p.qty||1), 0) || 1;
-  // Service price × total qty
-  const serviceTotal = Math.round(basePrice * totalQty * 1000) / 1000;
+  const hasParts     = parts.length > 0;
+  // If parts selected: service × total qty; if no parts: service price as-is
+  const totalQty     = hasParts ? parts.reduce((s,p)=>s+(p.qty||1), 0) : 0;
+  const serviceTotal = hasParts
+    ? Math.round(basePrice * totalQty * 1000) / 1000
+    : Math.round(basePrice * 1000) / 1000;
   const partsTotal   = Math.round(parts.reduce((s,p)=>s+(parseFloat(p.price)||0)*(p.qty||1),0)*1000)/1000;
   const raw          = Math.round((serviceTotal + partsTotal)*1000)/1000;
   const disc         = discount||0;
