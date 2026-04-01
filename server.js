@@ -161,7 +161,11 @@ function L(s)       { return LANGS[getLang(s)]; }
 
 // ─── Session ──────────────────────────────────────────────────────────────────
 async function getSession(p) { const d = await db.collection("sessions").doc(p).get(); return d.exists?d.data():{state:null,data:{}}; }
-async function setSession(p, state, data) { await db.collection("sessions").doc(p).set({state,data:data||{}}); }
+async function setSession(p, state, data) {
+  // Strip undefined values — Firestore rejects them
+  const clean = JSON.parse(JSON.stringify({state, data: data||{}}, (k,v) => v===undefined ? null : v));
+  await db.collection("sessions").doc(p).set(clean);
+}
 async function clearSession(p) { await db.collection("sessions").doc(p).delete(); }
 function generateOrderId() { return "ORD-" + uuidv4().split("-")[0].toUpperCase(); }
 
@@ -522,23 +526,29 @@ app.post("/webhook", async(req,res)=>{
       if(!parts.length){
         // No parts for this service — skip
         await goNextAfterParts(from,{
-          lang: getLang(session),
-          serviceId: service.id,
-          serviceName: service.name,
-          selectedType: {name:type.name, price:type.price},
-          servicePrice: type.price,
-          parts: []
+          lang: getLang(session)||"ar",
+          serviceId: service.id||null,
+          serviceName: service.name||null,
+          selectedType: {name:type.name||"", price:type.price||0},
+          servicePrice: type.price||0,
+          parts: [],
+          couponId: null,
+          couponCode: null,
+          discount: 0
         },Lx);
       } else {
         // Ask if customer wants parts
-        // Store MINIMAL data in session - no full objects
+        // Store MINIMAL data in session - no undefined for Firestore
         await setSession(from,"parts_ask",{
-          lang: getLang(session),
-          serviceId: service.id,
-          serviceName: service.name,
-          selectedType: {name: type.name, price: type.price},
-          servicePrice: type.price,
-          parts: []
+          lang: getLang(session)||"ar",
+          serviceId: service.id||null,
+          serviceName: service.name||null,
+          selectedType: {name: type.name||"", price: type.price||0},
+          servicePrice: type.price||0,
+          parts: [],
+          couponId: null,
+          couponCode: null,
+          discount: 0
         });
         const partsAskMsg = getLang(session)==="ar"
           ? `🔩 *هل تريد إضافة قطع غيار؟*\n\nالقطع المتاحة لهذه الخدمة:\n${Lx.partsMenu(parts)}\n\nأرسل رقم القطعة أو *0* للمتابعة بدون قطع.`
@@ -589,17 +599,17 @@ app.post("/webhook", async(req,res)=>{
         const ex=selected.find(p=>p.id===part.id);
         if(ex) ex.qty+=qty; else selected.push({id:part.id,name:part.name,price:part.price,unit:part.unit||"قطعة",qty,stock:part.stock});
         const ptotal = selected.reduce((s,p)=>s+(parseFloat(p.price)||0)*p.qty, 0);
-        // Save ONLY essential data in session
+        // Save ONLY essential data in session (no undefined values for Firestore)
         const newData = {
           lang: session.data.lang||"ar",
-          serviceId: session.data.serviceId||session.data.service?.id,
-          serviceName: session.data.serviceName||session.data.service?.name,
-          selectedType: session.data.selectedType,
-          servicePrice: session.data.servicePrice,
-          parts: selected.map(p=>({id:p.id,name:p.name,price:p.price,unit:p.unit,qty:p.qty})),
-          couponId: session.data.couponId,
-          couponCode: session.data.couponCode,
-          discount: session.data.discount
+          serviceId: session.data.serviceId||session.data.service?.id||null,
+          serviceName: session.data.serviceName||session.data.service?.name||null,
+          selectedType: session.data.selectedType||null,
+          servicePrice: session.data.servicePrice||0,
+          parts: selected.map(p=>({id:p.id,name:p.name,price:p.price||0,unit:p.unit||"قطعة",qty:p.qty||1})),
+          couponId: session.data.couponId||null,
+          couponCode: session.data.couponCode||null,
+          discount: session.data.discount||0
         };
         await setSession(from,"parts", newData);
         const fmt = (n) => (parseFloat(n)||0).toFixed(3);
@@ -615,14 +625,14 @@ app.post("/webhook", async(req,res)=>{
       if(text==="0"){
         const minData = {
           lang: session.data.lang||"ar",
-          serviceId: session.data.serviceId||session.data.service?.id,
-          serviceName: session.data.serviceName||session.data.service?.name,
-          selectedType: session.data.selectedType,
-          servicePrice: session.data.servicePrice,
-          parts: selected.map(p=>({id:p.id,name:p.name,price:p.price,unit:p.unit,qty:p.qty})),
-          couponId: session.data.couponId,
-          couponCode: session.data.couponCode,
-          discount: session.data.discount
+          serviceId: session.data.serviceId||session.data.service?.id||null,
+          serviceName: session.data.serviceName||session.data.service?.name||null,
+          selectedType: session.data.selectedType||null,
+          servicePrice: session.data.servicePrice||0,
+          parts: selected.map(p=>({id:p.id,name:p.name,price:p.price||0,unit:p.unit||"قطعة",qty:p.qty||1})),
+          couponId: session.data.couponId||null,
+          couponCode: session.data.couponCode||null,
+          discount: session.data.discount||0
         };
         await goNextAfterParts(from, minData, Lx); return;
       }
