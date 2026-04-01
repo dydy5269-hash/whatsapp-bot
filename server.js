@@ -549,11 +549,7 @@ app.post("/webhook", async(req,res)=>{
     }
 
     // ── parts_ask & parts — unified handler ─────────────────────────────────────
-    if(session.state==="parts_ask"){
-      // Convert to parts state permanently in DB
-      session.state = "parts";
-      await setSession(from, "parts", session.data);
-    }
+    if(session.state==="parts_ask") session.state = "parts";
     if(session.state==="parts"){
       // Fetch parts fresh from DB (don't store in session to avoid bloat)
       const avail = await getPartsByService(session.data.serviceId||session.data.service?.id||"");
@@ -576,6 +572,12 @@ app.post("/webhook", async(req,res)=>{
         const qty = parseInt(text);
         const maxQty2 = session.data.pendingMaxQty || 5;
         const part = avail[pending];
+        // Safety check - if part not found reset
+        if(!part){
+          await setSession(from,"parts",{...session.data,pendingPartIdx:undefined,pendingMaxQty:undefined});
+          await sendMessage(from, getLang(session)==="ar"?"حدث خطأ. أرسل رقم القطعة مجدداً.":"Error. Please send part number again.");
+          return;
+        }
         if(isNaN(qty) || qty < 1 || qty > maxQty2){
           await sendMessage(from, getLang(session)==="ar"
             ? `يرجى إرسال رقم بين 1 و ${maxQty2}.`
