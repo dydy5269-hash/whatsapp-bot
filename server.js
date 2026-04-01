@@ -1027,13 +1027,14 @@ app.post("/admin/assign", async(req,res)=>{
 // When a tech becomes available, check waiting_orders and assign
 async function processWaitingQueue(serviceId, region) {
   try {
-    let q = db.collection("waiting_orders").where("status","==","waiting").where("serviceId","==",serviceId);
-    const snap = await q.get();
+    const snap = await db.collection("waiting_orders").where("status","==","waiting").get();
     if(snap.empty) return;
 
     for(const doc of snap.docs){
       const order = doc.data();
-      const techs = await getAvailableTechs(serviceId, order.region||"", []);
+      // Filter by serviceId if provided
+      if(serviceId && order.serviceId !== serviceId) continue;
+      const techs = await getAvailableTechs(order.serviceId||serviceId, order.region||"", []);
       if(!techs.length) continue;
 
       const tech   = techs[0];
@@ -1080,7 +1081,8 @@ const _origHandleDone = handleDone;
 // ── Waiting Queue Checker — runs every 2 min ──────────────────────────────────
 async function checkWaitingQueue() {
   try {
-    const snap = await db.collection("orders").where("status","==","waiting").get();
+    // Note: waiting orders are in waiting_orders collection
+    const snap = await db.collection("waiting_orders").where("status","==","waiting").get();
     if(snap.empty) return;
     for(const doc of snap.docs){
       const order = doc.data();
