@@ -554,10 +554,18 @@ app.post("/webhook", async(req,res)=>{
           couponCode: null,
           discount: 0
         });
-        const partsAskMsg = getLang(session)==="ar"
-          ? `🔩 *هل تريد إضافة قطع غيار؟*\n\nالقطع المتاحة لهذه الخدمة:\n${Lx.partsMenu(parts)}\n\nأرسل رقم القطعة أو *0* للمتابعة بدون قطع.`
-          : `🔩 *Do you want to add spare parts?*\n\nAvailable parts:\n${Lx.partsMenu(parts)}\n\nSend part number or *0* to continue without parts.`;
-        await sendMessage(from, partsAskMsg);
+        const lang2 = getLang(session);
+        const partsRows = parts.slice(0,10).map((p,i) => ({
+          id: "part_" + i,
+          title: p.name.substring(0,24),
+          description: `${(parseFloat(p.price)||0).toFixed(3)} OMR${p.stock!==undefined?" · متوفر: "+p.stock:""}`
+        }));
+        partsRows.push({ id:"part_skip", title: lang2==="ar"?"0 — بدون قطع":"0 — No parts" });
+        await sendList(from,
+          lang2==="ar"?"🔩 هل تريد إضافة قطع غيار؟":"🔩 Add spare parts?",
+          lang2==="ar"?"القطع":"Parts",
+          [{ title: lang2==="ar"?"القطع المتاحة":"Available Parts", rows: partsRows }]
+        );
       }
       return;
     }
@@ -574,17 +582,25 @@ app.post("/webhook", async(req,res)=>{
 
       if(pending!==undefined){
         // "0" while waiting for qty = cancel part selection, go back to menu
-        if(text==="0"){
+        if(text==="0"||text==="part_skip"){
           await setSession(from,"parts",{...session.data,pendingPartIdx:undefined});
-          const avail2=session.data.availableParts||[];
-          const freshParts = await getPartsByService(session.data.serviceId||session.data.service?.id||"");
-          const fmt0=(n)=>(parseFloat(n)||0).toFixed(3);
-          const menuMsg=getLang(session)==="ar"
-            ? `اختر رقم القطعة أو *0* للمتابعة:\n\n${freshParts.map((p,i)=>`${i+1}. ${p.name} — ${fmt0(p.price)} OMR${p.stock!==undefined?` (متوفر: ${p.stock})`:""}`).join("\n")}\n\n0 — متابعة بدون إضافة`
-            : `Choose part number or *0* to continue:\n\n${freshParts.map((p,i)=>`${i+1}. ${p.name} — ${fmt0(p.price)} OMR${p.stock!==undefined?` (available: ${p.stock})`:""}`).join("\n")}\n\n0 — Continue`;
-          await sendMessage(from, menuMsg);
+          const freshParts2 = await getPartsByService(session.data.serviceId||session.data.service?.id||"");
+          const lang3 = getLang(session);
+          const rows2 = freshParts2.slice(0,10).map((p,i)=>({
+            id:"part_"+i,
+            title:p.name.substring(0,24),
+            description:`${(parseFloat(p.price)||0).toFixed(3)} OMR${p.stock!==undefined?" · متوفر: "+p.stock:""}`
+          }));
+          rows2.push({id:"part_skip",title:lang3==="ar"?"0 — بدون قطع":"0 — No parts"});
+          await sendList(from,
+            lang3==="ar"?"اختر قطعة أخرى أو تخطَّ:":"Choose another part or skip:",
+            lang3==="ar"?"القطع":"Parts",
+            [{title:lang3==="ar"?"القطع المتاحة":"Available Parts",rows:rows2}]
+          );
           return;
         }
+        // Handle list reply for qty
+        if(text.startsWith("qty_")) text = text.replace("qty_","");
         const qty = parseInt(text);
         const maxQty2 = session.data.pendingMaxQty || 5;
         const part = avail[pending];
@@ -646,7 +662,17 @@ app.post("/webhook", async(req,res)=>{
       const part=avail[num-1];
       const maxQty = part.stock !== undefined ? Math.min(part.stock, 5) : 5;
       await setSession(from,"parts",{...session.data,pendingPartIdx:num-1,pendingMaxQty:maxQty});
-      await sendMessage(from, Lx.qtyPrompt(part.name, part.price, part.stock, maxQty));
+      // Send qty as list
+      const qtyRows = [];
+      for(let i=1;i<=maxQty;i++){
+        const lineTotal = ((parseFloat(part.price)||0)*i).toFixed(3);
+        qtyRows.push({id:"qty_"+i, title:`${i} ${ getLang(session)==="ar"?"قطعة":"piece"}`, description:`${lineTotal} OMR`});
+      }
+      await sendList(from,
+        `🔩 *${part.name}*\n${ getLang(session)==="ar"?"اختر الكمية:":"Choose quantity:"}`,
+        getLang(session)==="ar"?"الكمية":"Qty",
+        [{title: getLang(session)==="ar"?"الكمية المطلوبة":"Required Qty", rows:qtyRows}]
+      );
       return;
     }
 
