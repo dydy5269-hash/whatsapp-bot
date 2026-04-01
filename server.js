@@ -356,7 +356,10 @@ function buildPartsText(parts) {
   return parts.map(p=>`• ${p.name} × ${p.qty} = ${(p.price*p.qty).toFixed(3)} OMR`).join("\n");
 }
 function calcTotal(servicePrice, parts) {
-  return Math.round(((parseFloat(servicePrice)||0)+(parts||[]).reduce((s,p)=>s+(parseFloat(p.price)||0)*p.qty,0))*1000)/1000;
+  const totalQty = (parts||[]).reduce((s,p)=>s+(p.qty||1), 0) || 1;
+  const svcTotal = (parseFloat(servicePrice)||0) * totalQty;
+  const partsTotal = (parts||[]).reduce((s,p)=>s+(parseFloat(p.price)||0)*(p.qty||1), 0);
+  return Math.round((svcTotal + partsTotal)*1000)/1000;
 }
 
 // ─── Webhook ──────────────────────────────────────────────────────────────────
@@ -807,18 +810,22 @@ async function goNextAfterParts(from, data, Lx) {
 // ─── goToConfirm — sends BUTTONS ─────────────────────────────────────────────
 async function goToConfirm(from, session, Lx, discount, couponCode) {
   // Support both old format (service obj) and new minimal format
-  const service     = session.data.service || {name: session.data.serviceName, id: session.data.serviceId};
-  const type        = session.data.selectedType;
-  const parts       = session.data.parts||[];
-  const servicePrice= session.data.servicePrice||0;
-  const partsTotal  = parts.reduce((s,p)=>s+p.price*p.qty,0);
-  const raw         = Math.round((servicePrice+partsTotal)*1000)/1000;
-  const disc        = discount||0;
-  const total       = Math.max(0,Math.round((raw-disc)*1000)/1000);
-  const partsTxt    = buildPartsText(parts);
-  await setSession(from,"confirm",{...session.data,discount:disc,couponCode,totalPrice:total});
+  const service      = session.data.service || {name: session.data.serviceName, id: session.data.serviceId};
+  const type         = session.data.selectedType;
+  const parts        = session.data.parts||[];
+  const basePrice    = parseFloat(session.data.servicePrice)||0;
+  // Total qty of all selected parts
+  const totalQty     = parts.reduce((s,p)=>s+(p.qty||1), 0) || 1;
+  // Service price × total qty
+  const serviceTotal = Math.round(basePrice * totalQty * 1000) / 1000;
+  const partsTotal   = Math.round(parts.reduce((s,p)=>s+(parseFloat(p.price)||0)*(p.qty||1),0)*1000)/1000;
+  const raw          = Math.round((serviceTotal + partsTotal)*1000)/1000;
+  const disc         = discount||0;
+  const total        = Math.max(0, Math.round((raw-disc)*1000)/1000);
+  const partsTxt     = buildPartsText(parts);
+  await setSession(from,"confirm",{...session.data,discount:disc,couponCode,totalPrice:total,serviceTotal});
   await sendButtons(from,
-    Lx.confirmTitle(service.name, type.name, partsTxt, servicePrice, partsTotal, disc>0?disc:null, total),
+    Lx.confirmTitle(service.name, type.name, partsTxt, basePrice, totalQty, serviceTotal, partsTotal, disc>0?disc:null, total),
     [{id:"confirm_yes",title:Lx.confirmYes},{id:"confirm_no",title:Lx.confirmNo}]
   );
 }
