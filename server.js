@@ -320,16 +320,38 @@ async function checkActiveCoupons() {
   catch(e){ return false; }
 }
 
-// ─── Region Detection ─────────────────────────────────────────────────────────
+// ─── Region Detection from Firebase ──────────────────────────────────────────
+// Each region in Firebase has: name, active, lat, lng, radiusKm
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2-lat1)*Math.PI/180;
+  const dLng = (lng2-lng1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 +
+    Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
 async function detectRegion(lat, lng) {
   try {
-    const res = await axios.get(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ar`,
-      {headers:{"User-Agent":"TAQA-Bot/1.0"},timeout:5000}
-    );
-    const a = res.data.address||{};
-    return a.county||a.state_district||a.suburb||a.city||a.state||null;
-  } catch(e){ return null; }
+    const snap = await db.collection("regions").get();
+    if(snap.empty) return { name: null, active: false };
+    let closest = null;
+    let minDist  = Infinity;
+    snap.docs.forEach(doc => {
+      const r = doc.data();
+      if(!r.lat || !r.lng) return;
+      const dist = haversineKm(lat, lng, r.lat, r.lng);
+      const radius = r.radiusKm || 10; // default 10km
+      if(dist <= radius && dist < minDist) {
+        minDist  = dist;
+        closest  = { name: r.name, active: r.active !== false, id: doc.id };
+      }
+    });
+    return closest || { name: null, active: false };
+  } catch(e) {
+    console.error("detectRegion:", e?.message);
+    return { name: null, active: false };
+  }
 }
 
 // ─── Coupon ───────────────────────────────────────────────────────────────────
