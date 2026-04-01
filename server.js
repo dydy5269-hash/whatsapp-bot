@@ -571,14 +571,17 @@ app.post("/webhook", async(req,res)=>{
     }
 
     // ── parts_ask & parts — unified handler ─────────────────────────────────────
-    if(session.state==="parts_ask") session.state = "parts";
+    if(session.state==="parts_ask"){
+      // Save to DB as "parts" so next message is handled correctly
+      await setSession(from, "parts", session.data);
+      session.state = "parts";
+    }
     if(session.state==="parts"){
       // Fetch parts fresh from DB (don't store in session to avoid bloat)
       const serviceIdForParts = session.data.serviceId||session.data.service?.id||"";
       const avail = await getPartsByService(serviceIdForParts);
       const selected= JSON.parse(JSON.stringify(session.data.parts||[]));
       const pending = session.data.pendingPartIdx;
-      console.log("PARTS DEBUG - serviceId:", serviceIdForParts, "avail count:", avail.length, "pending:", pending, "text:", text);
 
       if(pending!==undefined){
         // "0" while waiting for qty = cancel part selection, go back to menu
@@ -661,6 +664,7 @@ app.post("/webhook", async(req,res)=>{
       if(isNaN(num)||num<1||num>avail.length){ await sendMessage(from,Lx.invalidPart(avail.length)); return; }
       const part=avail[num-1];
       const maxQty = part.stock !== undefined ? Math.min(part.stock, 5) : 5;
+      // Save to DB BEFORE sending qty list so next message has correct state
       await setSession(from,"parts",{...session.data,pendingPartIdx:num-1,pendingMaxQty:maxQty});
       // Send qty as list
       const qtyRows = [];
