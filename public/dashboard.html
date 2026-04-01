@@ -893,7 +893,17 @@ function renderOrdersTable(list,targetId,showDel){
     ${showDel?"<th>تعيين</th><th></th>":""}
   </tr></thead><tbody>${rows}</tbody></table>`;
 }
-async function deleteOrder(id){if(!confirm("حذف هذا الطلب؟"))return;try{await db.collection("orders").doc(id).delete();showToast("تم الحذف");allOrders=allOrders.filter(o=>o.id!==id);renderFilteredOrders();}catch(e){showToast(e.message,"error");}}
+async function deleteOrder(id){
+  if(!confirm("حذف هذا الطلب؟"))return;
+  try{
+    const order = allOrders.find(o=>o.id===id);
+    const col   = order?._collection||"orders";
+    await db.collection(col).doc(id).delete();
+    showToast("تم الحذف");
+    allOrders=allOrders.filter(o=>o.id!==id);
+    renderFilteredOrders();
+  }catch(e){showToast(e.message,"error");}
+}
 async function deleteAllPending(){
   if(currentUserRole!=="admin"){showToast("ليس لديك صلاحية","error");return;}
   const p=allOrders.filter(o=>o.status==="pending");
