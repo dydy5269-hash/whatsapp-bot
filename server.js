@@ -633,9 +633,9 @@ app.post("/webhook", async(req,res)=>{
           selectedType: session.data.selectedType||null,
           servicePrice: session.data.servicePrice||0,
           parts: selected.map(p=>({id:p.id,name:p.name,price:p.price||0,unit:p.unit||"قطعة",qty:p.qty||1})),
-          couponId: session.data.couponId||null,
-          couponCode: session.data.couponCode||null,
-          discount: session.data.discount||0
+          couponId: null,
+          couponCode: null,
+          discount: 0  // reset — coupon applied in next step
         };
         await setSession(from,"parts", newData);
         const fmt = (n) => (parseFloat(n)||0).toFixed(3);
@@ -656,9 +656,9 @@ app.post("/webhook", async(req,res)=>{
           selectedType: session.data.selectedType||null,
           servicePrice: session.data.servicePrice||0,
           parts: selected.map(p=>({id:p.id,name:p.name,price:p.price||0,unit:p.unit||"قطعة",qty:p.qty||1})),
-          couponId: session.data.couponId||null,
-          couponCode: session.data.couponCode||null,
-          discount: session.data.discount||0
+          couponId: null,
+          couponCode: null,
+          discount: 0  // reset — coupon applied later if exists
         };
         await goNextAfterParts(from, minData, Lx); return;
       }
