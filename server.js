@@ -510,10 +510,13 @@ app.post("/webhook", async(req,res)=>{
         title: Lx.typesBtn,
         rows: service.types.map((t,i)=>({id:"typ_"+i, title:t.name.substring(0,24), description:`${t.price} OMR`}))
       }]);
-      // Store minimal service data
+      // Store minimal service data - RESET discount
       await setSession(from,"type",{
         lang: session.data.lang||"ar",
-        service: {id:service.id, name:service.name, types:service.types}
+        service: {id:service.id, name:service.name, types:service.types},
+        discount: 0,
+        couponId: null,
+        couponCode: null
       });
       return;
     }
@@ -836,9 +839,11 @@ app.post("/webhook", async(req,res)=>{
 
 // ─── goNextAfterParts ─────────────────────────────────────────────────────────
 async function goNextAfterParts(from, data, Lx) {
+  // Always reset discount here — will be set only if coupon is applied
+  const cleanData = {...data, discount:0, couponId:null, couponCode:null};
   const hasCoupons=await checkActiveCoupons();
-  if(hasCoupons){ await setSession(from,"coupon",data); await sendMessage(from,Lx.couponPrompt); }
-  else { await goToConfirm(from,{state:"coupon",data},Lx,0,null); }
+  if(hasCoupons){ await setSession(from,"coupon",cleanData); await sendMessage(from,Lx.couponPrompt); }
+  else { await goToConfirm(from,{state:"coupon",data:cleanData},Lx,0,null); }
 }
 
 // ─── goToConfirm — sends BUTTONS ─────────────────────────────────────────────
