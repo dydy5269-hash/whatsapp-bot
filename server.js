@@ -502,7 +502,11 @@ app.post("/webhook", async(req,res)=>{
         title: Lx.typesBtn,
         rows: service.types.map((t,i)=>({id:"typ_"+i, title:t.name.substring(0,24), description:`${t.price} OMR`}))
       }]);
-      await setSession(from,"type",{...session.data,service});
+      // Store minimal service data
+      await setSession(from,"type",{
+        lang: session.data.lang||"ar",
+        service: {id:service.id, name:service.name, types:service.types}
+      });
       return;
     }
 
@@ -517,10 +521,25 @@ app.post("/webhook", async(req,res)=>{
       const parts = await getPartsByService(service.id);
       if(!parts.length){
         // No parts for this service — skip
-        await goNextAfterParts(from,{...session.data,selectedType:type,parts:[],servicePrice:type.price},Lx);
+        await goNextAfterParts(from,{
+          lang: getLang(session),
+          serviceId: service.id,
+          serviceName: service.name,
+          selectedType: {name:type.name, price:type.price},
+          servicePrice: type.price,
+          parts: []
+        },Lx);
       } else {
         // Ask if customer wants parts
-        await setSession(from,"parts_ask",{...session.data,selectedType:type,parts:[],servicePrice:type.price,serviceId:service.id});
+        // Store MINIMAL data in session - no full objects
+        await setSession(from,"parts_ask",{
+          lang: getLang(session),
+          serviceId: service.id,
+          serviceName: service.name,
+          selectedType: {name: type.name, price: type.price},
+          servicePrice: type.price,
+          parts: []
+        });
         const partsAskMsg = getLang(session)==="ar"
           ? `🔩 *هل تريد إضافة قطع غيار؟*\n\nالقطع المتاحة لهذه الخدمة:\n${Lx.partsMenu(parts)}\n\nأرسل رقم القطعة أو *0* للمتابعة بدون قطع.`
           : `🔩 *Do you want to add spare parts?*\n\nAvailable parts:\n${Lx.partsMenu(parts)}\n\nSend part number or *0* to continue without parts.`;
@@ -566,9 +585,18 @@ app.post("/webhook", async(req,res)=>{
         const ex=selected.find(p=>p.id===part.id);
         if(ex) ex.qty+=qty; else selected.push({id:part.id,name:part.name,price:part.price,unit:part.unit||"قطعة",qty,stock:part.stock});
         const ptotal = selected.reduce((s,p)=>s+(parseFloat(p.price)||0)*p.qty, 0);
-        // Save session WITHOUT availableParts to keep it lean
-        const { availableParts: _removed, ...cleanData } = session.data;
-        const newData = {...cleanData, parts:selected, pendingPartIdx:undefined};
+        // Save ONLY essential data in session
+        const newData = {
+          lang: session.data.lang||"ar",
+          serviceId: session.data.serviceId||session.data.service?.id,
+          serviceName: session.data.serviceName||session.data.service?.name,
+          selectedType: session.data.selectedType,
+          servicePrice: session.data.servicePrice,
+          parts: selected.map(p=>({id:p.id,name:p.name,price:p.price,unit:p.unit,qty:p.qty})),
+          couponId: session.data.couponId,
+          couponCode: session.data.couponCode,
+          discount: session.data.discount
+        };
         await setSession(from,"parts", newData);
         const fmt = (n) => (parseFloat(n)||0).toFixed(3);
         // Go directly to confirm after adding part
@@ -580,7 +608,20 @@ app.post("/webhook", async(req,res)=>{
         return;
       }
 
-      if(text==="0"){ await goNextAfterParts(from,{...session.data,parts:selected},Lx); return; }
+      if(text==="0"){
+        const minData = {
+          lang: session.data.lang||"ar",
+          serviceId: session.data.serviceId||session.data.service?.id,
+          serviceName: session.data.serviceName||session.data.service?.name,
+          selectedType: session.data.selectedType,
+          servicePrice: session.data.servicePrice,
+          parts: selected.map(p=>({id:p.id,name:p.name,price:p.price,unit:p.unit,qty:p.qty})),
+          couponId: session.data.couponId,
+          couponCode: session.data.couponCode,
+          discount: session.data.discount
+        };
+        await goNextAfterParts(from, minData, Lx); return;
+      }
 
       const num=parseInt(text);
       if(isNaN(num)||num<1||num>avail.length){ await sendMessage(from,Lx.invalidPart(avail.length)); return; }
@@ -618,7 +659,11 @@ app.post("/webhook", async(req,res)=>{
     // ── location ──────────────────────────────────────────────────────────────
     if(session.state==="location"){
       if(msg.type!=="location"){ await sendMessage(from,Lx.locationOnly); return; }
-      const service=session.data.service; const selectedType=session.data.selectedType;
+      const service = session.data.service || {
+        id: session.data.serviceId,
+        name: session.data.serviceName
+      };
+      const selectedType=session.data.selectedType;
       const userLang=getLang(session);
       if(!service||!selectedType){ await sendMessage(from,Lx.sessionExpired); await clearSession(from); return; }
 
@@ -747,7 +792,8 @@ async function goNextAfterParts(from, data, Lx) {
 
 // ─── goToConfirm — sends BUTTONS ─────────────────────────────────────────────
 async function goToConfirm(from, session, Lx, discount, couponCode) {
-  const service     = session.data.service;
+  // Support both old format (service obj) and new minimal format
+  const service     = session.data.service || {name: session.data.serviceName, id: session.data.serviceId};
   const type        = session.data.selectedType;
   const parts       = session.data.parts||[];
   const servicePrice= session.data.servicePrice||0;
@@ -969,14 +1015,5 @@ app.post("/admin/check-queue", async(req,res)=>{
   await checkWaitingQueue();
   res.json({success:true});
 });
-
-
-
-
-
-
-
-
-
 
 app.listen(process.env.PORT||3000,()=>console.log("✅ TAQA Bot running"));
