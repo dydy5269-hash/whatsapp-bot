@@ -618,6 +618,15 @@ html[dir="ltr"] .notif-item.unread{border-right:none;border-left:3px solid var(-
     <div class="form-grid">
       <div class="form-group"><label>اسم المنطقة</label><input type="text" id="region-name" placeholder="ولاية طاقة"/></div>
       <div class="form-group"><label>🔑 Document ID</label><input type="text" id="region-id" placeholder="taqah" style="direction:ltr;font-family:monospace"/></div>
+      <div class="form-group"><label>📍 خط العرض (Latitude)</label><input type="number" id="region-lat" placeholder="17.0494" step="0.0001"/></div>
+      <div class="form-group"><label>📍 خط الطول (Longitude)</label><input type="number" id="region-lng" placeholder="54.4025" step="0.0001"/></div>
+      <div class="form-group"><label>📏 نصف القطر (كم)</label><input type="number" id="region-radius" placeholder="10" min="1" max="100"/></div>
+      <div class="form-group"><label>الحالة</label>
+        <select id="region-active">
+          <option value="true">✅ مفعّلة</option>
+          <option value="false">❌ غير مفعّلة</option>
+        </select>
+      </div>
       <div class="form-group" style="grid-column:1/-1"><label>وصف (اختياري)</label><input type="text" id="region-desc" placeholder="ولاية طاقة — محافظة ظفار"/></div>
     </div>
     <div class="form-actions">
@@ -1048,6 +1057,13 @@ async function addRegion(){
   catch(e){showToast(e.message,"error");}
 }
 async function toggleRegion(id,cur){try{await db.collection("regions").doc(id).update({active:!cur});showToast("✅");loadRegions();}catch(e){showToast(e.message,"error");}}
+async function toggleRegion(id, current){
+  try{
+    await db.collection("regions").doc(id).update({active:!current});
+    showToast(current?"⛔ تم التعطيل":"✅ تم التفعيل");
+    loadRegions();
+  }catch(e){showToast(e.message,"error");}
+}
 async function deleteRegion(id){if(!confirm("حذف هذه المنطقة؟"))return;try{await db.collection("regions").doc(id).delete();showToast("تم الحذف");loadRegions();}catch(e){showToast(e.message,"error");}}
 
 // ── Technicians ───────────────────────────────────────────────────────────────
