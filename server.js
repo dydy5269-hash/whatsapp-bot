@@ -577,16 +577,16 @@ app.post("/webhook", async(req,res)=>{
       session.state = "parts";
     }
     if(session.state==="parts"){
-      // ── Convert list reply IDs to simple values ──
-      if(text==="part_skip")                                  text = "0";
-      else if(text.startsWith("part_") && text!=="part_skip") text = String(parseInt(text.replace("part_",""))+1);
-      if(text.startsWith("qty_"))                             text = text.replace("qty_","");
-      // ────────────────────────────────────────────
-      // Fetch parts fresh from DB (don't store in session to avoid bloat)
+      // Fetch parts fresh from DB
       const serviceIdForParts = session.data.serviceId||session.data.service?.id||"";
       const avail = await getPartsByService(serviceIdForParts);
-      const selected= JSON.parse(JSON.stringify(session.data.parts||[]));
-      const pending = session.data.pendingPartIdx;
+      const selected = JSON.parse(JSON.stringify(session.data.parts||[]));
+      const pending  = session.data.pendingPartIdx;
+
+      // ── Convert list reply IDs AFTER defining pending ──
+      if(text==="part_skip")                                   text = "0";
+      else if(text.startsWith("part_"))                        text = String(parseInt(text.replace("part_",""))+1);
+      if(text.startsWith("qty_"))                              text = text.replace("qty_","");
 
       if(pending!==undefined){
         // "0" while waiting for qty = cancel part selection, go back to menu
