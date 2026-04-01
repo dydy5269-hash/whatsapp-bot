@@ -552,9 +552,11 @@ app.post("/webhook", async(req,res)=>{
     if(session.state==="parts_ask") session.state = "parts";
     if(session.state==="parts"){
       // Fetch parts fresh from DB (don't store in session to avoid bloat)
-      const avail = await getPartsByService(session.data.serviceId||session.data.service?.id||"");
+      const serviceIdForParts = session.data.serviceId||session.data.service?.id||"";
+      const avail = await getPartsByService(serviceIdForParts);
       const selected= JSON.parse(JSON.stringify(session.data.parts||[]));
       const pending = session.data.pendingPartIdx;
+      console.log("PARTS DEBUG - serviceId:", serviceIdForParts, "avail count:", avail.length, "pending:", pending, "text:", text);
 
       if(pending!==undefined){
         // "0" while waiting for qty = cancel part selection, go back to menu
