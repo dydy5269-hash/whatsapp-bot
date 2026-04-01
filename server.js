@@ -36,8 +36,13 @@ const LANGS = {
     couponValid:    (code, disc, total) => `✅ كوبون *${code}* مقبول!\n💸 الخصم: ${disc.toFixed(3)} OMR\n💰 الإجمالي بعد الخصم: ${total.toFixed(3)} OMR`,
     couponInvalid:  "❌ الكوبون غير صالح أو منتهي.\nأرسل *0* للمتابعة.",
     couponUsed:     "❌ هذا الكوبون استُخدم مسبقاً.\nأرسل *0* للمتابعة.",
-    confirmTitle:   (sName, tName, parts, servicePrice, partsTotal, disc, total) =>
-      `📋 *ملخص الطلب*\n🔧 الخدمة: ${sName} — ${servicePrice.toFixed(3)} OMR\n📌 النوع: ${tName}${parts!=="-"?`\n\n🔩 القطع:\n${parts}\n💡 إجمالي القطع: ${partsTotal.toFixed(3)} OMR`:""}${disc?`\n\n🎟 الخصم: -${disc.toFixed(3)} OMR`:""}\n\n💰 *الإجمالي الكلي: ${total.toFixed(3)} OMR*`,
+    confirmTitle:   (sName, tName, partsTxt, basePrice, totalQty, serviceTotal, partsTotal, disc, total) => {
+      const fmt = n => (parseFloat(n)||0).toFixed(3);
+      const svcLine = totalQty > 0
+        ? `🔧 الخدمة: ${sName} — ${fmt(basePrice)} OMR × ${totalQty} قطعة = ${fmt(serviceTotal)} OMR`
+        : `🔧 الخدمة: ${sName} — ${fmt(serviceTotal)} OMR`;
+      return `📋 *ملخص الطلب*\n${svcLine}\n📌 النوع: ${tName}${partsTxt!=="-"?`\n\n🔩 القطع:\n${partsTxt}\n💡 إجمالي القطع: ${fmt(partsTotal)} OMR`:""}${disc?`\n\n🎟 الخصم: -${fmt(disc)} OMR`:""}\n\n💰 *الإجمالي الكلي: ${fmt(total)} OMR*`;
+    },
     confirmYes:     "✅ تأكيد الطلب",
     confirmNo:      "❌ إلغاء",
     confirmed:      "✅ تم التأكيد!\n📍 أرسل موقعك الحالي لإتمام الطلب.",
@@ -102,8 +107,13 @@ const LANGS = {
     couponValid:    (code, disc, total) => `✅ Coupon *${code}* applied!\n💸 Discount: ${disc.toFixed(3)} OMR\n💰 Total: ${total.toFixed(3)} OMR`,
     couponInvalid:  "❌ Invalid or expired coupon.\nSend *0* to continue.",
     couponUsed:     "❌ Coupon already used.\nSend *0* to continue.",
-    confirmTitle:   (sName, tName, parts, servicePrice, partsTotal, disc, total) =>
-      `📋 *Order Summary*\n🔧 Service: ${sName} — ${servicePrice.toFixed(3)} OMR\n📌 Type: ${tName}${parts!=="-"?`\n\n🔩 Parts:\n${parts}\n💡 Parts total: ${partsTotal.toFixed(3)} OMR`:""}${disc?`\n\n🎟 Discount: -${disc.toFixed(3)} OMR`:""}\n\n💰 *Grand Total: ${total.toFixed(3)} OMR*`,
+    confirmTitle:   (sName, tName, partsTxt, basePrice, totalQty, serviceTotal, partsTotal, disc, total) => {
+      const fmt = n => (parseFloat(n)||0).toFixed(3);
+      const svcLine = totalQty > 0
+        ? `🔧 Service: ${sName} — ${fmt(basePrice)} OMR × ${totalQty} = ${fmt(serviceTotal)} OMR`
+        : `🔧 Service: ${sName} — ${fmt(serviceTotal)} OMR`;
+      return `📋 *Order Summary*\n${svcLine}\n📌 Type: ${tName}${partsTxt!=="-"?`\n\n🔩 Parts:\n${partsTxt}\n💡 Parts total: ${fmt(partsTotal)} OMR`:""}${disc?`\n\n🎟 Discount: -${fmt(disc)} OMR`:""}\n\n💰 *Grand Total: ${fmt(total)} OMR*`;
+    },
     confirmYes:     "✅ Confirm Order",
     confirmNo:      "❌ Cancel",
     confirmed:      "✅ Confirmed!\n📍 Please send your location to complete the order.",
