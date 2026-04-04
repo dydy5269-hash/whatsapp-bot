@@ -335,19 +335,44 @@ async function detectRegion(lat, lng) {
   try {
     const snap = await db.collection("regions").get();
     if(snap.empty) return { name: null, active: false };
-    let closest = null;
-    let minDist  = Infinity;
+    let matched = [];
     snap.docs.forEach(doc => {
       const r = doc.data();
-      if(!r.lat || !r.lng) return;
-      const dist = haversineKm(lat, lng, r.lat, r.lng);
-      const radius = r.radiusKm || 10; // default 10km
-      if(dist <= radius && dist < minDist) {
-        minDist  = dist;
-        closest  = { name: r.name, active: r.active !== false, id: doc.id };
+      // Method 1: center point + radius (lat/lng/radiusKm)
+      if(r.lat && r.lng) {
+        const dist   = haversineKm(lat, lng, parseFloat(r.lat), parseFloat(r.lng));
+        const radius = parseFloat(r.radiusKm) || 10;
+        if(dist <= radius) {
+          matched.push({ name: r.name, active: r.active !== false, id: doc.id, dist });
+        }
+      }
+      // Method 2: bounding box (maxLat/minLat/maxLng/minLng)
+      else if(r.maxLat && r.minLng) {
+        const inBox = lat  <= parseFloat(r.maxLat||99)  &&
+                      lat  >= parseFloat(r.minLat||0)   &&
+                      lng  <= parseFloat(r.maxLng||99)  &&
+                      lng  >= parseFloat(r.minLng||0);
+        if(inBox) {
+          matched.push({ name: r.name, active: r.active !== false, id: doc.id, dist: 0 });
+        }
+      }
+      // Method 3: center from maxLat/minLng as approximate center
+      else if(r.maxLat || r.minLng) {
+        const cLat = parseFloat(r.maxLat || r.minLat || 0);
+        const cLng = parseFloat(r.maxLng || r.minLng || 0);
+        if(cLat && cLng) {
+          const dist   = haversineKm(lat, lng, cLat, cLng);
+          const radius = parseFloat(r.radiusKm || r["نصف الطر"] || r["نصف القطر"]) || 15;
+          if(dist <= radius) {
+            matched.push({ name: r.name, active: r.active !== false, id: doc.id, dist });
+          }
+        }
       }
     });
-    return closest || { name: null, active: false };
+    if(!matched.length) return { name: null, active: false };
+    // Return closest match
+    matched.sort((a,b) => a.dist - b.dist);
+    return matched[0];
   } catch(e) {
     console.error("detectRegion:", e?.message);
     return { name: null, active: false };
@@ -763,8 +788,10 @@ app.post("/webhook", async(req,res)=>{
       const totalPrice=Math.max(0,Math.round((rawTotal-discount)*1000)/1000);
       const partsText=buildPartsText(parts);
 
-      const techs=await getAvailableTechs(service.id,regionName||"",[]);
+      const regionStr = typeof regionName==="string"?regionName:(regionName?.name||"");
+      const techs=await getAvailableTechs(service.id,regionStr,[]);
       if(!techs.length){
+        const regionStr2 = typeof regionName==="string"?regionName:(regionName?.name||"");
         // Save to waiting queue
         const waitId = generateOrderId();
         await db.collection("waiting_orders").doc(waitId).set({
@@ -793,7 +820,7 @@ app.post("/webhook", async(req,res)=>{
         parts, totalPrice, discount,
         couponCode:session.data.couponCode||null,
         technicianId:chosenTech.id, rejectedTechs:[],
-        status:"pending", lang:userLang, region:regionName||null,
+        status:"pending", lang:userLang, region:(typeof regionName==="string"?regionName:regionName?.name)||null,
         location:{latitude:msg.location.latitude,longitude:msg.location.longitude},
         createdAt:admin.firestore.FieldValue.serverTimestamp()
       });
