@@ -876,31 +876,42 @@ app.post("/webhook", async(req,res)=>{
 
 // ─── goNextAfterParts ─────────────────────────────────────────────────────────
 async function goNextAfterParts(from, data, Lx) {
-  // Always reset discount here — will be set only if coupon is applied
-  const cleanData = {...data, discount:0, couponId:null, couponCode:null};
-  const hasCoupons=await checkActiveCoupons();
-  if(hasCoupons){ await setSession(from,"coupon",cleanData); await sendMessage(from,Lx.couponPrompt); }
-  else { await goToConfirm(from,{state:"coupon",data:cleanData},Lx,0,null); }
+  // Ensure servicePrice is always present
+  const svcPrice = parseFloat(data.servicePrice) || parseFloat(data.selectedType?.price) || 0;
+  const cleanData = {
+    ...data,
+    servicePrice: svcPrice,
+    discount: 0,
+    couponId: null,
+    couponCode: null
+  };
+  const hasCoupons = await checkActiveCoupons();
+  if(hasCoupons){
+    await setSession(from,"coupon",cleanData);
+    await sendMessage(from,Lx.couponPrompt);
+  } else {
+    await goToConfirm(from,{state:"coupon",data:cleanData},Lx,0,null);
+  }
 }
 
 // ─── goToConfirm — sends BUTTONS ─────────────────────────────────────────────
 async function goToConfirm(from, session, Lx, discount, couponCode) {
-  // Support both old format (service obj) and new minimal format
-  const service      = session.data.service || {name: session.data.serviceName, id: session.data.serviceId};
-  const type         = session.data.selectedType;
-  const parts        = session.data.parts||[];
-  const basePrice    = parseFloat(session.data.servicePrice)||0;
-  const hasParts     = parts.length > 0;
-  // If parts selected: service × total qty; if no parts: service price as-is
-  const serviceTotal = Math.round(basePrice * 1000) / 1000;
-  const partsTotal   = Math.round(parts.reduce((s,p)=>s+(parseFloat(p.price)||0)*(p.qty||1),0)*1000)/1000;
-  const raw          = Math.round((serviceTotal + partsTotal)*1000)/1000;
-  const disc         = discount||0;
-  const total        = Math.max(0, Math.round((raw-disc)*1000)/1000);
-  const partsTxt     = buildPartsText(parts);
-  await setSession(from,"confirm",{...session.data,discount:disc,couponCode,totalPrice:total,serviceTotal});
+  const d         = session.data || {};
+  const svcName   = d.serviceName || d.service?.name || "";
+  const typeName  = d.selectedType?.name || "";
+  // servicePrice: try all possible sources
+  const svcPrice  = parseFloat(d.servicePrice) || parseFloat(d.selectedType?.price) || 0;
+  const parts     = d.parts || [];
+  const partsTotal= Math.round(parts.reduce((s,p)=>s+(parseFloat(p.price)||0)*(p.qty||1),0)*1000)/1000;
+  const disc      = parseFloat(discount)||0;
+  const total     = Math.max(0, Math.round((svcPrice + partsTotal - disc)*1000)/1000);
+  const partsTxt  = buildPartsText(parts);
+
+  console.log("goToConfirm:", {svcName, typeName, svcPrice, partsTotal, disc, total});
+
+  await setSession(from,"confirm",{...d, discount:disc, couponCode, totalPrice:total, servicePrice:svcPrice});
   await sendButtons(from,
-    Lx.confirmTitle(service.name, type.name, partsTxt, basePrice, partsTotal, disc>0?disc:null, total),
+    Lx.confirmTitle(svcName, typeName, partsTxt, svcPrice, partsTotal, disc>0?disc:null, total),
     [{id:"confirm_yes",title:Lx.confirmYes},{id:"confirm_no",title:Lx.confirmNo}]
   );
 }
