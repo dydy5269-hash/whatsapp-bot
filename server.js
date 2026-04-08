@@ -334,48 +334,43 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 async function detectRegion(lat, lng) {
   try {
     const snap = await db.collection("regions").get();
-    if(snap.empty) return { name: null, active: false };
     let matched = [];
     snap.docs.forEach(doc => {
       const r = doc.data();
-      // Method 1: center point + radius (lat/lng/radiusKm)
+      // Method 1: center point + radius
       if(r.lat && r.lng) {
         const dist   = haversineKm(lat, lng, parseFloat(r.lat), parseFloat(r.lng));
         const radius = parseFloat(r.radiusKm) || 10;
-        if(dist <= radius) {
-          matched.push({ name: r.name, active: r.active !== false, id: doc.id, dist });
-        }
+        if(dist <= radius) matched.push({name:r.name,active:r.active!==false,id:doc.id,dist});
       }
-      // Method 2: bounding box (maxLat/minLat/maxLng/minLng)
-      else if(r.maxLat && r.minLng) {
-        const inBox = lat  <= parseFloat(r.maxLat||99)  &&
-                      lat  >= parseFloat(r.minLat||0)   &&
-                      lng  <= parseFloat(r.maxLng||99)  &&
-                      lng  >= parseFloat(r.minLng||0);
-        if(inBox) {
-          matched.push({ name: r.name, active: r.active !== false, id: doc.id, dist: 0 });
-        }
-      }
-      // Method 3: center from maxLat/minLng as approximate center
-      else if(r.maxLat || r.minLng) {
-        const cLat = parseFloat(r.maxLat || r.minLat || 0);
-        const cLng = parseFloat(r.maxLng || r.minLng || 0);
-        if(cLat && cLng) {
-          const dist   = haversineKm(lat, lng, cLat, cLng);
-          const radius = parseFloat(r.radiusKm || r["نصف الطر"] || r["نصف القطر"]) || 15;
-          if(dist <= radius) {
-            matched.push({ name: r.name, active: r.active !== false, id: doc.id, dist });
-          }
-        }
+      // Method 2: bounding box
+      else if(r.maxLat && r.minLat && r.maxLng && r.minLng) {
+        const inBox = lat<=parseFloat(r.maxLat) && lat>=parseFloat(r.minLat) &&
+                      lng<=parseFloat(r.maxLng) && lng>=parseFloat(r.minLng);
+        if(inBox) matched.push({name:r.name,active:r.active!==false,id:doc.id,dist:0});
       }
     });
-    if(!matched.length) return { name: null, active: false };
-    // Return closest match
-    matched.sort((a,b) => a.dist - b.dist);
-    return matched[0];
+
+    if(matched.length) {
+      matched.sort((a,b)=>a.dist-b.dist);
+      return matched[0];
+    }
+
+    // Fallback: OpenStreetMap reverse geocoding
+    try {
+      const res = await axios.get(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ar`,
+        {headers:{"User-Agent":"TAQA-Bot/1.0"},timeout:5000}
+      );
+      const a = res.data.address||{};
+      const osmName = a.county||a.state_district||a.suburb||a.city||a.state||null;
+      if(osmName) return {name:osmName, active:true}; // assume active if from OSM
+    } catch(e2){ console.error("OSM fallback:", e2?.message); }
+
+    return { name: null, active: true }; // unknown region but allow
   } catch(e) {
     console.error("detectRegion:", e?.message);
-    return { name: null, active: false };
+    return { name: null, active: true };
   }
 }
 
@@ -788,8 +783,7 @@ app.post("/webhook", async(req,res)=>{
       const totalPrice=Math.max(0,Math.round((rawTotal-discount)*1000)/1000);
       const partsText=buildPartsText(parts);
 
-      const regionStr = typeof regionName==="string"?regionName:(regionName?.name||"");
-      const techs=await getAvailableTechs(service.id,regionStr,[]);
+      const techs=await getAvailableTechs(service.id, regionName||"", []);
       if(!techs.length){
         const regionStr2 = typeof regionName==="string"?regionName:(regionName?.name||"");
         // Save to waiting queue
@@ -820,7 +814,7 @@ app.post("/webhook", async(req,res)=>{
         parts, totalPrice, discount,
         couponCode:session.data.couponCode||null,
         technicianId:chosenTech.id, rejectedTechs:[],
-        status:"pending", lang:userLang, region:(typeof regionName==="string"?regionName:regionName?.name)||null,
+        status:"pending", lang:userLang, region:regionName||null,
         location:{latitude:msg.location.latitude,longitude:msg.location.longitude},
         createdAt:admin.firestore.FieldValue.serverTimestamp()
       });
@@ -951,11 +945,18 @@ async function handleAccept(orderId, techPhone, tech) {
   await db.collection("technicians").doc(order.technicianId).update({active:false});
   const customerPhone=normalize(order.customer);
   const CL=LANGS[order.lang||"ar"];
-  await sendMessage(techPhone,LANGS.ar.customerPhone(customerPhone));
-  if(order.location?.latitude) await sendLocation(techPhone,order.location.latitude,order.location.longitude);
+  // Send customer info + location to tech
+  await sendMessage(techPhone, LANGS.ar.customerPhone(customerPhone));
+  if(order.location?.latitude){
+    // Send location so tech can navigate
+    await sendLocation(techPhone, order.location.latitude, order.location.longitude);
+    // Also send Google Maps link
+    const mapsLink = `https://www.google.com/maps?q=${order.location.latitude},${order.location.longitude}`;
+    await sendMessage(techPhone, `🗺️ موقع العميل على خرائط Google:\n${mapsLink}\n📍 المنطقة: ${order.region||"-"}`);
+  }
   // Done button for tech
   await sendButtons(techPhone, LANGS.ar.orderDoneLabel(orderId), [{id:"done_"+orderId,title:LANGS.ar.orderDoneBtn}]);
-  await sendMessage(customerPhone,CL.accepted(tech.name,tech.phone));
+  await sendMessage(customerPhone, CL.accepted(tech.name,tech.phone));
 }
 
 async function handleReject(orderId, techPhone, tech) {
@@ -1037,11 +1038,17 @@ app.post("/admin/assign", async(req,res)=>{
     const techPhone = normalize(tech.phone);
     const partsText = buildPartsText(order.parts||[]);
 
-    // Send WhatsApp buttons to tech
+    // Send WhatsApp buttons to tech with order details
     await sendButtons(techPhone,
       LANGS.ar.newOrder(order.orderId, order.serviceName, order.type||"", partsText, order.totalPrice||0),
       [{id:"accept_"+orderId, title:LANGS.ar.acceptBtn}, {id:"reject_"+orderId, title:LANGS.ar.rejectBtn}]
     );
+    // Send location preview so tech knows where the job is
+    if(order.location?.latitude){
+      await sendLocation(techPhone, order.location.latitude, order.location.longitude);
+      const mapsLink = `https://www.google.com/maps?q=${order.location.latitude},${order.location.longitude}`;
+      await sendMessage(techPhone, `📍 موقع الطلب: ${order.region||"-"}\n🗺️ ${mapsLink}`);
+    }
 
     res.json({success:true, techName:tech.name, techPhone:tech.phone});
   } catch(e) {
