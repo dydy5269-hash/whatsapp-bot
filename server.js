@@ -49,7 +49,7 @@ const LANGS = {
     cancelled:      "❌ تم إلغاء الطلب.\nأرسل *مرحبا* للبدء من جديد.",
     locationOnly:   "📍 يرجى إرسال موقعك باستخدام ميزة الموقع في واتساب.",
     sessionExpired: "انتهت الجلسة. أرسل *مرحبا* للبدء.",
-    noTech:         "⚠️ لا يوجد فني متاح الآن. حاول لاحقاً.",
+    noTech:         "📍 منطقتك ليست ضمن نطاق خدمتنا حالياً.\nسنقوم بتوسيع خدماتنا قريباً لمنطقتك.\nشكراً لتواصلك معنا! 🙏",
     noTechRegion:   (r) => `⚠️ لا يوجد فني متاح في *${r}* الآن.\n\n📝 تم حفظ طلبك في قائمة الانتظار وسيتم إشعارك فور توفر فني.\n🆔 رقم الطلب سيُرسَل إليك الآن.`,
     noTechAny:      "⚠️ لا يوجد فني متاح الآن.\n\n📝 تم حفظ طلبك في قائمة الانتظار وسيتم إشعارك فور توفر فني.",
     techAvailableNotify: (id, techName) => `✅ *تم العثور على فني لطلبك!*\n🆔 ${id}\n👨‍🔧 الفني: ${techName}\nسيتواصل معك قريباً.`,
@@ -120,7 +120,7 @@ const LANGS = {
     cancelled:      "❌ Order cancelled.\nSend *mrhba* to start again.",
     locationOnly:   "📍 Please send your location using WhatsApp location feature.",
     sessionExpired: "Session expired. Send *mrhba* to start.",
-    noTech:         "⚠️ No technician available now. Try again later.",
+    noTech:         "📍 Your area is not within our service coverage yet.\nWe will be expanding to your area soon.\nThank you for contacting us! 🙏",
     noTechRegion:   (r) => `⚠️ No technician available in *${r}* now.\n\n📝 Your order has been saved in the waiting queue. You will be notified when a technician is available.`,
     noTechAny:      "⚠️ No technician available now.\n\n📝 Your order has been saved in the waiting queue. You will be notified when a technician is available.",
     techAvailableNotify: (id, techName) => `✅ *A technician has been found for your order!*\n🆔 ${id}\n👨‍🔧 Tech: ${techName}\nThey will contact you shortly.`,
@@ -809,21 +809,8 @@ app.post("/webhook", async(req,res)=>{
 
       const techs = await getAvailableTechs(service.id, regionName||"", []);
       if(!techs.length){
-        // Save to waiting queue
-        const waitId = generateOrderId();
-        await db.collection("orders").doc(waitId).set({
-          orderId: waitId, customer: from,
-          serviceName: service.name, serviceId: service.id,
-          type: selectedType.name, servicePrice: session.data.servicePrice||selectedType.price,
-          parts, totalPrice, discount,
-          couponCode: session.data.couponCode||null,
-          region: regionName||null, lang: userLang,
-          location:{latitude:msg.location.latitude,longitude:msg.location.longitude},
-          status: "waiting",
-          createdAt: admin.firestore.FieldValue.serverTimestamp()
-        });
+        // Region not served — just notify, no waiting queue
         await sendMessage(from, regionName ? Lx.noTechRegion(regionName) : Lx.noTech);
-        await sendMessage(from, Lx.waitingQueue(waitId));
         await clearSession(from); return;
       }
 
