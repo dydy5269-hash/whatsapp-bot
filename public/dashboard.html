@@ -1074,6 +1074,13 @@ async function toggleRegion(id, current){
     loadRegions();
   }catch(e){showToast(e.message,"error");}
 }
+async function toggleRegion(id, currentActive) {
+  try {
+    await db.collection("regions").doc(id).update({ active: !currentActive });
+    showToast(currentActive ? "⏸ تم إيقاف المنطقة" : "✅ تم تفعيل المنطقة");
+    loadRegions();
+  } catch(e) { showToast(e.message,"error"); }
+}
 async function deleteRegion(id){if(!confirm("حذف هذه المنطقة؟"))return;try{await db.collection("regions").doc(id).delete();showToast("تم الحذف");loadRegions();}catch(e){showToast(e.message,"error");}}
 
 // ── Technicians ───────────────────────────────────────────────────────────────
