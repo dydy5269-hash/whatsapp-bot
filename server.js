@@ -821,12 +821,15 @@ app.post("/webhook", async(req,res)=>{
 
       if(session.data.couponId) await applyCoupon(session.data.couponId,from);
 
-      // Notify tech with BUTTONS (accept/reject)
+      // Notify tech with BUTTONS (accept/reject) + customer location
       const techPhone=normalize(chosenTech.phone);
       await sendButtons(techPhone,
         LANGS.ar.newOrder(orderId,service.name,selectedType.name,partsText,totalPrice),
         [{id:"accept_"+orderId,title:LANGS.ar.acceptBtn},{id:"reject_"+orderId,title:LANGS.ar.rejectBtn}]
       );
+      // Send customer location to tech so they can check distance
+      await sendLocation(techPhone, msg.location.latitude, msg.location.longitude);
+      await sendMessage(techPhone, `📍 موقع العميل — ${regionStr||"غير محدد"}\nاضغط على الموقع لحساب المسافة.`);
 
       await sendMessage(from,Lx.orderSent(orderId));
       // Invoice sent only after completion (for payment)
@@ -973,10 +976,16 @@ async function handleReject(orderId, techPhone, tech) {
   const backup=await getAvailableTechs(order.serviceId,order.region||"",rejected);
   if(!backup.length){ await ref.update({status:"rejected"}); await sendMessage(customerPhone,CL.noBackupTech(orderId)); return; }
   await ref.update({technicianId:backup[0].id});
-  await sendButtons(normalize(backup[0].phone),
+  const backupPhone = normalize(backup[0].phone);
+  await sendButtons(backupPhone,
     LANGS.ar.newOrder(orderId,order.serviceName,order.type||"",buildPartsText(order.parts),order.totalPrice||0),
     [{id:"accept_"+orderId,title:LANGS.ar.acceptBtn},{id:"reject_"+orderId,title:LANGS.ar.rejectBtn}]
   );
+  // Send location to backup tech too
+  if(order.location?.latitude){
+    await sendLocation(backupPhone, order.location.latitude, order.location.longitude);
+    await sendMessage(backupPhone, `📍 موقع العميل — ${order.region||"غير محدد"}`);
+  }
 }
 
 async function handleDone(orderId, techPhone, tech) {
