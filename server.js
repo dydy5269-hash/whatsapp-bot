@@ -50,7 +50,7 @@ const LANGS = {
     locationOnly:   "📍 يرجى إرسال موقعك باستخدام ميزة الموقع في واتساب.",
     sessionExpired: "انتهت الجلسة. أرسل *مرحبا* للبدء.",
     noTech:         "📍 منطقتك ليست ضمن نطاق خدمتنا حالياً.\nسنقوم بتوسيع خدماتنا قريباً لمنطقتك.\nشكراً لتواصلك معنا! 🙏",
-    noTechRegion:   (r) => `⚠️ لا يوجد فني متاح في *${r}* الآن.\n\n📝 تم حفظ طلبك في قائمة الانتظار وسيتم إشعارك فور توفر فني.\n🆔 رقم الطلب سيُرسَل إليك الآن.`,
+    noTechRegion:   (r) => `📍 منطقتك ليست ضمن نطاق خدمتنا حالياً.\nسنقوم بتوسيع خدماتنا قريباً لمنطقتك.\nشكراً لتواصلك معنا! 🙏`,
     noTechAny:      "⚠️ لا يوجد فني متاح الآن.\n\n📝 تم حفظ طلبك في قائمة الانتظار وسيتم إشعارك فور توفر فني.",
     techAvailableNotify: (id, techName) => `✅ *تم العثور على فني لطلبك!*\n🆔 ${id}\n👨‍🔧 الفني: ${techName}\nسيتواصل معك قريباً.`,
     cancelPrompt:   (id) => `هل تريد إلغاء الطلب *${id}*؟\nأرسل سبب الإلغاء أو *لا* للعودة.`,
@@ -121,7 +121,7 @@ const LANGS = {
     locationOnly:   "📍 Please send your location using WhatsApp location feature.",
     sessionExpired: "Session expired. Send *mrhba* to start.",
     noTech:         "📍 Your area is not within our service coverage yet.\nWe will be expanding to your area soon.\nThank you for contacting us! 🙏",
-    noTechRegion:   (r) => `⚠️ No technician available in *${r}* now.\n\n📝 Your order has been saved in the waiting queue. You will be notified when a technician is available.`,
+    noTechRegion:   (r) => `📍 Your area is not within our service coverage yet.\nWe will be expanding to your area soon.\nThank you for contacting us! 🙏`,
     noTechAny:      "⚠️ No technician available now.\n\n📝 Your order has been saved in the waiting queue. You will be notified when a technician is available.",
     techAvailableNotify: (id, techName) => `✅ *A technician has been found for your order!*\n🆔 ${id}\n👨‍🔧 Tech: ${techName}\nThey will contact you shortly.`,
     cancelPrompt:   (id) => `Do you want to cancel order *${id}*?\nSend the reason or *no* to go back.`,
@@ -892,8 +892,7 @@ async function goToConfirm(from, session, Lx, discount, couponCode) {
   const basePrice    = parseFloat(session.data.servicePrice)||0;
   const hasParts     = parts.length > 0;
   // If parts selected: service × total qty; if no parts: service price as-is
-  const totalQty     = hasParts ? parts.reduce((s,p)=>s+(p.qty||1), 0) : 0;
-  const serviceTotal = Math.round(basePrice * 1000) / 1000; // service price is fixed
+  const serviceTotal = Math.round(basePrice * 1000) / 1000;
   const partsTotal   = Math.round(parts.reduce((s,p)=>s+(parseFloat(p.price)||0)*(p.qty||1),0)*1000)/1000;
   const raw          = Math.round((serviceTotal + partsTotal)*1000)/1000;
   const disc         = discount||0;
@@ -901,7 +900,7 @@ async function goToConfirm(from, session, Lx, discount, couponCode) {
   const partsTxt     = buildPartsText(parts);
   await setSession(from,"confirm",{...session.data,discount:disc,couponCode,totalPrice:total,serviceTotal});
   await sendButtons(from,
-    Lx.confirmTitle(service.name, type.name, partsTxt, basePrice, totalQty, serviceTotal, partsTotal, disc>0?disc:null, total),
+    Lx.confirmTitle(service.name, type.name, partsTxt, basePrice, partsTotal, disc>0?disc:null, total),
     [{id:"confirm_yes",title:Lx.confirmYes},{id:"confirm_no",title:Lx.confirmNo}]
   );
 }
