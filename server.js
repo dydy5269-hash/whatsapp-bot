@@ -421,10 +421,8 @@ function buildPartsText(parts) {
   return parts.map(p=>`• ${p.name} × ${p.qty} = ${(p.price*p.qty).toFixed(3)} OMR`).join("\n");
 }
 function calcTotal(servicePrice, parts) {
-  const hasParts = parts && parts.length > 0;
-  const totalQty = hasParts ? parts.reduce((s,p)=>s+(p.qty||1), 0) : 1;
-  const svcTotal = (parseFloat(servicePrice)||0) * totalQty;
-  const partsTotal = hasParts ? parts.reduce((s,p)=>s+(parseFloat(p.price)||0)*(p.qty||1), 0) : 0;
+  const svcTotal   = parseFloat(servicePrice)||0;
+  const partsTotal = (parts||[]).reduce((s,p)=>s+(parseFloat(p.price)||0)*(p.qty||1), 0);
   return Math.round((svcTotal + partsTotal)*1000)/1000;
 }
 
@@ -839,7 +837,7 @@ app.post("/webhook", async(req,res)=>{
       );
       // Send customer location to tech so they can check distance
       await sendLocation(techPhone, msg.location.latitude, msg.location.longitude);
-      await sendMessage(techPhone, `📍 موقع العميل — ${regionStr||"غير محدد"}\nاضغط على الموقع لحساب المسافة.`);
+      await sendMessage(techPhone, `📍 موقع العميل — ${regionName||"غير محدد"}\nاضغط على الموقع لحساب المسافة.`);
 
       await sendMessage(from,Lx.orderSent(orderId));
       // Invoice sent only after completion (for payment)
@@ -872,33 +870,6 @@ app.post("/webhook", async(req,res)=>{
       return;
     }
 
-    // ── cancel_reason state ─────────────────────────────────────────────────
-    if(session.state==="cancel_reason"){
-      const lang    = session.data.lang||"ar";
-      const orderId = session.data.orderId;
-      const Lx2     = LANGS[lang];
-      if(text==="لا"||text.toLowerCase()==="no"){
-        await clearSession(from);
-        await sendMessage(from, Lx2.cancelNo);
-        return;
-      }
-      // Save cancellation with reason
-      await db.collection("orders").doc(orderId).update({
-        status:"cancelled",
-        cancelReason:text,
-        cancelledAt:admin.firestore.FieldValue.serverTimestamp(),
-        cancelledBy:"customer"
-      });
-      // Free tech if assigned
-      const order=session.data.order;
-      if(order.technicianId&&order.status==="accepted"){
-        await db.collection("technicians").doc(order.technicianId).update({active:true});
-      }
-      await clearSession(from);
-      await sendMessage(from, Lx2.cancelDone(orderId));
-      return;
-    }
-
     await sendMessage(from,Lx.defaultMsg);
   } catch(err){ console.error("WEBHOOK ERROR:", err); }
 });
@@ -922,9 +893,7 @@ async function goToConfirm(from, session, Lx, discount, couponCode) {
   const hasParts     = parts.length > 0;
   // If parts selected: service × total qty; if no parts: service price as-is
   const totalQty     = hasParts ? parts.reduce((s,p)=>s+(p.qty||1), 0) : 0;
-  const serviceTotal = hasParts
-    ? Math.round(basePrice * totalQty * 1000) / 1000
-    : Math.round(basePrice * 1000) / 1000;
+  const serviceTotal = Math.round(basePrice * 1000) / 1000; // service price is fixed
   const partsTotal   = Math.round(parts.reduce((s,p)=>s+(parseFloat(p.price)||0)*(p.qty||1),0)*1000)/1000;
   const raw          = Math.round((serviceTotal + partsTotal)*1000)/1000;
   const disc         = discount||0;
