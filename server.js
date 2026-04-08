@@ -36,9 +36,12 @@ const LANGS = {
     couponValid:    (code, disc, total) => `✅ كوبون *${code}* مقبول!\n💸 الخصم: ${disc.toFixed(3)} OMR\n💰 الإجمالي بعد الخصم: ${total.toFixed(3)} OMR`,
     couponInvalid:  "❌ الكوبون غير صالح أو منتهي.\nأرسل *0* للمتابعة.",
     couponUsed:     "❌ هذا الكوبون استُخدم مسبقاً.\nأرسل *0* للمتابعة.",
-    confirmTitle:   (sName, tName, partsTxt, svcPrice, partsTotal, disc, total) => {
+    confirmTitle:   (sName, tName, partsTxt, svcPrice, partsTotal, disc, total, totalQty) => {
       const fmt = n => (parseFloat(n)||0).toFixed(3);
-      return `📋 *ملخص الطلب*\n🔧 الخدمة: ${sName} — ${fmt(svcPrice)} OMR\n📌 النوع: ${tName}${partsTxt!=='-'?`\n\n🔩 القطع:\n${partsTxt}\n💡 إجمالي القطع: ${fmt(partsTotal)} OMR`:''}${disc?`\n\n🎟 الخصم: -${fmt(disc)} OMR`:''}\n\n💰 *الإجمالي: ${fmt(total)} OMR*`;
+      const svcLine = totalQty > 0
+        ? `🔧 الخدمة: ${sName} — ${fmt(svcPrice)} OMR × ${totalQty} = ${fmt(svcPrice*totalQty)} OMR`
+        : `🔧 الخدمة: ${sName} — ${fmt(svcPrice)} OMR`;
+      return `📋 *ملخص الطلب*\n${svcLine}\n📌 النوع: ${tName}${partsTxt!=='-'?`\n\n🔩 القطع:\n${partsTxt}\n💡 إجمالي القطع: ${fmt(partsTotal)} OMR`:''}${disc?`\n\n🎟 الخصم: -${fmt(disc)} OMR`:''}\n\n💰 *الإجمالي: ${fmt(total)} OMR*`;
     },
     confirmYes:     "✅ تأكيد الطلب",
     confirmNo:      "❌ إلغاء",
@@ -104,9 +107,12 @@ const LANGS = {
     couponValid:    (code, disc, total) => `✅ Coupon *${code}* applied!\n💸 Discount: ${disc.toFixed(3)} OMR\n💰 Total: ${total.toFixed(3)} OMR`,
     couponInvalid:  "❌ Invalid or expired coupon.\nSend *0* to continue.",
     couponUsed:     "❌ Coupon already used.\nSend *0* to continue.",
-    confirmTitle:   (sName, tName, partsTxt, svcPrice, partsTotal, disc, total) => {
+    confirmTitle:   (sName, tName, partsTxt, svcPrice, partsTotal, disc, total, totalQty) => {
       const fmt = n => (parseFloat(n)||0).toFixed(3);
-      return `📋 *Order Summary*\n🔧 Service: ${sName} — ${fmt(svcPrice)} OMR\n📌 Type: ${tName}${partsTxt!=='-'?`\n\n🔩 Parts:\n${partsTxt}\n💡 Parts total: ${fmt(partsTotal)} OMR`:''}${disc?`\n\n🎟 Discount: -${fmt(disc)} OMR`:''}\n\n💰 *Grand Total: ${fmt(total)} OMR*`;
+      const svcLine = totalQty > 0
+        ? `🔧 Service: ${sName} — ${fmt(svcPrice)} OMR × ${totalQty} = ${fmt(svcPrice*totalQty)} OMR`
+        : `🔧 Service: ${sName} — ${fmt(svcPrice)} OMR`;
+      return `📋 *Order Summary*\n${svcLine}\n📌 Type: ${tName}${partsTxt!=='-'?`\n\n🔩 Parts:\n${partsTxt}\n💡 Parts total: ${fmt(partsTotal)} OMR`:''}${disc?`\n\n🎟 Discount: -${fmt(disc)} OMR`:''}\n\n💰 *Grand Total: ${fmt(total)} OMR*`;
     },
     confirmYes:     "✅ Confirm Order",
     confirmNo:      "❌ Cancel",
@@ -415,7 +421,10 @@ function buildPartsText(parts) {
   return parts.map(p=>`• ${p.name} × ${p.qty} = ${(p.price*p.qty).toFixed(3)} OMR`).join("\n");
 }
 function calcTotal(servicePrice, parts) {
-  const svcTotal   = parseFloat(servicePrice)||0;
+  const totalQty   = (parts||[]).reduce((s,p)=>s+(p.qty||1), 0);
+  const svcTotal   = totalQty > 0
+    ? (parseFloat(servicePrice)||0) * totalQty
+    : (parseFloat(servicePrice)||0);
   const partsTotal = (parts||[]).reduce((s,p)=>s+(parseFloat(p.price)||0)*(p.qty||1), 0);
   return Math.round((svcTotal + partsTotal)*1000)/1000;
 }
@@ -893,19 +902,22 @@ async function goToConfirm(from, session, Lx, discount, couponCode) {
   const d         = session.data || {};
   const svcName   = d.serviceName || d.service?.name || "";
   const typeName  = d.selectedType?.name || "";
-  // servicePrice: try all possible sources
   const svcPrice  = parseFloat(d.servicePrice) || parseFloat(d.selectedType?.price) || 0;
   const parts     = d.parts || [];
+  // Total qty of all parts selected
+  const totalQty  = parts.reduce((s,p)=>s+(p.qty||1), 0);
+  // Service multiplied by total qty (if parts selected)
+  const svcTotal  = totalQty > 0
+    ? Math.round(svcPrice * totalQty * 1000) / 1000
+    : Math.round(svcPrice * 1000) / 1000;
   const partsTotal= Math.round(parts.reduce((s,p)=>s+(parseFloat(p.price)||0)*(p.qty||1),0)*1000)/1000;
   const disc      = parseFloat(discount)||0;
-  const total     = Math.max(0, Math.round((svcPrice + partsTotal - disc)*1000)/1000);
+  const total     = Math.max(0, Math.round((svcTotal + partsTotal - disc)*1000)/1000);
   const partsTxt  = buildPartsText(parts);
 
-  console.log("goToConfirm:", {svcName, typeName, svcPrice, partsTotal, disc, total});
-
-  await setSession(from,"confirm",{...d, discount:disc, couponCode, totalPrice:total, servicePrice:svcPrice});
+  await setSession(from,"confirm",{...d, discount:disc, couponCode, totalPrice:total, servicePrice:svcPrice, serviceTotalPrice:svcTotal});
   await sendButtons(from,
-    Lx.confirmTitle(svcName, typeName, partsTxt, svcPrice, partsTotal, disc>0?disc:null, total),
+    Lx.confirmTitle(svcName, typeName, partsTxt, svcPrice, partsTotal, disc>0?disc:null, total, totalQty),
     [{id:"confirm_yes",title:Lx.confirmYes},{id:"confirm_no",title:Lx.confirmNo}]
   );
 }
