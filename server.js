@@ -295,13 +295,26 @@ async function getAvailableTechs(serviceId, regionName, excludeIds=[]) {
   const snap = await db.collection("technicians")
     .where("active","==",true).where("services","array-contains",serviceId).get();
   let techs = snap.docs.map(d=>({id:d.id,...d.data()})).filter(t=>!excludeIds.includes(t.id));
-  // Prefer same region (flexible Arabic match)
-  if(regionName && techs.length > 1){
-    const norm = s=>(s||"").toLowerCase().replace(/\s+/g,"").replace(/ة/g,"ه").replace(/ى/g,"ي");
-    const rn   = norm(regionName);
-    const reg  = techs.filter(t=>{const tn=norm(t.region||"");return tn&&(tn.includes(rn)||rn.includes(tn));});
-    if(reg.length) techs = reg;
+
+  const norm = s => (s||"").toLowerCase().replace(/\s+/g,"").replace(/ة/g,"ه").replace(/ى/g,"ي").replace(/أ|إ|آ/g,"ا");
+
+  if(regionName){
+    const rn = norm(regionName);
+    // Try strict same-region match first
+    const sameRegion = techs.filter(t => {
+      const tn = norm(t.region||"");
+      return tn && (tn.includes(rn) || rn.includes(tn));
+    });
+    if(sameRegion.length){
+      // Found techs in same region — use ONLY them
+      sameRegion.sort((a,b)=>(b.rating||0)-(a.rating||0));
+      return sameRegion;
+    }
+    // No tech in this region → return empty (will go to waiting queue)
+    return [];
   }
+
+  // No region info → return all available sorted by rating
   techs.sort((a,b)=>(b.rating||0)-(a.rating||0));
   return techs;
 }
@@ -773,22 +786,32 @@ app.post("/webhook", async(req,res)=>{
       const userLang=getLang(session);
       if(!service||!selectedType){ await sendMessage(from,Lx.sessionExpired); await clearSession(from); return; }
 
-      const regionName=await detectRegion(msg.location.latitude,msg.location.longitude);
-      if(regionName) await sendMessage(from,Lx.regionDetected(regionName));
+      // detectRegion returns {name, active} object
+      const regionObj  = await detectRegion(msg.location.latitude, msg.location.longitude);
+      const regionName = regionObj?.name || null;  // extract string name
+      const regionActive = regionObj?.active !== false;
 
-      // Define these first — used in both waiting and normal flow
-      const parts=session.data.parts||[];
-      const rawTotal=calcTotal(session.data.servicePrice||selectedType.price,parts);
-      const discount=session.data.discount||0;
-      const totalPrice=Math.max(0,Math.round((rawTotal-discount)*1000)/1000);
-      const partsText=buildPartsText(parts);
+      if(regionName) await sendMessage(from, Lx.regionDetected(regionName));
 
-      const techs=await getAvailableTechs(service.id, regionName||"", []);
+      // Block if region is inactive (not served)
+      if(regionName && !regionActive){
+        await sendMessage(from, getLang(session)==="ar"
+          ? `⚠️ عذراً، منطقة *${regionName}* غير مخدومة حالياً.`
+          : `⚠️ Sorry, region *${regionName}* is not currently served.`);
+        await clearSession(from); return;
+      }
+
+      const parts      = session.data.parts||[];
+      const rawTotal   = calcTotal(session.data.servicePrice||selectedType.price, parts);
+      const discount   = session.data.discount||0;
+      const totalPrice = Math.max(0, Math.round((rawTotal-discount)*1000)/1000);
+      const partsText  = buildPartsText(parts);
+
+      const techs = await getAvailableTechs(service.id, regionName||"", []);
       if(!techs.length){
-        const regionStr2 = typeof regionName==="string"?regionName:(regionName?.name||"");
         // Save to waiting queue
         const waitId = generateOrderId();
-        await db.collection("waiting_orders").doc(waitId).set({
+        await db.collection("orders").doc(waitId).set({
           orderId: waitId, customer: from,
           serviceName: service.name, serviceId: service.id,
           type: selectedType.name, servicePrice: session.data.servicePrice||selectedType.price,
@@ -799,13 +822,13 @@ app.post("/webhook", async(req,res)=>{
           status: "waiting",
           createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
-        await sendMessage(from, regionName ? Lx.noTechRegion(regionName) : Lx.noTechAny);
-        await sendMessage(from, Lx.orderSent(waitId));
+        await sendMessage(from, regionName ? Lx.noTechRegion(regionName) : Lx.noTech);
+        await sendMessage(from, Lx.waitingQueue(waitId));
         await clearSession(from); return;
       }
 
-      const chosenTech=techs[0];
-      const orderId=generateOrderId();
+      const chosenTech = techs[0];
+      const orderId    = generateOrderId();
 
       await db.collection("orders").doc(orderId).set({
         orderId, customer:from,
