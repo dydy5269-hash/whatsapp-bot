@@ -91,6 +91,8 @@ const LANGS = {
     trackPrompt:    "🔍 أرسل رقم الطلب:\nمثال: *حالة ORD-XXXXXXXX*",
     backBtn:        "↩️ رجوع",
     langChanged:    "✅ تم تغيير اللغة إلى العربية.",
+    lowBalance:     (bal) => `⚠️ رصيدك الحالي: ${(bal||0).toFixed(3)} OMR\nالحد الأدنى للعمل هو *2.000 OMR*\n\nيرجى إعادة تعبئة الرصيد لتتمكن من استلام الطلبات.\n\n📞 تواصل مع الإدارة لإعادة التعبئة.`,
+    rechargeNeeded: "🔴 حسابك موقوف بسبب انخفاض الرصيد. أعد تعبئة رصيدك للعودة للعمل.",
   },
   en: {
     welcome:        "Welcome! 👋\nChoose a service:",
@@ -164,6 +166,8 @@ const LANGS = {
     trackPrompt:    "🔍 Send your order ID:\nExample: *status ORD-XXXXXXXX*",
     backBtn:        "↩️ Back",
     langChanged:    "✅ Language changed to English.",
+    lowBalance:     (bal) => `⚠️ Your balance: ${(bal||0).toFixed(3)} OMR\nMinimum required: *2.000 OMR*\n\nPlease recharge your balance to receive orders.\n\n📞 Contact admin to recharge.`,
+    rechargeNeeded: "🔴 Account suspended due to low balance. Recharge to resume work.",
   },
   ur: {
     welcome:        "خوش آمدید! 👋\nخدمت منتخب کریں:",
@@ -238,6 +242,8 @@ const LANGS = {
     // Back button labels
     backBtn:        "↩️ واپس",
     langChanged:    "✅ زبان اردو میں تبدیل ہو گئی۔",
+    lowBalance:     (bal) => `⚠️ آپ کا بیلنس: ${(bal||0).toFixed(3)} OMR\nکام کے لیے کم از کم *2.000 OMR* ضروری ہے\n\nآرڈر لینے کے لیے بیلنس ری چارج کریں۔\n\n📞 انتظامیہ سے رابطہ کریں۔`,
+    rechargeNeeded: "🔴 کم بیلنس کی وجہ سے اکاؤنٹ معطل۔ کام جاری رکھنے کے لیے ری چارج کریں۔",
   }
 };
 
@@ -267,6 +273,23 @@ async function setSession(p, state, data) {
 }
 async function clearSession(p) { await db.collection("sessions").doc(p).delete(); }
 function generateOrderId() { return "ORD-" + uuidv4().split("-")[0].toUpperCase(); }
+
+// ─── Balance Check ────────────────────────────────────────────────────────────
+const MIN_TECH_BALANCE = 2.0; // OMR — minimum balance to be active
+
+async function checkTechBalance(techId, techPhone, techLang) {
+  const snap = await db.collection("technicians").doc(techId).get();
+  if (!snap.exists) return true; // allow if not found
+  const bal = parseFloat(snap.data()?.balance || 0);
+  if (bal < MIN_TECH_BALANCE) {
+    // Mark as inactive
+    await db.collection("technicians").doc(techId).update({ active: false });
+    const tl = techLang || snap.data()?.lang || "ar";
+    await sendMessage(techPhone, LANGS[tl].lowBalance(bal));
+    return false; // blocked
+  }
+  return true; // allowed
+}
 
 // ─── Back Navigation ──────────────────────────────────────────────────────────
 async function handleBack(from, session) {
@@ -468,7 +491,9 @@ async function getAvailableTechs(serviceId, regionName, excludeIds=[]) {
   if(!serviceId || typeof serviceId !== "string") return [];
   const snap = await db.collection("technicians")
     .where("active","==",true).where("services","array-contains",serviceId).get();
-  let techs = snap.docs.map(d=>({id:d.id,...d.data()})).filter(t=>!excludeIds.includes(t.id));
+  let techs = snap.docs.map(d=>({id:d.id,...d.data()}))
+    .filter(t => !excludeIds.includes(t.id))
+    .filter(t => (parseFloat(t.balance)||0) >= MIN_TECH_BALANCE); // exclude low balance
 
   const norm = s => (String(s||"")||"" ).toLowerCase().replace(/\s+/g,"").replace(/ة/g,"ه").replace(/ى/g,"ي").replace(/أ|إ|آ/g,"ا");
 
@@ -1167,6 +1192,10 @@ async function handleTechMessage(techPhone, text, msg, tech) {
   // Text fallback
   const tl = tech.lang || "ar";
   await sendMessage(techPhone, LANGS[tl].techInfo(tech));
+  // Warn if balance is low
+  if ((parseFloat(tech.balance)||0) < MIN_TECH_BALANCE) {
+    await sendMessage(techPhone, LANGS[tl].lowBalance(tech.balance||0));
+  }
   await sendMessage(techPhone, tl==="ar"
     ? "💬 لتغيير اللغة أرسل: ar / en / ur"
     : tl==="ur"
@@ -1175,6 +1204,10 @@ async function handleTechMessage(techPhone, text, msg, tech) {
 }
 
 async function handleAccept(orderId, techPhone, tech) {
+  // ── Balance check before accepting ──────────────────────────────────────────
+  const allowed = await checkTechBalance(tech.id, techPhone, tech.lang);
+  if (!allowed) return; // message already sent inside checkTechBalance
+
   const ref=db.collection("orders").doc(orderId); const snap=await ref.get();
   if(!snap.exists){ await sendMessage(techPhone,LANGS.ar.orderNotFound); return; }
   const order=snap.data();
@@ -1236,7 +1269,13 @@ async function handleDone(orderId, techPhone, tech) {
   const techData=(await techRef.get()).data();
   const fee=Math.round((order.totalPrice||0)*0.2*1000)/1000;
   const newBal=Math.max(0,Math.round(((techData?.balance||0)-fee)*1000)/1000);
-  await techRef.update({balance:newBal,active:true});
+  // Only mark active again if balance is still sufficient
+  const canBeActive = newBal >= MIN_TECH_BALANCE;
+  await techRef.update({balance: newBal, active: canBeActive});
+  if (!canBeActive) {
+    // Notify tech their balance is too low
+    await sendMessage(techPhone, LANGS[tech.lang||"ar"].lowBalance(newBal));
+  }
   // Deduct parts stock
   if(order.parts && order.parts.length){
     const batch = db.batch();
