@@ -299,6 +299,11 @@ html[dir="ltr"] .notif-item.unread{border-right:none;border-left:3px solid var(-
         <div class="card chart-wrap"><h3>الطلبات (آخر 7 أيام)</h3><canvas id="ordersChart" height="200"></canvas></div>
         <div class="card chart-wrap"><h3>توزيع الحالات</h3><canvas id="statusChart" height="200"></canvas></div>
       </div>
+      <!-- Low balance alert -->
+      <div id="low-balance-alert" style="display:none;background:#3b1a1a;border:1px solid #7c2d12;border-radius:10px;padding:14px 18px;margin-bottom:16px;color:#fca5a5;font-size:13px">
+        ⚠️ <strong>فنيون برصيد منخفض (أقل من 2 OMR):</strong>
+        <span id="low-balance-list"></span>
+      </div>
       <div class="card">
         <div class="card-header"><h3>آخر الطلبات</h3></div>
         <div class="table-wrap" id="recent-orders-table"></div>
