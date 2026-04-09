@@ -1418,7 +1418,7 @@ async function openAssignModal(docId, orderId, serviceId, isWaiting=false) {
       return;
     }
     sel.innerHTML = '<option value="">اختر فني...</option>' +
-      techs.map(t=>`<option value="${t.id}">👨‍🔧 ${t.name||"-"} — ⭐${t.rating?t.rating.toFixed(1):"—"} — 📍${t.region||"—"}</option>`).join("");
+      techs.map(t=>`<option value="${t.id}">👨‍🔧 ${t.name||"-"} — ⭐${t.rating?t.rating.toFixed(1):"—"} — 📍${t.regionName||t.region||"—"}</option>`).join("");
   } catch(e) {
     sel.innerHTML = '<option value="">خطأ في التحميل</option>';
     showToast(e.message,"error");
