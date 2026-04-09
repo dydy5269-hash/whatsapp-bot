@@ -490,8 +490,14 @@ async function getTechByPhone(phone) {
 async function getAvailableTechs(serviceId, regionName, excludeIds=[]) {
   if(!serviceId || typeof serviceId !== "string") return [];
   regionName = regionName && typeof regionName === "object" ? null : (regionName||null);
+  console.log(`[AVAIL] querying: serviceId="${serviceId}" regionName="${regionName}"`);
   const snap = await db.collection("technicians")
     .where("active","==",true).where("services","array-contains",serviceId).get();
+  console.log(`[AVAIL] raw results from Firestore: ${snap.size} technicians with active=true & services contains "${serviceId}"`);
+  snap.docs.forEach(d => {
+    const t = d.data();
+    console.log(`[AVAIL] found: ${t.name} active=${t.active} balance=${t.balance} services=${JSON.stringify(t.services)}`);
+  });
   let techs = snap.docs.map(d=>({id:d.id,...d.data()}))
     .filter(t => !excludeIds.includes(t.id))
     .filter(t => {
@@ -776,6 +782,35 @@ app.post("/webhook", async(req,res)=>{
       }
       await clearSession(from);
       await sendMessage(from, Lc.cancelDone(orderId, reason));
+      return;
+    }
+
+    // ── Block start if pending rating ──────────────────────────────────────────
+    if(isStart && session.state==="rating"){
+      const lang = session.data.lang||"ar";
+      const Lx   = LANGS[lang];
+      // Re-send rating prompt and block
+      await sendMessage(from, lang==="ar"
+        ? `⭐ يرجى إتمام تقييم الفني أولاً قبل طلب خدمة جديدة.
+
+أرسل رقماً من 1 إلى 5:
+1 — ضعيف
+2 — مقبول
+3 — جيد
+4 — جيد جداً
+5 — ممتاز`
+        : lang==="ur"
+        ? `⭐ نئی خدمت سے پہلے ٹیکنیشن کو ریٹ کریں۔
+
+1 سے 5 نمبر بھیجیں:`
+        : `⭐ Please rate the technician before placing a new order.
+
+Send a number 1–5:
+1 — Poor
+2 — Fair
+3 — Good
+4 — Very Good
+5 — Excellent`);
       return;
     }
 
@@ -1123,7 +1158,16 @@ app.post("/webhook", async(req,res)=>{
     if(session.state==="rating"){
       const stars = parseInt(text);
       if(isNaN(stars)||stars<1||stars>5){
-        await sendMessage(from, getLang(session)==="ar"?"يرجى إرسال رقم بين 1 و 5":"Please send a number between 1 and 5");
+        const rl = session.data.lang||"ar";
+        await sendMessage(from, rl==="ar"
+          ? `⭐ يرجى تقييم الفني أولاً لإتمام الطلب.
+أرسل رقماً من 1 إلى 5:
+1 — ضعيف  2 — مقبول  3 — جيد  4 — جيد جداً  5 — ممتاز`
+          : rl==="ur"
+          ? `⭐ پہلے ریٹنگ دیں۔ 1 سے 5:`
+          : `⭐ Please rate the technician first.
+Send a number 1–5:
+1 — Poor  2 — Fair  3 — Good  4 — Very Good  5 — Excellent`);
         return;
       }
       const { orderId, technicianId, lang } = session.data;
