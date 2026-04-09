@@ -309,6 +309,9 @@ async function handleBack(from, session) {
   }
   if (st === "coupon") {
     // Back from coupon → go to parts (or type if no parts)
+    // ALWAYS clear pendingPartIdx to avoid stale state
+    session.data.pendingPartIdx = undefined;
+    session.data.pendingMaxQty = undefined;
     const serviceId = session.data.serviceId || session.data.service?.id || "";
     const parts = await getPartsByService(serviceId);
     if (parts.length) {
@@ -331,11 +334,13 @@ async function handleBack(from, session) {
   if (st === "confirm") {
     // Back from confirm → go to coupon (or parts if no coupon)
     const hasCoupons = await checkActiveCoupons();
+    // Clear any stale pending part state
+    const cleanConfirmBack = {...session.data, discount:0, couponId:null, couponCode:null, pendingPartIdx:null, pendingMaxQty:null};
     if (hasCoupons) {
-      await setSession(from,"coupon",{...session.data, discount:0, couponId:null, couponCode:null});
+      await setSession(from,"coupon", cleanConfirmBack);
       await sendMessage(from, Lx.couponPrompt);
     } else {
-      return await handleBack(from, {...session, state:"coupon"});
+      return await handleBack(from, {...session, state:"coupon", data: cleanConfirmBack});
     }
     return true;
   }
@@ -832,15 +837,10 @@ app.post("/webhook", async(req,res)=>{
       const selected = JSON.parse(JSON.stringify(session.data.parts||[]));
       const pending  = session.data.pendingPartIdx;
 
-      // ── Convert list reply IDs AFTER defining pending ──
-      if(text==="nav_back"){ await handleBack(from,session); return; }
-      if(text==="part_skip")                                   text = "0";
-      else if(text.startsWith("part_"))                        text = String(parseInt(text.replace("part_",""))+1);
-      if(text.startsWith("qty_"))                              text = text.replace("qty_","");
-
-      if(pending!==undefined){
-        // back from qty → go back to parts list
-        if(text==="nav_back"){
+      // ── nav_back must be checked BEFORE any ID conversion ──
+      if(text==="nav_back"){
+        if(pending!==undefined){
+          // In qty selection → back to parts list
           await setSession(from,"parts",{...session.data,pendingPartIdx:undefined,pendingMaxQty:undefined});
           const lang3b = getLang(session);
           const fp = await getPartsByService(session.data.serviceId||"");
@@ -848,8 +848,19 @@ app.post("/webhook", async(req,res)=>{
           rb.push({id:"part_skip",title:lang3b==="ar"?"0 — بدون قطع":lang3b==="ur"?"0 — بغیر پرزے":"0 — No parts"});
           rb.push(backRow(lang3b));
           await sendList(from,lang3b==="ar"?"🔩 اختر قطعة:":lang3b==="ur"?"🔩 پرزہ منتخب کریں:":"🔩 Choose part:",lang3b==="ar"?"القطع":lang3b==="ur"?"پرزے":"Parts",[{title:lang3b==="ar"?"القطع المتاحة":lang3b==="ur"?"دستیاب پرزے":"Available Parts",rows:rb}]);
-          return;
+        } else {
+          // In parts list → back to type
+          await handleBack(from, session);
         }
+        return;
+      }
+
+      // ── Convert list reply IDs (AFTER nav_back check) ──
+      if(text==="part_skip")                                   text = "0";
+      else if(text.startsWith("part_"))                        text = String(parseInt(text.replace("part_",""))+1);
+      if(text.startsWith("qty_"))                              text = text.replace("qty_","");
+
+      if(pending!==undefined){
         // "0" while waiting for qty = cancel part selection, go back to menu
         if(text==="0"||text==="part_skip"){
           await setSession(from,"parts",{...session.data,pendingPartIdx:undefined});
