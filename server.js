@@ -489,6 +489,7 @@ async function getTechByPhone(phone) {
 }
 async function getAvailableTechs(serviceId, regionName, excludeIds=[]) {
   if(!serviceId || typeof serviceId !== "string") return [];
+  regionName = regionName && typeof regionName === "object" ? null : (regionName||null);
   const snap = await db.collection("technicians")
     .where("active","==",true).where("services","array-contains",serviceId).get();
   let techs = snap.docs.map(d=>({id:d.id,...d.data()}))
@@ -1045,7 +1046,7 @@ app.post("/webhook", async(req,res)=>{
 
       // detectRegion returns {name, active} object
       const regionObj  = await detectRegion(msg.location.latitude, msg.location.longitude);
-      const regionName = regionObj?.name || null;  // extract string name
+      const regionName = regionObj?.name ? String(regionObj.name) : null;  // always plain string
       const regionActive = regionObj?.active !== false;
 
       if(regionName) await sendMessage(from, Lx.regionDetected(regionName));
@@ -1252,7 +1253,7 @@ async function handleReject(orderId, techPhone, tech) {
   const customerPhone=normalize(order.customer);
   const CL=LANGS[order.lang||"ar"];
   await sendMessage(customerPhone,CL.rejected(orderId));
-  const backup=await getAvailableTechs(order.serviceId,order.region||"",rejected);
+  const backup=await getAvailableTechs(order.serviceId,String(order.region||""),rejected);
   if(!backup.length){ await ref.update({status:"rejected"}); await sendMessage(customerPhone,CL.noBackupTech(orderId)); return; }
   await ref.update({technicianId:backup[0].id});
   const backupPhone = normalize(backup[0].phone);
@@ -1365,7 +1366,7 @@ async function processWaitingQueue(serviceId, region) {
       const order = doc.data();
       // Filter by serviceId if provided
       if(serviceId && order.serviceId !== serviceId) continue;
-      const techs = await getAvailableTechs(order.serviceId||serviceId, order.region||"", []);
+      const techs = await getAvailableTechs(order.serviceId||serviceId, String(order.region||""), []);
       if(!techs.length) continue;
 
       const tech   = techs[0];
@@ -1418,7 +1419,7 @@ async function checkWaitingQueue() {
     if(snap.empty) return;
     for(const doc of snap.docs){
       const order = doc.data();
-      const techs = await getAvailableTechs(order.serviceId, order.region||"", order.rejectedTechs||[]);
+      const techs = await getAvailableTechs(order.serviceId, String(order.region||""), order.rejectedTechs||[]);
       if(!techs.length) continue;
       const tech  = techs[0];
       const CL    = LANGS[order.lang||"ar"];
