@@ -528,10 +528,9 @@ async function getAvailableTechs(serviceId, regionName, excludeIds=[]) {
       sameRegion.sort((a,b)=>(b.rating||0)-(a.rating||0));
       return sameRegion;
     }
-    // No strict match — try any available tech (region flexible)
-    console.log("[TECH] No region match — returning all available techs");
-    techs.sort((a,b)=>(b.rating||0)-(a.rating||0));
-    return techs;
+    // No match in region → return empty → order goes to waiting_orders
+    console.log("[TECH] No region match → waiting queue");
+    return [];
   }
 
   // No region info → return all available sorted by rating
@@ -1311,7 +1310,22 @@ async function handleReject(orderId, techPhone, tech) {
   const CL=LANGS[order.lang||"ar"];
   await sendMessage(customerPhone,CL.rejected(orderId));
   const backup=await getAvailableTechs(order.serviceId,String(order.region||""),rejected);
-  if(!backup.length){ await ref.update({status:"rejected"}); await sendMessage(customerPhone,CL.noBackupTech(orderId)); return; }
+  if(!backup.length){
+    // No backup tech → move to waiting_orders
+    const orderData = (await ref.get()).data();
+    await db.collection("waiting_orders").doc(orderId).set({
+      ...orderData,
+      status:"waiting",
+      rejectedTechs: rejected,
+      technicianId: null,
+      movedFromOrders: true,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    await ref.update({status:"waiting_transfer"});
+    await sendMessage(customerPhone, CL.noTechAny);
+    await sendMessage(customerPhone, CL.waitingQueue(orderId));
+    return;
+  }
   await ref.update({technicianId:backup[0].id});
   const backupPhone = normalize(backup[0].phone);
   const backupTechData = (await db.collection("technicians").doc(backup[0].id).get()).data();
@@ -1423,7 +1437,12 @@ async function processWaitingQueue(serviceId, region) {
       const order = doc.data();
       // Filter by serviceId if provided
       if(serviceId && order.serviceId !== serviceId) continue;
-      const techs = await getAvailableTechs(order.serviceId||serviceId, String(order.region||""), []);
+      // Try same region first, then any available tech
+      let techs = await getAvailableTechs(order.serviceId||serviceId, String(order.region||""), order.rejectedTechs||[]);
+      if(!techs.length){
+        // Fallback: any tech with this service, ignore region
+        techs = await getAvailableTechs(order.serviceId||serviceId, null, order.rejectedTechs||[]);
+      }
       if(!techs.length) continue;
 
       const tech   = techs[0];
@@ -1476,7 +1495,11 @@ async function checkWaitingQueue() {
     if(snap.empty) return;
     for(const doc of snap.docs){
       const order = doc.data();
-      const techs = await getAvailableTechs(order.serviceId, String(order.region||""), order.rejectedTechs||[]);
+      // Try same region first, then any available tech
+      let techs = await getAvailableTechs(order.serviceId, String(order.region||""), order.rejectedTechs||[]);
+      if(!techs.length){
+        techs = await getAvailableTechs(order.serviceId, null, order.rejectedTechs||[]);
+      }
       if(!techs.length) continue;
       const tech  = techs[0];
       const CL    = LANGS[order.lang||"ar"];
@@ -1501,6 +1524,58 @@ setInterval(checkWaitingQueue, 2*60*1000); // every 2 minutes
 app.post("/admin/check-queue", async(req,res)=>{
   await checkWaitingQueue();
   res.json({success:true});
+});
+
+// ── Admin assign from waiting_orders: move to orders + notify ──────────────────
+app.post("/admin/assign-waiting", async(req,res)=>{
+  try {
+    const { orderId, techId } = req.body;
+    if(!orderId||!techId) return res.status(400).json({error:"orderId and techId required"});
+
+    const [wSnap, techSnap] = await Promise.all([
+      db.collection("waiting_orders").doc(orderId).get(),
+      db.collection("technicians").doc(techId).get()
+    ]);
+    if(!wSnap.exists) return res.status(404).json({error:"Waiting order not found"});
+    if(!techSnap.exists) return res.status(404).json({error:"Tech not found"});
+
+    const order = wSnap.data();
+    const tech  = techSnap.data();
+
+    // Move to orders
+    await db.collection("orders").doc(orderId).set({
+      ...order,
+      technicianId: techId,
+      rejectedTechs: order.rejectedTechs||[],
+      status: "pending",
+      assignedByAdmin: true,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    await wSnap.ref.update({status:"assigned"});
+    await db.collection("technicians").doc(techId).update({active:false});
+
+    // Notify customer
+    const CL = LANGS[order.lang||"ar"];
+    await sendMessage(normalize(order.customer), CL.techAvailableNotify(orderId, tech.name));
+
+    // Notify tech
+    const tl = tech.lang||"ar";
+    const partsText = buildPartsText(order.parts||[]);
+    await sendButtons(normalize(tech.phone),
+      LANGS[tl].newOrder(orderId, order.serviceName, order.type||"", partsText, order.totalPrice||0),
+      [{id:"accept_"+orderId, title:LANGS[tl].acceptBtn},{id:"reject_"+orderId, title:LANGS[tl].rejectBtn}]
+    );
+    if(order.location?.latitude){
+      await sendLocation(normalize(tech.phone), order.location.latitude, order.location.longitude);
+      await sendMessage(normalize(tech.phone), `📍 ${order.region||"-"}
+https://www.google.com/maps?q=${order.location.latitude},${order.location.longitude}`);
+    }
+
+    res.json({success:true, techName:tech.name});
+  } catch(e){
+    console.error("admin/assign-waiting:", e?.message);
+    res.status(500).json({error:e.message});
+  }
 });
 
 app.listen(process.env.PORT||3000,()=>console.log("✅ TAQA Bot running"));
