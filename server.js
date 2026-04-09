@@ -493,7 +493,12 @@ async function getAvailableTechs(serviceId, regionName, excludeIds=[]) {
     .where("active","==",true).where("services","array-contains",serviceId).get();
   let techs = snap.docs.map(d=>({id:d.id,...d.data()}))
     .filter(t => !excludeIds.includes(t.id))
-    .filter(t => (parseFloat(t.balance)||0) >= MIN_TECH_BALANCE); // exclude low balance
+    .filter(t => {
+      const bal = parseFloat(t.balance)||0;
+      const ok = bal >= MIN_TECH_BALANCE;
+      if(!ok) console.log(`[TECH] ${t.name} excluded: balance=${bal} < ${MIN_TECH_BALANCE}`);
+      return ok;
+    }); // exclude low balance
 
   const norm = s => (String(s||"")||"" ).toLowerCase().replace(/\s+/g,"").replace(/ة/g,"ه").replace(/ى/g,"ي").replace(/أ|إ|آ/g,"ا");
 
@@ -502,8 +507,10 @@ async function getAvailableTechs(serviceId, regionName, excludeIds=[]) {
     // Try strict same-region match first
     const sameRegion = techs.filter(t => {
       const tn = norm(t.region||"");
+      console.log(`[TECH] ${t.name}: region="${t.region}" norm="${tn}" vs "${rn}" → ${tn&&(tn.includes(rn)||rn.includes(tn))?"✅":"❌"}`);
       return tn && (tn.includes(rn) || rn.includes(tn));
     });
+    console.log(`[TECH] sameRegion count: ${sameRegion.length}, total techs: ${techs.length}, regionName: "${regionName}"`);
     if(sameRegion.length){
       // Found techs in same region — use ONLY them
       sameRegion.sort((a,b)=>(b.rating||0)-(a.rating||0));
@@ -553,16 +560,19 @@ async function detectRegion(lat, lng) {
       if(r.lat && r.lng) {
         const dist   = haversineKm(lat, lng, parseFloat(r.lat), parseFloat(r.lng));
         const radius = parseFloat(r.radiusKm) || 10;
+        console.log(`[REGION] ${r.name}: dist=${dist.toFixed(2)}km radius=${radius}km → ${dist<=radius?"✅ MATCH":"❌"}`);
         if(dist <= radius) matched.push({name:r.name,active:r.active!==false,id:doc.id,dist});
       }
       // Method 2: bounding box
       else if(r.maxLat && r.minLat && r.maxLng && r.minLng) {
         const inBox = lat<=parseFloat(r.maxLat) && lat>=parseFloat(r.minLat) &&
                       lng<=parseFloat(r.maxLng) && lng>=parseFloat(r.minLng);
+        console.log(`[REGION] ${r.name}: bounding box → ${inBox?"✅ MATCH":"❌"}`);
         if(inBox) matched.push({name:r.name,active:r.active!==false,id:doc.id,dist:0});
       }
     });
 
+    console.log(`[REGION] matched: ${JSON.stringify(matched)}`);
     if(matched.length) {
       matched.sort((a,b)=>a.dist-b.dist);
       return matched[0];
