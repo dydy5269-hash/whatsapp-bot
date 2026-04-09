@@ -1348,11 +1348,14 @@ async function handleDone(orderId, techPhone, tech) {
   const techData=(await techRef.get()).data();
   const fee=Math.round((order.totalPrice||0)*0.2*1000)/1000;
   const newBal=Math.max(0,Math.round(((techData?.balance||0)-fee)*1000)/1000);
-  // Only mark active again if balance is still sufficient
-  const canBeActive = newBal >= MIN_TECH_BALANCE;
+  // Check if tech has another active order before reactivating
+  const otherActive = await db.collection("orders")
+    .where("technicianId","==",order.technicianId)
+    .where("status","in",["pending","accepted"])
+    .limit(1).get();
+  const canBeActive = newBal >= MIN_TECH_BALANCE && otherActive.empty;
   await techRef.update({balance: newBal, active: canBeActive});
-  if (!canBeActive) {
-    // Notify tech their balance is too low
+  if (newBal < MIN_TECH_BALANCE) {
     await sendMessage(techPhone, LANGS[tech.lang||"ar"].lowBalance(newBal));
   }
   // Deduct parts stock
@@ -1516,6 +1519,32 @@ async function checkWaitingQueue() {
   } catch(e){ console.error("checkWaitingQueue:", e?.message); }
 }
 setInterval(checkWaitingQueue, 2*60*1000); // every 2 minutes
+
+// ── Auto-reactivate techs with sufficient balance every 5 min ─────────────────
+async function autoReactivateTechs() {
+  try {
+    // Find techs marked inactive but with enough balance and no active order
+    const snap = await db.collection("technicians").where("active","==",false).get();
+    if(snap.empty) return;
+    for(const doc of snap.docs){
+      const t = doc.data();
+      const bal = parseFloat(t.balance||0);
+      if(bal < MIN_TECH_BALANCE) continue; // still low balance — keep inactive
+      // Check if tech has an active order
+      const activeOrder = await db.collection("orders")
+        .where("technicianId","==",doc.id)
+        .where("status","in",["pending","accepted"])
+        .limit(1).get();
+      if(!activeOrder.empty) continue; // has active order — keep inactive (busy)
+      // No active order + sufficient balance → reactivate
+      await doc.ref.update({active:true});
+      console.log(`[AUTO] Reactivated tech: ${t.name} balance=${bal}`);
+    }
+  } catch(e){ console.error("autoReactivateTechs:", e?.message); }
+}
+setInterval(autoReactivateTechs, 5*60*1000); // every 5 minutes
+// Run once on startup
+setTimeout(autoReactivateTechs, 10000);
 
 // ── Admin endpoint to manually trigger queue check ────────────────────────────
 app.post("/admin/check-queue", async(req,res)=>{
