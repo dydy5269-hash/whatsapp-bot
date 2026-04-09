@@ -60,7 +60,7 @@ const LANGS = {
     orderSent:      (id) => `✅ *تم إرسال طلبك!*\n🆔 رقم الطلب: ${id}\nسيتم إشعارك عند قبول الطلب.\n\nلمتابعة طلبك:\n*حالة ${id}*`,
     activeOrder:    (id, sName, status) => `لديك طلب نشط:\n🆔 ${id}\n🔧 ${sName}\nالحالة: ${statusLabel(status,"ar")}`,
     defaultMsg:     "أرسل *مرحبا* للبدء.\nأو *حالة [رقم الطلب]* للمتابعة.",
-    techInfo:       (t) => `👤 الاسم: ${t.name}\n📞 الهاتف: ${t.phone}\n⭐ التقييم: ${t.rating?`${t.rating} (${t.ratingCount||0})`:"لا يوجد"}\n💰 الرصيد: ${(t.balance||0).toFixed(3)} OMR\n🟢 الحالة: ${t.active?"متاح":"مشغول"}\n📍 المنطقة: ${t.region||"غير محدد"}`,
+    techInfo:       (t) => `👤 الاسم: ${t.name}\n📞 الهاتف: ${t.phone}\n⭐ التقييم: ${t.rating?`${t.rating} (${t.ratingCount||0})`:"لا يوجد"}\n💰 الرصيد: ${(t.balance||0).toFixed(3)} OMR\n🟢 الحالة: ${t.active?"متاح":"مشغول"}\n📍 المنطقة: ${t.regionName||t.region||"غير محدد"}`,
     newOrder:       (id, sName, tName, parts, total) => `🔔 *طلب جديد!*\n🆔 ${id}\n🔧 ${sName}\n📌 ${tName}${parts!=="-"?`\n\n🔩 القطع:\n${parts}`:""}\n\n💰 الإجمالي: ${total.toFixed(3)} OMR`,
     acceptBtn:      "✅ قبول الطلب",
     rejectBtn:      "❌ رفض الطلب",
@@ -135,7 +135,7 @@ const LANGS = {
     orderSent:      (id) => `✅ *Order sent!*\n🆔 Order ID: ${id}\nYou'll be notified when accepted.\n\nTrack your order:\n*status ${id}*`,
     activeOrder:    (id, sName, status) => `Active order:\n🆔 ${id}\n🔧 ${sName}\nStatus: ${statusLabel(status,"en")}`,
     defaultMsg:     "Send *mrhba* to start.\nOr *status [order ID]* to track.",
-    techInfo:       (t) => `👤 Name: ${t.name}\n📞 Phone: ${t.phone}\n⭐ Rating: ${t.rating?`${t.rating} (${t.ratingCount||0})`:"N/A"}\n💰 Balance: ${(t.balance||0).toFixed(3)} OMR\n🟢 Status: ${t.active?"Available":"Busy"}\n📍 Region: ${t.region||"N/A"}`,
+    techInfo:       (t) => `👤 Name: ${t.name}\n📞 Phone: ${t.phone}\n⭐ Rating: ${t.rating?`${t.rating} (${t.ratingCount||0})`:"N/A"}\n💰 Balance: ${(t.balance||0).toFixed(3)} OMR\n🟢 Status: ${t.active?"Available":"Busy"}\n📍 Region: ${t.regionName||t.region||"N/A"}`,
     newOrder:       (id, sName, tName, parts, total) => `🔔 *New Order!*\n🆔 ${id}\n🔧 ${sName}\n📌 ${tName}${parts!=="-"?`\n\n🔩 Parts:\n${parts}`:""}\n\n💰 Total: ${total.toFixed(3)} OMR`,
     acceptBtn:      "✅ Accept Order",
     rejectBtn:      "❌ Reject Order",
@@ -210,7 +210,7 @@ const LANGS = {
     orderSent:      (id) => `✅ *آرڈر بھیج دیا گیا!*\n🆔 آرڈر نمبر: ${id}\nقبولیت پر اطلاع ملے گی۔\n\nٹریک کریں:\n*status ${id}*`,
     activeOrder:    (id, sName, status) => `فعال آرڈر:\n🆔 ${id}\n🔧 ${sName}\nحالت: ${statusLabel(status,"ur")}`,
     defaultMsg:     "*mrhba* لکھ کر شروع کریں۔\nیا *status [آرڈر نمبر]* لکھیں۔",
-    techInfo:       (t) => `👤 نام: ${t.name}\n📞 فون: ${t.phone}\n⭐ ریٹنگ: ${t.rating?`${t.rating} (${t.ratingCount||0})`:"نہیں"}\n💰 بیلنس: ${(t.balance||0).toFixed(3)} OMR\n🟢 حالت: ${t.active?"دستیاب":"مصروف"}\n📍 علاقہ: ${t.region||"غیر مقرر"}`,
+    techInfo:       (t) => `👤 نام: ${t.name}\n📞 فون: ${t.phone}\n⭐ ریٹنگ: ${t.rating?`${t.rating} (${t.ratingCount||0})`:"نہیں"}\n💰 بیلنس: ${(t.balance||0).toFixed(3)} OMR\n🟢 حالت: ${t.active?"دستیاب":"مصروف"}\n📍 علاقہ: ${t.regionName||t.region||"غیر مقرر"}`,
     newOrder:       (id, sName, tName, parts, total) => `🔔 *نیا آرڈر!*\n🆔 ${id}\n🔧 ${sName}\n📌 ${tName}${parts!=="-"?`\n\n🔩 پرزے:\n${parts}`:""}`+`\n\n💰 کل: ${total.toFixed(3)} OMR`,
     acceptBtn:      "✅ آرڈر قبول",
     rejectBtn:      "❌ آرڈر رد",
@@ -505,20 +505,27 @@ async function getAvailableTechs(serviceId, regionName, excludeIds=[]) {
 
   if(regionName){
     const rn = norm(regionName);
-    // Try strict same-region match first
+    // Match tech.region against regionName OR doc.id (taqha = ولاية طاقة)
     const sameRegion = techs.filter(t => {
-      const tn = norm(t.region||"");
-      console.log(`[TECH] ${t.name}: region="${t.region}" norm="${tn}" vs "${rn}" → ${tn&&(tn.includes(rn)||rn.includes(tn))?"✅":"❌"}`);
-      return tn && (tn.includes(rn) || rn.includes(tn));
+      // Support both field names: regionName (new) and region (old)
+      const techRegion = t.regionName || t.region || "";
+      const techRegionId = t.regionId || "";
+      const tn = norm(techRegion);
+      const tid = norm(techRegionId);
+      const match = (tn && (tn.includes(rn) || rn.includes(tn))) ||
+                    (tid && (tid===rn || rn.includes(tid)));
+      console.log(`[TECH] ${t.name}: regionName="${techRegion}" regionId="${techRegionId}" norm="${tn}" vs "${rn}" → ${match?"✅":"❌"}`);
+      return match;
     });
     console.log(`[TECH] sameRegion count: ${sameRegion.length}, total techs: ${techs.length}, regionName: "${regionName}"`);
     if(sameRegion.length){
-      // Found techs in same region — use ONLY them
       sameRegion.sort((a,b)=>(b.rating||0)-(a.rating||0));
       return sameRegion;
     }
-    // No tech in this region → return empty (will go to waiting queue)
-    return [];
+    // No strict match — try any available tech (region flexible)
+    console.log("[TECH] No region match — returning all available techs");
+    techs.sort((a,b)=>(b.rating||0)-(a.rating||0));
+    return techs;
   }
 
   // No region info → return all available sorted by rating
@@ -557,26 +564,32 @@ async function detectRegion(lat, lng) {
     let matched = [];
     snap.docs.forEach(doc => {
       const r = doc.data();
+      // Resolve name — try all possible field names, fallback to doc.id
+      const rName = String(r.regionName || r.name || r.Name || r.region || doc.id || "");
+      const rActive = r.active !== false;
       // Method 1: center point + radius
       if(r.lat && r.lng) {
         const dist   = haversineKm(lat, lng, parseFloat(r.lat), parseFloat(r.lng));
         const radius = parseFloat(r.radiusKm) || 10;
-        console.log(`[REGION] ${r.name}: dist=${dist.toFixed(2)}km radius=${radius}km → ${dist<=radius?"✅ MATCH":"❌"}`);
-        if(dist <= radius) matched.push({name:r.name,active:r.active!==false,id:doc.id,dist});
+        console.log(`[REGION] "${rName}" (doc=${doc.id}): dist=${dist.toFixed(2)}km radius=${radius}km → ${dist<=radius?"✅ MATCH":"❌"}`);
+        if(dist <= radius) matched.push({name:rName, active:rActive, id:doc.id, dist});
       }
       // Method 2: bounding box
       else if(r.maxLat && r.minLat && r.maxLng && r.minLng) {
         const inBox = lat<=parseFloat(r.maxLat) && lat>=parseFloat(r.minLat) &&
                       lng<=parseFloat(r.maxLng) && lng>=parseFloat(r.minLng);
-        console.log(`[REGION] ${r.name}: bounding box → ${inBox?"✅ MATCH":"❌"}`);
-        if(inBox) matched.push({name:r.name,active:r.active!==false,id:doc.id,dist:0});
+        console.log(`[REGION] "${rName}" (doc=${doc.id}): bounding box → ${inBox?"✅ MATCH":"❌"}`);
+        if(inBox) matched.push({name:rName, active:rActive, id:doc.id, dist:0});
       }
     });
 
     console.log(`[REGION] matched: ${JSON.stringify(matched)}`);
     if(matched.length) {
       matched.sort((a,b)=>a.dist-b.dist);
-      return matched[0];
+      const best = matched[0];
+      // Ensure name is always a non-empty string
+      if(!best.name || best.name === "undefined") best.name = best.id;
+      return best;
     }
 
     // Fallback: OpenStreetMap reverse geocoding
