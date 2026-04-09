@@ -594,21 +594,13 @@ async function detectRegion(lat, lng) {
       const best = matched[0];
       // Ensure name is always a non-empty string
       if(!best.name || best.name === "undefined") best.name = best.id;
-      return best;
+      console.log(`[REGION] returning Firebase match: ${JSON.stringify(best)}`);
+      return best; // has .id → region found in Firebase
     }
 
-    // Fallback: OpenStreetMap reverse geocoding
-    try {
-      const res = await axios.get(
-        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ar`,
-        {headers:{"User-Agent":"TAQA-Bot/1.0"},timeout:5000}
-      );
-      const a = res.data.address||{};
-      const osmName = a.county||a.state_district||a.suburb||a.city||a.state||null;
-      if(osmName) return {name:osmName, active:true}; // assume active if from OSM
-    } catch(e2){ console.error("OSM fallback:", e2?.message); }
-
-    return { name: null, active: true }; // unknown region but allow
+    // No Firebase match → region NOT served (don't fallback to OSM)
+    console.log("[REGION] no Firebase match → region not served");
+    return { name: null, active: true, id: null }; // id=null means not in Firebase
   } catch(e) {
     console.error("detectRegion:", e?.message);
     return { name: null, active: true };
