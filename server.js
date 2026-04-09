@@ -958,24 +958,75 @@ async function goToConfirm(from, session, Lx, discount, couponCode) {
 }
 
 // ─── Tech Handlers ────────────────────────────────────────────────────────────
-async function handleTechMessage(techPhone, text, msg, tech) {
-  // Accept button: accept_ORD-XXX
-  if(text.startsWith("accept_")){ await handleAccept(text.replace("accept_",""),techPhone,tech); return; }
-  // Reject button: reject_ORD-XXX
-  if(text.startsWith("reject_")){ await handleReject(text.replace("reject_",""),techPhone,tech); return; }
-  // Done button: done_ORD-XXX
-  if(text.startsWith("done_")){ await handleDone(text.replace("done_",""),techPhone,tech); return; }
-  // Text fallback
-  const tl = tech.lang || "ar";
-  const TL = LANGS[tl] || LANGS["en"];
-  await sendMessage(techPhone, TL.techInfo ? TL.techInfo(tech) : LANGS.en.techInfo(tech));
-  const langMenu = "ar عربي | en English | ur اردو | bn বাংলা | hi हिंदी";
-  await sendMessage(techPhone,
-    tl==="ar" ? `💬 لتغيير اللغة أرسل:\n${langMenu}` :
-    tl==="bn" ? `💬 ভাষা পরিবর্তন করুন:\n${langMenu}` :
-    tl==="hi" ? `💬 भाषा बदलें:\n${langMenu}` :
-    `💬 Change language:\n${langMenu}`
+
+// ─── Tech Language Menu ───────────────────────────────────────────────────────
+async function sendLangMenu(techPhone, currentLang) {
+  const tl = currentLang || "ar";
+  const title =
+    tl==="ar" ? "🌐 اختر لغتك" :
+    tl==="ur" ? "🌐 اپنی زبان منتخب کریں" :
+    tl==="bn" ? "🌐 আপনার ভাষা বেছে নিন" :
+    tl==="hi" ? "🌐 अपनी भाषा चुनें" :
+    "🌐 Choose your language";
+
+  const rows = [
+    { id:"lang_ar", title:"🇴🇲 عربي",    description:"Arabic"   },
+    { id:"lang_en", title:"🇬🇧 English",  description:"English"  },
+    { id:"lang_ur", title:"🇵🇰 اردو",     description:"Urdu"     },
+    { id:"lang_bn", title:"🇧🇩 বাংলা",    description:"Bengali"  },
+    { id:"lang_hi", title:"🇮🇳 हिंदी",    description:"Hindi"    },
+  ];
+  // Mark current lang
+  rows.forEach(r => { if(r.id === "lang_"+tl) r.title = "✅ " + r.title; });
+
+  await sendList(techPhone, title, tl==="ar"?"اختر":"Select",
+    [{ title: tl==="ar"?"اللغات المتاحة":"Available Languages", rows }]
   );
+}
+
+async function handleTechMessage(techPhone, text, msg, tech) {
+  // ── Order action buttons ────────────────────────────────────────────────────
+  if(text.startsWith("accept_")){ await handleAccept(text.replace("accept_",""),techPhone,tech); return; }
+  if(text.startsWith("reject_")){ await handleReject(text.replace("reject_",""),techPhone,tech); return; }
+  if(text.startsWith("done_")){ await handleDone(text.replace("done_",""),techPhone,tech); return; }
+
+  // ── Language selection from list ────────────────────────────────────────────
+  if(text.startsWith("lang_")){
+    const newLang = text.replace("lang_","");
+    if(["ar","en","ur","bn","hi"].includes(newLang)){
+      await db.collection("technicians").doc(tech.id).update({lang: newLang});
+      const TLN = LANGS[newLang] || LANGS.en;
+      const changed = TLN.langChanged || "✅ Language changed.";
+      await sendMessage(techPhone, changed);
+      // Show tech info in new lang
+      const updatedTech = {...tech, lang: newLang};
+      if(TLN.techInfo) await sendMessage(techPhone, TLN.techInfo(updatedTech));
+    }
+    return;
+  }
+
+  // ── "لغة" / "language" / "lang" → show language menu ──────────────────────
+  const langTriggers = ["لغة","language","lang","lingua","langue","भाषा","ভাষা","زبان"];
+  if(langTriggers.includes(text.toLowerCase().trim())){
+    await sendLangMenu(techPhone, tech.lang||"ar");
+    return;
+  }
+
+  // ── Legacy text-based lang change (ar/en/ur/bn/hi) ─────────────────────────
+  if(["ar","en","ur","bn","hi"].includes(text.toLowerCase())){
+    const newLang = text.toLowerCase();
+    await db.collection("technicians").doc(tech.id).update({lang: newLang});
+    const TLN = LANGS[newLang]||LANGS.en;
+    await sendMessage(techPhone, TLN.langChanged||"✅ Language changed.");
+    return;
+  }
+
+  // ── Default: show tech info + lang menu ────────────────────────────────────
+  const tl = tech.lang || "ar";
+  const TL = LANGS[tl] || LANGS.en;
+  if(TL.techInfo) await sendMessage(techPhone, TL.techInfo(tech));
+  // Show language selection list
+  await sendLangMenu(techPhone, tl);
 }
 
 
