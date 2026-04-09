@@ -310,8 +310,8 @@ async function handleBack(from, session) {
   if (st === "coupon") {
     // Back from coupon → go to parts (or type if no parts)
     // ALWAYS clear pendingPartIdx to avoid stale state
-    session.data.pendingPartIdx = undefined;
-    session.data.pendingMaxQty = undefined;
+    session.data.pendingPartIdx = null;
+    session.data.pendingMaxQty = null;
     const serviceId = session.data.serviceId || session.data.service?.id || "";
     const parts = await getPartsByService(serviceId);
     if (parts.length) {
@@ -465,11 +465,12 @@ async function getTechByPhone(phone) {
   return {id:snap.docs[0].id,...snap.docs[0].data()};
 }
 async function getAvailableTechs(serviceId, regionName, excludeIds=[]) {
+  if(!serviceId || typeof serviceId !== "string") return [];
   const snap = await db.collection("technicians")
     .where("active","==",true).where("services","array-contains",serviceId).get();
   let techs = snap.docs.map(d=>({id:d.id,...d.data()})).filter(t=>!excludeIds.includes(t.id));
 
-  const norm = s => (s||"").toLowerCase().replace(/\s+/g,"").replace(/ة/g,"ه").replace(/ى/g,"ي").replace(/أ|إ|آ/g,"ا");
+  const norm = s => (String(s||"")||"" ).toLowerCase().replace(/\s+/g,"").replace(/ة/g,"ه").replace(/ى/g,"ي").replace(/أ|إ|آ/g,"ا");
 
   if(regionName){
     const rn = norm(regionName);
@@ -692,6 +693,7 @@ app.post("/webhook", async(req,res)=>{
 
     // ── Session flow ──────────────────────────────────────────────────────────
     let session = await getSession(from);
+    console.log("[SESSION] state=", session.state, "text=", JSON.stringify(text));
     const isStartAr = ["مرحبا","هلا","مرحبً","ابدا"].includes(text);
     const isStartEn = ["mrhba","hello","hi","start"].includes(text.toLowerCase());
     const isStart   = isStartAr || isStartEn;
@@ -777,6 +779,7 @@ app.post("/webhook", async(req,res)=>{
       let idx = -1;
       if(text.startsWith("typ_")) idx=parseInt(text.replace("typ_",""));
       else { const n=parseInt(text); if(!isNaN(n)&&n>=1&&n<=service.types.length) idx=n-1; }
+      console.log("[TYPE] text=", JSON.stringify(text), "idx=", idx, "types=", service?.types?.length);
       if(idx<0||idx>=service.types.length){ await sendMessage(from,`يرجى اختيار نوع من القائمة.`); return; }
       const type  = service.types[idx];
       const parts = await getPartsByService(service.id);
@@ -798,11 +801,13 @@ app.post("/webhook", async(req,res)=>{
         // Store MINIMAL data in session - no undefined for Firestore
         await setSession(from,"parts_ask",{
           lang: getLang(session)||"ar",
-          serviceId: service.id||null,
-          serviceName: service.name||null,
-          selectedType: {name: type.name||"", price: type.price||0},
-          servicePrice: type.price||0,
+          serviceId: String(service.id||""),
+          serviceName: String(service.name||""),
+          selectedType: {name: String(type.name||""), price: Number(type.price||0)},
+          servicePrice: Number(type.price||0),
           parts: [],
+          pendingPartIdx: null,
+          pendingMaxQty: null,
           couponId: null,
           couponCode: null,
           discount: 0
@@ -826,22 +831,26 @@ app.post("/webhook", async(req,res)=>{
 
     // ── parts_ask & parts — unified handler ─────────────────────────────────────
     if(session.state==="parts_ask"){
-      // Save to DB as "parts" so next message is handled correctly
-      await setSession(from, "parts", session.data);
+      // Clear any stale pending state before entering parts
+      const cleanPartsData = {...session.data, pendingPartIdx:null, pendingMaxQty:null};
+      await setSession(from, "parts", cleanPartsData);
+      session.data = cleanPartsData;
       session.state = "parts";
     }
     if(session.state==="parts"){
       // Fetch parts fresh from DB
-      const serviceIdForParts = session.data.serviceId||session.data.service?.id||"";
+      const serviceIdForParts = String(session.data.serviceId||session.data.service?.id||"");
+      console.log("[PARTS] serviceIdForParts=", JSON.stringify(serviceIdForParts));
       const avail = await getPartsByService(serviceIdForParts);
       const selected = JSON.parse(JSON.stringify(session.data.parts||[]));
-      const pending  = session.data.pendingPartIdx;
+      const pending  = session.data.pendingPartIdx;  // null or undefined = no pending
+      console.log("[PARTS] text=", JSON.stringify(text), "pending=", JSON.stringify(pending), "avail=", avail.length, "serviceId=", serviceIdForParts);
 
       // ── nav_back must be checked BEFORE any ID conversion ──
       if(text==="nav_back"){
-        if(pending!==undefined){
+        if(pending != null){
           // In qty selection → back to parts list
-          await setSession(from,"parts",{...session.data,pendingPartIdx:undefined,pendingMaxQty:undefined});
+          await setSession(from,"parts",{...session.data,pendingPartIdx:null,pendingMaxQty:null});
           const lang3b = getLang(session);
           const fp = await getPartsByService(session.data.serviceId||"");
           const rb = fp.slice(0,10).map((p,i)=>({id:"part_"+i,title:p.name.substring(0,24),description:`${(parseFloat(p.price)||0).toFixed(3)} OMR${p.stock!==undefined?" · "+p.stock:""}`}));
@@ -860,10 +869,10 @@ app.post("/webhook", async(req,res)=>{
       else if(text.startsWith("part_"))                        text = String(parseInt(text.replace("part_",""))+1);
       if(text.startsWith("qty_"))                              text = text.replace("qty_","");
 
-      if(pending!==undefined){
+      if(pending != null){
         // "0" while waiting for qty = cancel part selection, go back to menu
         if(text==="0"||text==="part_skip"){
-          await setSession(from,"parts",{...session.data,pendingPartIdx:undefined});
+          await setSession(from,"parts",{...session.data,pendingPartIdx:null});
           const freshParts2 = await getPartsByService(session.data.serviceId||session.data.service?.id||"");
           const lang3 = getLang(session);
           const rows2 = freshParts2.slice(0,10).map((p,i)=>({
@@ -885,7 +894,7 @@ app.post("/webhook", async(req,res)=>{
         const part = avail[pending];
         // Safety check - if part not found reset
         if(!part){
-          await setSession(from,"parts",{...session.data,pendingPartIdx:undefined,pendingMaxQty:undefined});
+          await setSession(from,"parts",{...session.data,pendingPartIdx:null,pendingMaxQty:null});
           await sendMessage(from, getLang(session)==="ar"?"حدث خطأ. أرسل رقم القطعة مجدداً.":"Error. Please send part number again.");
           return;
         }
@@ -937,7 +946,11 @@ app.post("/webhook", async(req,res)=>{
       }
 
       const num=parseInt(text);
-      if(isNaN(num)||num<1||num>avail.length){ await sendMessage(from,Lx.invalidPart(avail.length)); return; }
+      console.log("[PARTS] num=", num, "avail.length=", avail.length, "text=", JSON.stringify(text));
+      if(isNaN(num)||num<1||num>avail.length){ 
+        console.log("[PARTS] INVALID — sending error. avail ids:", avail.map(p=>p.id));
+        await sendMessage(from,Lx.invalidPart(avail.length)); return; 
+      }
       const part=avail[num-1];
       const maxQty = part.stock !== undefined ? Math.min(part.stock, 5) : 5;
       // Save to DB BEFORE sending qty list so next message has correct state
