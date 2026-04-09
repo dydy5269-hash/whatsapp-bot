@@ -688,6 +688,8 @@ html[dir="ltr"] .notif-item.unread{border-right:none;border-left:3px solid var(-
 <script>
 const firebaseConfig={apiKey:"AIzaSyAJAJe3NgjQIeNihq0pTreixKhdQaGxvrE",authDomain:"taqa-services.firebaseapp.com",projectId:"taqa-services",storageBucket:"taqa-services.firebasestorage.app",messagingSenderId:"338454990474",appId:"1:338454990474:web:afd20c42cdeae871aea773"};
 firebase.initializeApp(firebaseConfig);
+// Bot API URL — update this to your Railway URL
+window.BOT_URL = "https://whatsapp-bot-production-1471.up.railway.app";
 const db=firebase.firestore(),auth=firebase.auth();
 
 let currentLang="ar",allOrders=[],allParts=[],allServices=[],allRegions=[];
@@ -984,7 +986,34 @@ html[dir="ltr"] .notif-item.unread{border-right:none;border-left:3px solid var(-
   <h1>TAQA — تقرير الطلبات</h1><p>${new Date().toLocaleDateString("ar-OM")}</p>
   <table><thead><tr><th>رقم الطلب</th><th>المنطقة</th><th>الخدمة</th><th>الإجمالي</th><th>الحالة</th></tr></thead>
   <tbody>${rows.map(o=>`<tr><td>${o.orderId||o.id}</td><td>${o.region||"-"}</td><td>${o.serviceName||"-"}</td><td>${(o.totalPrice||0).toFixed?.(3)} OMR</td><td>${sl(o.status)}</td></tr>`).join("")}</tbody></table>
-  <script>window.print();window.close();<\/script></body></html>`);
+  <script>window.print();window.close();<\/script>
+<!-- Suspend Tech Modal -->
+<div class="modal-overlay" id="suspend-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <h3>⛔ إيقاف الفني: <span id="suspend-tech-name" style="color:var(--danger)"></span></h3>
+      <button class="modal-close" onclick="closeModal('suspend-modal')">×</button>
+    </div>
+    <input type="hidden" id="suspend-tech-id"/>
+    <div class="form-group" style="margin-top:16px">
+      <label style="display:block;margin-bottom:8px;font-weight:700;color:var(--muted)">
+        سبب الإيقاف <span style="color:var(--danger)">*</span>
+      </label>
+      <textarea id="suspend-reason" rows="4"
+        placeholder="اكتب سبب إيقاف الفني... سيتم إرسال هذا السبب للفني عبر واتساب"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-family:inherit;font-size:.9rem;resize:vertical"></textarea>
+      <p style="font-size:.75rem;color:var(--muted);margin-top:6px">
+        📱 سيصل الفني رسالة واتساب تحتوي سبب الإيقاف فور الحفظ.
+      </p>
+    </div>
+    <div class="form-actions" style="margin-top:16px">
+      <button class="btn btn-danger" onclick="confirmSuspend()" style="background:var(--danger)">⛔ إيقاف وإشعار الفني</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('suspend-modal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+</body></html>`);
   w.document.close();
 }
 
@@ -1127,14 +1156,66 @@ async function loadTechnicians(){
         <div class="tech-footer">
           <span class="active-pill ${tc.active?"on":"off"}">${tc.active?"متاح":"مشغول"}</span>
           <div style="display:flex;gap:4px">
-            <button class="btn btn-sm ${tc.active?"btn-danger":"btn-success"}" onclick="toggleTech('${tc.id}',${tc.active})">${tc.active?"إيقاف":"تفعيل"}</button>
+            <button class="btn btn-sm ${tc.active?"btn-danger":"btn-success"}" onclick="${tc.active?`openSuspendModal('${tc.id}','${tc.name}')`:`reactivateTech('${tc.id}','${tc.name}')`}">${tc.active?"⛔ إيقاف":"✅ تفعيل"}</button>
             <button class="btn btn-sm btn-danger" onclick="deleteTech('${tc.id}')">🗑</button>
           </div>
         </div>
       </div>`).join("");
   }catch(e){console.error(e);}
 }
-async function toggleTech(id,cur){try{await db.collection("technicians").doc(id).update({active:!cur});showToast("✅");loadTechnicians();}catch(e){showToast(e.message,"error");}}
+function openSuspendModal(techId, techName) {
+  document.getElementById("suspend-tech-id").value   = techId;
+  document.getElementById("suspend-tech-name").textContent = techName;
+  document.getElementById("suspend-reason").value    = "";
+  openModal("suspend-modal");
+}
+
+async function confirmSuspend() {
+  const techId  = document.getElementById("suspend-tech-id").value;
+  const reason  = document.getElementById("suspend-reason").value.trim();
+  if(!reason){ showToast("يرجى كتابة سبب الإيقاف","error"); return; }
+  try {
+    // Update Firestore
+    await db.collection("technicians").doc(techId).update({
+      active: false,
+      suspendedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      suspendReason: reason,
+      suspendedBy: firebase.auth().currentUser?.email || "admin"
+    });
+    // Notify tech via bot API
+    try {
+      await fetch(`${window.BOT_URL||""}/admin/suspend-tech`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ techId, reason })
+      });
+    } catch(e){ console.warn("Bot notify failed:", e.message); }
+    showToast("⛔ تم إيقاف الفني وإشعاره");
+    closeModal("suspend-modal");
+    loadTechnicians();
+  } catch(e){ showToast(e.message,"error"); }
+}
+
+async function reactivateTech(techId, techName) {
+  if(!confirm(`تفعيل الفني ${techName}؟`)) return;
+  try {
+    await db.collection("technicians").doc(techId).update({
+      active: true,
+      suspendReason: null,
+      suspendedAt: null
+    });
+    // Notify tech via bot API
+    try {
+      await fetch(`${window.BOT_URL||""}/admin/reactivate-tech`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ techId })
+      });
+    } catch(e){ console.warn("Bot notify failed:", e.message); }
+    showToast("✅ تم تفعيل الفني");
+    loadTechnicians();
+  } catch(e){ showToast(e.message,"error"); }
+}
 async function deleteTech(id){if(!confirm("حذف؟"))return;try{await db.collection("technicians").doc(id).delete();showToast("تم الحذف");loadTechnicians();}catch(e){showToast(e.message,"error");}}
 async function addTechnician(){
   const name=document.getElementById("tech-name").value.trim();
