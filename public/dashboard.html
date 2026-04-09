@@ -256,6 +256,7 @@ html[dir="ltr"] .notif-item.unread{border-right:none;border-left:3px solid var(-
       <button class="nav-item" onclick="showPage('regions',this)"><span class="icon">📍</span><span class="nl" data-ar="الولايات/المناطق" data-en="Regions">الولايات/المناطق</span></button>
       <button class="nav-item" onclick="showPage('services',this)"><span class="icon">🔧</span><span class="nl" data-ar="الخدمات" data-en="Services">الخدمات</span></button>
       <button class="nav-item" onclick="showPage('parts',this)"><span class="icon">🔩</span><span class="nl" data-ar="القطع" data-en="Parts">القطع</span></button>
+      <button class="nav-item" id="nav-waiting" onclick="showPage('waiting',this)"><span class="icon">⏳</span><span class="nl" data-ar="الانتظار" data-en="Waiting">الانتظار</span></button>
       <button class="nav-item" onclick="showPage('coupons',this)"><span class="icon">🎟</span><span class="nl" data-ar="الكوبونات" data-en="Coupons">الكوبونات</span></button>
       <div class="nav-section">التقارير</div>
       <button class="nav-item" onclick="showPage('map',this)"><span class="icon">🗺️</span><span class="nl" data-ar="خريطة الطلبات" data-en="Map">خريطة الطلبات</span></button>
@@ -322,6 +323,23 @@ html[dir="ltr"] .notif-item.unread{border-right:none;border-left:3px solid var(-
         <div style="padding:14px 18px;background:rgba(245,158,11,.08);border-bottom:1px solid var(--border);font-size:.82rem;color:var(--accent)">
           💡 هذه الطلبات محفوظة بانتظار توفر فني. عند انتهاء فني من طلبه سيُعيَّن تلقائياً.
           يمكنك أيضاً تعيين فني يدوياً من هنا.
+        </div>
+        <div class="table-wrap" id="waiting-table"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+
+    <!-- Waiting Orders Banner -->
+    <div id="waiting-banner" style="display:none;background:#1e1e3b;border:1px solid #3b3b7a;border-radius:10px;padding:14px 18px;margin:16px 32px 0;color:#a5b4fc">
+      ⏳ <strong id="waiting-count">0</strong> طلبات في قائمة الانتظار
+      <button class="btn btn-sm" style="margin-right:12px;background:#312e81;color:#a5b4fc;border:1px solid #4338ca" onclick="showPage('waiting',this)">عرض طلبات الانتظار</button>
+    </div>
+
+    <!-- Waiting Orders Page -->
+    <div id="page-waiting" class="page">
+      <div class="card">
+        <div class="card-header">
+          <h3>⏳ طلبات الانتظار</h3>
+          <button class="btn btn-sm" style="background:var(--surface2);color:var(--muted)" onclick="loadWaitingOrders()">🔄 تحديث</button>
         </div>
         <div class="table-wrap" id="waiting-table"><div class="loader"><div class="spinner"></div></div></div>
       </div>
