@@ -487,55 +487,60 @@ async function getTechByPhone(phone) {
   if(snap.empty) return null;
   return {id:snap.docs[0].id,...snap.docs[0].data()};
 }
-async function getAvailableTechs(serviceId, regionName, excludeIds=[]) {
+// Normalize Arabic text for comparison
+const normAr = s => (String(s||"")||"").toLowerCase()
+  .replace(/\s+/g,"").replace(/ة/g,"ه").replace(/ى/g,"ي").replace(/أ|إ|آ/g,"ا");
+
+// Check if a tech belongs to a region (by name or id)
+function techMatchesRegion(t, regionName, regionId) {
+  const techRegion   = String(t.regionName || t.region || "");
+  const techRegionId = String(t.regionId || "");
+  const rn  = normAr(regionName||"");
+  const rid = normAr(regionId||"");
+  const tn  = normAr(techRegion);
+  const tid = normAr(techRegionId);
+  return (rn  && tn  && (tn.includes(rn)  || rn.includes(tn)))
+      || (rid && tid && tid === rid)
+      || (rid && tn  && tn.includes(rid))
+      || (rn  && tid && tid.includes(rn));
+}
+
+// Get AVAILABLE techs (active=true, balance>=MIN) in a region
+async function getAvailableTechs(serviceId, regionName, excludeIds=[], regionId="") {
   if(!serviceId || typeof serviceId !== "string") return [];
-  regionName = regionName && typeof regionName === "object" ? null : (regionName||null);
-  console.log(`[AVAIL] querying: serviceId="${serviceId}" regionName="${regionName}"`);
+  if(regionName && typeof regionName === "object") regionName = null;
+
+  console.log(`[AVAIL] serviceId="${serviceId}" regionName="${regionName}" regionId="${regionId}"`);
   const snap = await db.collection("technicians")
-    .where("active","==",true).where("services","array-contains",serviceId).get();
-  console.log(`[AVAIL] raw results from Firestore: ${snap.size} technicians with active=true & services contains "${serviceId}"`);
-  snap.docs.forEach(d => {
-    const t = d.data();
-    console.log(`[AVAIL] found: ${t.name} active=${t.active} balance=${t.balance} services=${JSON.stringify(t.services)}`);
-  });
+    .where("active","==",true)
+    .where("services","array-contains",serviceId).get();
+
+  console.log(`[AVAIL] active techs found: ${snap.size}`);
   let techs = snap.docs.map(d=>({id:d.id,...d.data()}))
     .filter(t => !excludeIds.includes(t.id))
     .filter(t => {
       const bal = parseFloat(t.balance)||0;
-      const ok = bal >= MIN_TECH_BALANCE;
-      if(!ok) console.log(`[TECH] ${t.name} excluded: balance=${bal} < ${MIN_TECH_BALANCE}`);
-      return ok;
-    }); // exclude low balance
-
-  const norm = s => (String(s||"")||"" ).toLowerCase().replace(/\s+/g,"").replace(/ة/g,"ه").replace(/ى/g,"ي").replace(/أ|إ|آ/g,"ا");
-
-  if(regionName){
-    const rn = norm(regionName);
-    // Match tech.region against regionName OR doc.id (taqha = ولاية طاقة)
-    const sameRegion = techs.filter(t => {
-      // Support both field names: regionName (new) and region (old)
-      const techRegion = t.regionName || t.region || "";
-      const techRegionId = t.regionId || "";
-      const tn = norm(techRegion);
-      const tid = norm(techRegionId);
-      const match = (tn && (tn.includes(rn) || rn.includes(tn))) ||
-                    (tid && (tid===rn || rn.includes(tid)));
-      console.log(`[TECH] ${t.name}: regionName="${techRegion}" regionId="${techRegionId}" norm="${tn}" vs "${rn}" → ${match?"✅":"❌"}`);
-      return match;
+      if(bal < MIN_TECH_BALANCE){ console.log(`[AVAIL] ${t.name} excluded low balance: ${bal}`); return false; }
+      return true;
     });
-    console.log(`[TECH] sameRegion count: ${sameRegion.length}, total techs: ${techs.length}, regionName: "${regionName}"`);
-    if(sameRegion.length){
-      sameRegion.sort((a,b)=>(b.rating||0)-(a.rating||0));
-      return sameRegion;
-    }
-    // No match in region → return empty → order goes to waiting_orders
-    console.log("[TECH] No region match → waiting queue");
-    return [];
+
+  if(!regionName && !regionId) {
+    techs.sort((a,b)=>(b.rating||0)-(a.rating||0));
+    return techs;
   }
 
-  // No region info → return all available sorted by rating
-  techs.sort((a,b)=>(b.rating||0)-(a.rating||0));
-  return techs;
+  const matched = techs.filter(t => techMatchesRegion(t, regionName, regionId));
+  console.log(`[AVAIL] region matched: ${matched.length}/${techs.length}`);
+  matched.sort((a,b)=>(b.rating||0)-(a.rating||0));
+  return matched;
+}
+
+// Check if region HAS ANY techs (active or not) — to confirm region is served
+async function regionHasAnyTech(serviceId, regionName, regionId) {
+  if(!serviceId || typeof serviceId !== "string") return false;
+  const snap = await db.collection("technicians")
+    .where("services","array-contains",serviceId).get();
+  return snap.docs.some(d => techMatchesRegion(d.data(), regionName, regionId));
 }
 async function getActiveOrder(phone) {
   const snap = await db.collection("orders").where("customer","==",phone).where("status","in",["pending","accepted"]).limit(1).get();
@@ -1301,7 +1306,7 @@ async function handleReject(orderId, techPhone, tech) {
   const customerPhone=normalize(order.customer);
   const CL=LANGS[order.lang||"ar"];
   await sendMessage(customerPhone,CL.rejected(orderId));
-  const backup=await getAvailableTechs(order.serviceId,String(order.region||""),rejected);
+  const backup=await getAvailableTechs(order.serviceId,String(order.region||""),rejected,order.regionId||"");
   if(!backup.length){
     // No backup tech → move to waiting_orders
     const orderData = (await ref.get()).data();
