@@ -46,6 +46,8 @@ const LANGS = {
     cancelled:      "❌ تم إلغاء الطلب.\nأرسل *مرحبا* للبدء من جديد.",
     locationOnly:   "📍 يرجى إرسال موقعك باستخدام ميزة الموقع في واتساب.",
     sessionExpired: "انتهت الجلسة. أرسل *مرحبا* للبدء.",
+    suspended:     (reason) => `⛔ *تم إيقاف حسابك من قِبل الإدارة.*\n\n📋 السبب:\n${reason}\n\nللاستفسار تواصل مع الإدارة.`,
+    reactivated:    "✅ *تم تفعيل حسابك!*\nيمكنك الآن استلام الطلبات. أهلاً بك مجدداً! 🎉",
     noTech:         "📍 منطقتك ليست ضمن نطاق خدمتنا حالياً.\nسنقوم بتوسيع خدماتنا قريباً لمنطقتك.\nشكراً لتواصلك معنا! 🙏",
     noTechRegion:   (r) => `📍 منطقتك ليست ضمن نطاق خدمتنا حالياً.\nسنقوم بتوسيع خدماتنا قريباً لمنطقتك.\nشكراً لتواصلك معنا! 🙏`,
     noTechAny:      "⚠️ لا يوجد فني متاح الآن.\n\n📝 تم حفظ طلبك في قائمة الانتظار وسيتم إشعارك فور توفر فني.",
@@ -114,6 +116,8 @@ const LANGS = {
     cancelled:      "❌ Order cancelled.\nSend *mrhba* to start again.",
     locationOnly:   "📍 Please send your location using WhatsApp location feature.",
     sessionExpired: "Session expired. Send *mrhba* to start.",
+    suspended:     (reason) => `⛔ *Your account has been suspended by admin.*\n\n📋 Reason:\n${reason}\n\nContact admin for more info.`,
+    reactivated:    "✅ *Your account is reactivated!*\nYou can now receive orders. Welcome back! 🎉",
     noTech:         "📍 Your area is not within our service coverage yet.\nWe will be expanding to your area soon.\nThank you for contacting us! 🙏",
     noTechRegion:   (r) => `📍 Your area is not within our service coverage yet.\nWe will be expanding to your area soon.\nThank you for contacting us! 🙏`,
     noTechAny:      "⚠️ No technician available now.\n\n📝 Your order has been saved in the waiting queue. You will be notified when a technician is available.",
@@ -169,6 +173,10 @@ const LANGS = {
     techDone:       (id,fee,bal)=>`✅ ${id} সম্পন্ন।\n💸 কমিশন: ${fee.toFixed(3)} OMR\n💰 ব্যালেন্স: ${bal.toFixed(3)} OMR`,
     techInfo:       (t)=>`👤 নাম: ${t.name}\n📞 ফোন: ${t.phone}\n⭐ রেটিং: ${t.rating||"নেই"}\n💰 ব্যালেন্স: ${(t.balance||0).toFixed(3)} OMR\n🟢 অবস্থা: ${t.active?"উপলব্ধ":"ব্যস্ত"}\n📍 এলাকা: ${t.regionName||t.region||"অজানা"}`,
     langChanged:    "✅ ভাষা বাংলায় পরিবর্তিত হয়েছে।",
+    suspended:     (reason) => `⛔ *ایڈمن نے آپ کا اکاؤنٹ معطل کر دیا ہے۔*\n\n📋 وجہ:\n${reason}\n\nمزید معلومات کے لیے ایڈمن سے رابطہ کریں۔`,
+    reactivated:    "✅ *آپ کا اکاؤنٹ دوبارہ فعال ہو گیا!*\nآپ اب آرڈر وصول کر سکتے ہیں۔ خوش آمدید! 🎉",
+    suspended:     (reason) => `⛔ *অ্যাডমিন আপনার অ্যাকাউন্ট স্থগিত করেছেন।*\n\n📋 কারণ:\n${reason}\n\nবিস্তারিত জানতে অ্যাডমিনের সাথে যোগাযোগ করুন।`,
+    reactivated:    "✅ *আপনার অ্যাকাউন্ট পুনরায় সক্রিয় হয়েছে!*\nআপনি এখন অর্ডার নিতে পারবেন। স্বাগতম! 🎉",
     lowBalance:     (bal)=>`⚠️ ব্যালেন্স: ${(bal||0).toFixed(3)} OMR\nকাজের জন্য কমপক্ষে *2.000 OMR* প্রয়োজন।\nঅর্ডার নিতে রিচার্জ করুন।\n📞 অ্যাডমিনের সাথে যোগাযোগ করুন।`,
   },
   hi: {
@@ -185,6 +193,8 @@ const LANGS = {
     techDone:       (id,fee,bal)=>`✅ ${id} पूरा।\n💸 कमीशन: ${fee.toFixed(3)} OMR\n💰 बैलेंस: ${bal.toFixed(3)} OMR`,
     techInfo:       (t)=>`👤 नाम: ${t.name}\n📞 फ़ोन: ${t.phone}\n⭐ रेटिंग: ${t.rating||"नहीं"}\n💰 बैलेंस: ${(t.balance||0).toFixed(3)} OMR\n🟢 स्थिति: ${t.active?"उपलब्ध":"व्यस्त"}\n📍 क्षेत्र: ${t.regionName||t.region||"अज्ञात"}`,
     langChanged:    "✅ भाषा हिंदी में बदल गई।",
+    suspended:     (reason) => `⛔ *एडमिन ने आपका अकाउंट निलंबित कर दिया है।*\n\n📋 कारण:\n${reason}\n\nअधिक जानकारी के लिए एडमिन से संपर्क करें।`,
+    reactivated:    "✅ *आपका अकाउंट पुनः सक्रिय हो गया!*\nआप अब ऑर्डर ले सकते हैं। स्वागत है! 🎉",
     lowBalance:     (bal)=>`⚠️ बैलेंस: ${(bal||0).toFixed(3)} OMR\nकाम के लिए कम से कम *2.000 OMR* चाहिए।\nऑर्डर लेने के लिए रिचार्ज करें।\n📞 एडमिन से संपर्क करें।`,
   }
 
@@ -612,7 +622,7 @@ app.post("/webhook", async(req,res)=>{
       // Types as LIST
       await sendList(from, Lx.chooseType(service.name), Lx.typesBtn, [{
         title: Lx.typesBtn,
-        rows: service.types.map((t,i)=>({id:"typ_"+i, title:t.name.substring(0,24), description:`${t.price} OMR`}))
+        rows: [...service.types.map((t,i)=>({id:"typ_"+i, title:t.name.substring(0,24), description:`${t.price} OMR`})), backRow(getLang(session))]
       }]);
       // Store minimal service data - RESET discount
       await setSession(from,"type",{
@@ -627,6 +637,7 @@ app.post("/webhook", async(req,res)=>{
 
     // ── type ──────────────────────────────────────────────────────────────────
     if(session.state==="type"){
+      if(text==="nav_back"){ await handleBack(from,session); return; }
       const service = session.data.service;
       let idx = -1;
       if(text.startsWith("typ_")) idx=parseInt(text.replace("typ_",""));
@@ -668,6 +679,7 @@ app.post("/webhook", async(req,res)=>{
           description: `${(parseFloat(p.price)||0).toFixed(3)} OMR${p.stock!==undefined?" · متوفر: "+p.stock:""}`
         }));
         partsRows.push({ id:"part_skip", title: lang2==="ar"?"0 — بدون قطع":"0 — No parts" });
+        partsRows.push(backRow(lang2));
         await sendList(from,
           lang2==="ar"?"🔩 هل تريد إضافة قطع غيار؟":"🔩 Add spare parts?",
           lang2==="ar"?"القطع":"Parts",
@@ -679,8 +691,9 @@ app.post("/webhook", async(req,res)=>{
 
     // ── parts_ask & parts — unified handler ─────────────────────────────────────
     if(session.state==="parts_ask"){
-      // Save to DB as "parts" so next message is handled correctly
-      await setSession(from, "parts", session.data);
+      const cleanPartsData = {...session.data, pendingPartIdx:null, pendingMaxQty:null};
+      await setSession(from, "parts", cleanPartsData);
+      session.data = cleanPartsData;
       session.state = "parts";
     }
     if(session.state==="parts"){
@@ -688,9 +701,26 @@ app.post("/webhook", async(req,res)=>{
       const serviceIdForParts = session.data.serviceId||session.data.service?.id||"";
       const avail = await getPartsByService(serviceIdForParts);
       const selected = JSON.parse(JSON.stringify(session.data.parts||[]));
-      const pending  = session.data.pendingPartIdx;
+      const pending  = session.data.pendingPartIdx != null ? session.data.pendingPartIdx : undefined;
 
-      // ── Convert list reply IDs AFTER defining pending ──
+      // ── nav_back MUST be checked before any ID conversion ──
+      if(text==="nav_back"){
+        if(pending!==undefined){
+          // In qty selection → back to parts list
+          await setSession(from,"parts",{...session.data,pendingPartIdx:null,pendingMaxQty:null});
+          const lang3b = getLang(session);
+          const fp = await getPartsByService(serviceIdForParts);
+          const rb = fp.slice(0,10).map((p,i)=>({id:"part_"+i,title:p.name.substring(0,24),description:`${(parseFloat(p.price)||0).toFixed(3)} OMR${p.stock!==undefined?" · "+p.stock:""}`}));
+          rb.push({id:"part_skip",title:lang3b==="ar"?"0 — بدون قطع":"0 — No parts"});
+          rb.push(backRow(lang3b));
+          await sendList(from,lang3b==="ar"?"🔩 اختر قطعة:":"🔩 Choose part:",lang3b==="ar"?"القطع":"Parts",[{title:lang3b==="ar"?"القطع المتاحة":"Available Parts",rows:rb}]);
+        } else {
+          await handleBack(from, session);
+        }
+        return;
+      }
+
+      // ── Convert list reply IDs (AFTER nav_back check) ──
       if(text==="part_skip")                                   text = "0";
       else if(text.startsWith("part_"))                        text = String(parseInt(text.replace("part_",""))+1);
       if(text.startsWith("qty_"))                              text = text.replace("qty_","");
@@ -707,8 +737,9 @@ app.post("/webhook", async(req,res)=>{
             description:`${(parseFloat(p.price)||0).toFixed(3)} OMR${p.stock!==undefined?" · متوفر: "+p.stock:""}`
           }));
           rows2.push({id:"part_skip",title:lang3==="ar"?"0 — بدون قطع":"0 — No parts"});
+          rows2.push(backRow(lang3));
           await sendList(from,
-            lang3==="ar"?"اختر قطعة أخرى أو تخطَّ:":"Choose another part or skip:",
+            lang3==="ar"?"🔩 اختر قطعة أخرى:":"🔩 Choose another part:",
             lang3==="ar"?"القطع":"Parts",
             [{title:lang3==="ar"?"القطع المتاحة":"Available Parts",rows:rows2}]
           );
@@ -782,6 +813,7 @@ app.post("/webhook", async(req,res)=>{
         const lineTotal = ((parseFloat(part.price)||0)*i).toFixed(3);
         qtyRows.push({id:"qty_"+i, title:`${i} ${ getLang(session)==="ar"?"قطعة":"piece"}`, description:`${lineTotal} OMR`});
       }
+      qtyRows.push(backRow(getLang(session)));
       await sendList(from,
         `🔩 *${part.name}*\n${ getLang(session)==="ar"?"اختر الكمية:":"Choose quantity:"}`,
         getLang(session)==="ar"?"الكمية":"Qty",
@@ -792,7 +824,8 @@ app.post("/webhook", async(req,res)=>{
 
     // ── coupon ────────────────────────────────────────────────────────────────
     if(session.state==="coupon"){
-      if(text==="0"){ await goToConfirm(from,session,Lx,0,null); return; }
+      if(text==="nav_back"){ await handleBack(from,session); return; }
+      if(text==="coupon_skip"||text==="0"){ await goToConfirm(from,session,Lx,0,null); return; }
       const result=await validateCoupon(text,from);
       if(!result.valid){ await sendMessage(from,result.reason==="used"?Lx.couponUsed:Lx.couponInvalid); return; }
       const raw=calcTotal(session.data.servicePrice,session.data.parts);
@@ -807,6 +840,7 @@ app.post("/webhook", async(req,res)=>{
 
     // ── confirm — BUTTONS ─────────────────────────────────────────────────────
     if(session.state==="confirm"){
+      if(text==="nav_back"){ await handleBack(from,session); return; }
       if(text==="confirm_no"||text==="2"){ await clearSession(from); await sendMessage(from,Lx.cancelled); return; }
       if(text==="confirm_yes"||text==="1"){ await setSession(from,"location",session.data); await sendMessage(from,Lx.confirmed); return; }
       // Resend buttons if invalid
@@ -816,6 +850,7 @@ app.post("/webhook", async(req,res)=>{
 
     // ── location ──────────────────────────────────────────────────────────────
     if(session.state==="location"){
+      if(text==="nav_back"){ await handleBack(from,session); return; }
       if(msg.type!=="location"){ await sendMessage(from,Lx.locationOnly); return; }
       const service = session.data.service || {
         id: session.data.serviceId,
@@ -916,6 +951,105 @@ app.post("/webhook", async(req,res)=>{
 });
 
 // ─── goNextAfterParts ─────────────────────────────────────────────────────────
+
+// ─── Back Navigation ──────────────────────────────────────────────────────────
+function backRow(lang) {
+  const labels = {ar:"↩️ رجوع", en:"↩️ Back", ur:"↩️ واپس", bn:"↩️ ফিরে যান", hi:"↩️ वापस"};
+  return {id:"nav_back", title: labels[lang]||"↩️ رجوع"};
+}
+
+async function handleBack(from, session) {
+  const lang = getLang(session);
+  const Lx   = LANGS[lang]||LANGS.ar;
+  const st   = session.state;
+
+  // type → go back to service list
+  if(st==="type"){
+    const services = await getServices();
+    await sendList(from, Lx.welcome, Lx.servicesBtn, [{
+      title: Lx.chooseService,
+      rows: services.map((s,i)=>({id:"svc_"+i, title:s.name.substring(0,24)}))
+    }]);
+    await setSession(from,"service",{lang, services});
+    return true;
+  }
+
+  // parts/parts_ask → go back to type list
+  if(st==="parts"||st==="parts_ask"){
+    const svcId = session.data.serviceId||session.data.service?.id;
+    const svcName = session.data.serviceName||session.data.service?.name;
+    // Try to get types from session first, else reload
+    let types = session.data.service?.types||session.data.types||[];
+    if(!types.length && svcId){
+      const services = await getServices();
+      types = services.find(s=>s.id===svcId)?.types||[];
+    }
+    if(types.length){
+      await sendList(from, Lx.chooseType ? Lx.chooseType(svcName) : `🔧 ${svcName}`, Lx.typesBtn||"الأنواع", [{
+        title: Lx.typesBtn||"الأنواع",
+        rows: [...types.map((t,i)=>({id:"typ_"+i, title:t.name.substring(0,24), description:`${t.price} OMR`})), backRow(lang)]
+      }]);
+      await setSession(from,"type",{lang, service:{id:svcId,name:svcName,types}, discount:0, couponId:null, couponCode:null});
+    }
+    return true;
+  }
+
+  // coupon → go back to parts list (or type if no parts)
+  if(st==="coupon"){
+    const svcId = session.data.serviceId||session.data.service?.id||"";
+    const parts = await getPartsByService(svcId);
+    if(parts.length){
+      const lang2 = lang;
+      const partsRows = parts.slice(0,10).map((p,i)=>({
+        id:"part_"+i, title:p.name.substring(0,24),
+        description:`${(parseFloat(p.price)||0).toFixed(3)} OMR${p.stock!==undefined?" · "+p.stock:""}`
+      }));
+      partsRows.push({id:"part_skip", title:lang2==="ar"?"0 — بدون قطع":"0 — No parts"});
+      partsRows.push(backRow(lang2));
+      await sendList(from,
+        lang2==="ar"?"🔩 اختر القطع:":"🔩 Choose parts:",
+        lang2==="ar"?"القطع":"Parts",
+        [{title:lang2==="ar"?"القطع المتاحة":"Available Parts", rows:partsRows}]
+      );
+      await setSession(from,"parts",{...session.data, parts:[], pendingPartIdx:null, pendingMaxQty:null});
+    } else {
+      // No parts → back to type
+      await handleBack(from, {...session, state:"parts"});
+    }
+    return true;
+  }
+
+  // confirm → go back to coupon (or parts if no coupon)
+  if(st==="confirm"){
+    const hasCoupons = await checkActiveCoupons();
+    const cleanData  = {...session.data, discount:0, couponId:null, couponCode:null, pendingPartIdx:null, pendingMaxQty:null};
+    if(hasCoupons){
+      await setSession(from,"coupon",cleanData);
+      const lang2 = lang;
+      await sendButtons(from,
+        lang2==="ar"?"🎟 هل لديك كوبون خصم؟ أرسل الكود أو اضغط تخطي.":
+        lang2==="ur"?"🎟 کیا آپ کے پاس ڈسکاؤنٹ کوڈ ہے؟ کوڈ بھیجیں یا چھوڑیں۔":
+        "🎟 Do you have a discount coupon? Send code or skip.",
+        [
+          {id:"coupon_skip", title:lang2==="ar"?"تخطي":lang2==="ur"?"چھوڑیں":"Skip"},
+          {id:"nav_back",    title:backRow(lang2).title}
+        ]
+      );
+    } else {
+      await handleBack(from, {...session, state:"coupon"});
+    }
+    return true;
+  }
+
+  // location → go back to confirm
+  if(st==="location"){
+    await goToConfirm(from, session, LANGS[lang]||LANGS.ar, session.data.discount||0, session.data.couponCode||null);
+    return true;
+  }
+
+  return false;
+}
+
 async function goNextAfterParts(from, data, Lx) {
   // Ensure servicePrice is always present
   const svcPrice = parseFloat(data.servicePrice) || parseFloat(data.selectedType?.price) || 0;
@@ -929,7 +1063,14 @@ async function goNextAfterParts(from, data, Lx) {
   const hasCoupons = await checkActiveCoupons();
   if(hasCoupons){
     await setSession(from,"coupon",cleanData);
-    await sendMessage(from,Lx.couponPrompt);
+    const cl = cleanData.lang||"ar";
+    await sendButtons(from,
+      LANGS[cl]?.couponPrompt||"🎟 هل لديك كوبون خصم؟ أرسل الكود أو اضغط تخطي.",
+      [
+        {id:"coupon_skip", title:cl==="ar"?"تخطي":cl==="ur"?"چھوڑیں":cl==="bn"?"এড়িয়ে যান":cl==="hi"?"छोड़ें":"Skip"},
+        {id:"nav_back",    title:backRow(cl).title}
+      ]
+    );
   } else {
     await goToConfirm(from,{state:"coupon",data:cleanData},Lx,0,null);
   }
@@ -953,7 +1094,7 @@ async function goToConfirm(from, session, Lx, discount, couponCode) {
   await setSession(from,"confirm",{...d, discount:disc, couponCode, totalPrice:total, servicePrice:svcPrice});
   await sendButtons(from,
     Lx.confirmTitle(svcName, typeName, partsTxt, svcPrice, partsTotal, disc>0?disc:null, total),
-    [{id:"confirm_yes",title:Lx.confirmYes},{id:"confirm_no",title:Lx.confirmNo}]
+    [{id:"confirm_yes",title:Lx.confirmYes},{id:"confirm_no",title:Lx.confirmNo},{id:"nav_back",title:backRow(d.lang||"ar").title}]
   );
 }
 
@@ -1282,5 +1423,40 @@ async function autoReactivateTechs() {
 }
 setInterval(autoReactivateTechs, 5*60*1000);
 setTimeout(autoReactivateTechs, 8000);
+
+
+// ── Admin: Suspend technician ─────────────────────────────────────────────────
+app.post("/admin/suspend-tech", async(req,res)=>{
+  try {
+    const { techId, reason } = req.body;
+    if(!techId||!reason) return res.status(400).json({error:"techId and reason required"});
+    const snap = await db.collection("technicians").doc(techId).get();
+    if(!snap.exists) return res.status(404).json({error:"Tech not found"});
+    const tech = snap.data();
+    const tl   = tech.lang || "ar";
+    const TL   = LANGS[tl] || LANGS.ar;
+    const msg  = TL.suspended
+      ? TL.suspended(reason)
+      : `⛔ تم إيقاف حسابك.\n\nالسبب: ${reason}`;
+    await sendMessage(normalize(tech.phone), msg);
+    res.json({success:true});
+  } catch(e){ console.error("suspend-tech:", e?.message); res.status(500).json({error:e.message}); }
+});
+
+// ── Admin: Reactivate technician ──────────────────────────────────────────────
+app.post("/admin/reactivate-tech", async(req,res)=>{
+  try {
+    const { techId } = req.body;
+    if(!techId) return res.status(400).json({error:"techId required"});
+    const snap = await db.collection("technicians").doc(techId).get();
+    if(!snap.exists) return res.status(404).json({error:"Tech not found"});
+    const tech = snap.data();
+    const tl   = tech.lang || "ar";
+    const TL   = LANGS[tl] || LANGS.ar;
+    const msg  = TL.reactivated || "✅ تم تفعيل حسابك! أهلاً بك مجدداً.";
+    await sendMessage(normalize(tech.phone), msg);
+    res.json({success:true});
+  } catch(e){ console.error("reactivate-tech:", e?.message); res.status(500).json({error:e.message}); }
+});
 
 app.listen(process.env.PORT||3000,()=>console.log("✅ TAQA Bot running"));
