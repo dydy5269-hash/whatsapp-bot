@@ -438,10 +438,13 @@ async function detectRegion(lat, lng) {
       const rName   = String(r.regionName || r.name || doc.id || "");
       const rActive = r.active !== false;
       // Method 1: center point + radius
-      if(r.lat && r.lng) {
-        const dist   = haversineKm(lat, lng, parseFloat(r.lat), parseFloat(r.lng));
-        const radius = parseFloat(r.radiusKm) || 25; // default 25km if not set
-        console.log(`[REGION] "${rName}" center=(${r.lat},${r.lng}) dist=${dist.toFixed(2)}km radius=${radius}km → ${dist<=radius?"✅ MATCH":"❌"}`);
+      // Support ALL field name variations for coordinates
+      const rLat = parseFloat(r.lat || r.centerLat || r.Lat || r.latitude || 0);
+      const rLng = parseFloat(r.lng || r.centerLng || r.Lng || r.longitude || 0);
+      if(rLat && rLng) {
+        const dist   = haversineKm(lat, lng, rLat, rLng);
+        const radius = parseFloat(r.radiusKm || r.radius || r.radiuskm || 25);
+        console.log(`[REGION] "${rName}" center=(${rLat},${rLng}) dist=${dist.toFixed(2)}km radius=${radius}km → ${dist<=radius?"✅ MATCH":"❌"}`);
         if(dist <= radius) matched.push({name:rName, active:rActive, id:doc.id, dist});
       }
       // Method 2: bounding box
