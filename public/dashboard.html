@@ -148,7 +148,7 @@ tr:hover td{background:rgba(255,255,255,.02);}
 .form-actions{padding:0 18px 18px;display:flex;gap:8px;}
 /* Tech Cards */
 .tech-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;padding:18px;}
-.tech-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:15px;transition:all .2s;}
+.tech-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:15px;transition:all .2s;min-width:0;overflow:hidden;}
 .tech-card:hover{border-color:var(--accent2);transform:translateY(-2px);}
 .tech-avatar{width:38px;height:38px;border-radius:8px;background:linear-gradient(135deg,var(--accent2),var(--accent));display:flex;align-items:center;justify-content:center;font-size:1.1rem;margin-bottom:9px;}
 .tech-name{font-weight:700;font-size:.88rem;margin-bottom:2px;}
@@ -159,6 +159,9 @@ tr:hover td{background:rgba(255,255,255,.02);}
 .tech-stat-val{font-size:.9rem;font-weight:900;}
 .tech-stat-lbl{font-size:.58rem;color:var(--muted);}
 .tech-footer{display:flex;align-items:center;justify-content:space-between;gap:4px;}
+.tech-name{font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;margin:4px 0 2px;}
+.tech-phone{font-size:.75rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.tech-region{font-size:.72rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px;}
 .active-pill{padding:2px 8px;border-radius:20px;font-size:.65rem;font-weight:700;}
 .active-pill.on{background:rgba(16,185,129,.15);color:var(--accent3);}
 .active-pill.off{background:rgba(239,68,68,.15);color:var(--danger);}
@@ -987,31 +990,8 @@ html[dir="ltr"] .notif-item.unread{border-right:none;border-left:3px solid var(-
   <table><thead><tr><th>رقم الطلب</th><th>المنطقة</th><th>الخدمة</th><th>الإجمالي</th><th>الحالة</th></tr></thead>
   <tbody>${rows.map(o=>`<tr><td>${o.orderId||o.id}</td><td>${o.region||"-"}</td><td>${o.serviceName||"-"}</td><td>${(o.totalPrice||0).toFixed?.(3)} OMR</td><td>${sl(o.status)}</td></tr>`).join("")}</tbody></table>
   <script>window.print();window.close();<\/script>
-<!-- Suspend Tech Modal -->
-<div class="modal-overlay" id="suspend-modal">
-  <div class="modal" style="max-width:420px">
-    <div class="modal-header">
-      <h3>⛔ إيقاف الفني: <span id="suspend-tech-name" style="color:var(--danger)"></span></h3>
-      <button class="modal-close" onclick="closeModal('suspend-modal')">×</button>
-    </div>
-    <input type="hidden" id="suspend-tech-id"/>
-    <div class="form-group" style="margin-top:16px">
-      <label style="display:block;margin-bottom:8px;font-weight:700;color:var(--muted)">
-        سبب الإيقاف <span style="color:var(--danger)">*</span>
-      </label>
-      <textarea id="suspend-reason" rows="4"
-        placeholder="اكتب سبب إيقاف الفني... سيتم إرسال هذا السبب للفني عبر واتساب"
-        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-family:inherit;font-size:.9rem;resize:vertical"></textarea>
-      <p style="font-size:.75rem;color:var(--muted);margin-top:6px">
-        📱 سيصل الفني رسالة واتساب تحتوي سبب الإيقاف فور الحفظ.
-      </p>
-    </div>
-    <div class="form-actions" style="margin-top:16px">
-      <button class="btn btn-danger" onclick="confirmSuspend()" style="background:var(--danger)">⛔ إيقاف وإشعار الفني</button>
-      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('suspend-modal')">إلغاء</button>
-    </div>
-  </div>
-</div>
+
+
 
 </body></html>`);
   w.document.close();
@@ -1142,33 +1122,71 @@ async function loadTechnicians(){
     const snap=await db.collection("technicians").get();
     const techs=snap.docs.map(d=>({id:d.id,...d.data()}));
     if(!techs.length){document.getElementById("tech-grid").innerHTML='<div class="empty">لا يوجد فنيون</div>';return;}
-    document.getElementById("tech-grid").innerHTML=techs.map(tc=>`
-      <div class="tech-card">
+    // Store techs data globally for button access
+    window._techsData = {};
+    techs.forEach(tc => { window._techsData[tc.id] = tc; });
+
+    document.getElementById("tech-grid").innerHTML=techs.map(tc=>{
+      const bal = parseFloat(tc.balance||0);
+      const lowBal = bal < 2;
+      const balColor = lowBal ? "var(--danger)" : "var(--accent2)";
+      const suspendedBadge = tc.suspendReason
+        ? `<div style="font-size:.65rem;color:var(--danger);margin-top:4px;padding:3px 8px;background:rgba(239,68,68,.1);border-radius:4px">⛔ ${tc.suspendReason.substring(0,40)}</div>`
+        : "";
+      return `
+      <div class="tech-card" data-id="${tc.id}">
         <div class="tech-avatar">👨‍🔧</div>
-        <div class="tech-name">${tc.name||"-"}</div>
+        <div class="tech-name" title="${tc.name||""}">${tc.name||"-"}</div>
         <div class="tech-phone">📞 ${tc.phone||"-"}</div>
-        <div class="tech-region">📍 ${tc.regionName||tc.regionId||"غير محدد"}</div>
+        <div class="tech-region" title="${tc.regionName||tc.regionId||""}">📍 ${(tc.regionName||tc.regionId||"غير محدد").substring(0,20)}</div>
+        ${suspendedBadge}
         <div class="tech-stats">
           <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent)">${tc.rating?tc.rating.toFixed(1):"-"}</div><div class="tech-stat-lbl">تقييم</div></div>
           <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent3)">${tc.ratingCount||0}</div><div class="tech-stat-lbl">تقييمات</div></div>
-          <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent2)">${tc.balance||0}</div><div class="tech-stat-lbl">OMR</div></div>
+          <div class="tech-stat"><div class="tech-stat-val" style="color:${balColor}">${bal.toFixed(3)}</div><div class="tech-stat-lbl">OMR</div></div>
         </div>
         <div class="tech-footer">
-          <span class="active-pill ${tc.active?"on":"off"}">${tc.active?"متاح":"مشغول"}</span>
+          <span class="active-pill ${tc.active?"on":"off"}">${tc.active?lowBal?"⚠️ رصيد منخفض":"متاح":"موقوف"}</span>
           <div style="display:flex;gap:4px">
-            <button class="btn btn-sm ${tc.active?"btn-danger":"btn-success"}" onclick="techAction('${tc.id}','${tc.name}',${tc.active})">${tc.active?"⛔ إيقاف":"✅ تفعيل"}</button>
-            <button class="btn btn-sm btn-danger" onclick="deleteTech('${tc.id}')">🗑</button>
+            <button class="btn btn-sm ${tc.active?"btn-danger":"btn-success"}" data-tech-id="${tc.id}" data-active="${tc.active}" onclick="techAction(this)">${tc.active?"⛔ إيقاف":"✅ تفعيل"}</button>
+            <button class="btn btn-sm" style="background:var(--surface);border:1px solid var(--border)" data-tech-id="${tc.id}" onclick="editTechBalance(this)">💰</button>
+            <button class="btn btn-sm btn-danger" data-tech-id="${tc.id}" onclick="deleteTechById(this)">🗑</button>
           </div>
         </div>
-      </div>`).join("");
+      </div>`;
+    }).join("");
   }catch(e){console.error(e);}
 }
-function techAction(techId, techName, isActive) {
+function techAction(btn) {
+  const techId  = btn.getAttribute("data-tech-id");
+  const isActive = btn.getAttribute("data-active") === "true";
+  const tech    = window._techsData && window._techsData[techId];
+  const techName = tech ? tech.name : techId;
   if(isActive) {
     openSuspendModal(techId, techName);
   } else {
     reactivateTech(techId, techName);
   }
+}
+
+function deleteTechById(btn) {
+  const techId = btn.getAttribute("data-tech-id");
+  deleteTech(techId);
+}
+
+async function editTechBalance(btn) {
+  const techId = btn.getAttribute("data-tech-id");
+  const tech   = window._techsData && window._techsData[techId];
+  const cur    = parseFloat(tech?.balance||0).toFixed(3);
+  const val    = prompt(`رصيد الفني ${tech?.name||techId}\nالرصيد الحالي: ${cur} OMR\n\nأدخل الرصيد الجديد:`, cur);
+  if(val===null) return;
+  const newBal = parseFloat(val);
+  if(isNaN(newBal)||newBal<0){ showToast("رصيد غير صالح","error"); return; }
+  try {
+    await db.collection("technicians").doc(techId).update({balance: newBal});
+    showToast(`✅ تم تحديث الرصيد إلى ${newBal.toFixed(3)} OMR`);
+    loadTechnicians();
+  } catch(e){ showToast(e.message,"error"); }
 }
 
 function openSuspendModal(techId, techName) {
@@ -1595,6 +1613,33 @@ document.querySelectorAll(".modal-overlay").forEach(m=>{m.addEventListener("clic
     <div class="form-actions">
       <button class="btn btn-primary" onclick="assignTechToOrder()">✅ تعيين الفني</button>
       <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('assign-modal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Suspend Tech Modal -->
+<div class="modal-overlay" id="suspend-modal" style="z-index:9999">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <h3>⛔ إيقاف الفني: <span id="suspend-tech-name" style="color:var(--danger)"></span></h3>
+      <button class="modal-close" onclick="closeModal('suspend-modal')">×</button>
+    </div>
+    <input type="hidden" id="suspend-tech-id"/>
+    <div class="form-group" style="margin-top:16px">
+      <label style="display:block;margin-bottom:8px;font-weight:700;color:var(--muted)">
+        سبب الإيقاف <span style="color:var(--danger)">*</span>
+      </label>
+      <textarea id="suspend-reason" rows="4"
+        placeholder="اكتب سبب إيقاف الفني... سيتم إرسال هذا السبب للفني عبر واتساب"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-family:inherit;font-size:.9rem;resize:vertical"></textarea>
+      <p style="font-size:.75rem;color:var(--muted);margin-top:6px">
+        📱 سيصل الفني رسالة واتساب تحتوي سبب الإيقاف فور الحفظ.
+      </p>
+    </div>
+    <div class="form-actions" style="margin-top:16px">
+      <button class="btn btn-danger" onclick="confirmSuspend()" style="background:var(--danger)">⛔ إيقاف وإشعار الفني</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('suspend-modal')">إلغاء</button>
     </div>
   </div>
 </div>
