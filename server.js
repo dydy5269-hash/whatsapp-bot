@@ -963,9 +963,12 @@ app.post("/webhook", async(req,res)=>{
 
       // Notify tech with BUTTONS (accept/reject) + customer location
       const techPhone=normalize(chosenTech.phone);
+      const techSnap2 = await db.collection("technicians").doc(chosenTech.id).get();
+      const firstTechLang = techSnap2.data()?.lang || "ar";
+      const TLF = LANGS[firstTechLang] || LANGS.en;
       await sendButtons(techPhone,
-        (LANGS[firstTechLang]||LANGS.en).newOrder(orderId,service.name,selectedType.name,partsText,totalPrice),
-        [{id:"accept_"+orderId,title:(LANGS[firstTechLang]||LANGS.en).acceptBtn},{id:"reject_"+orderId,title:(LANGS[firstTechLang]||LANGS.en).rejectBtn}]
+        TLF.newOrder(orderId,service.name,selectedType.name,partsText,totalPrice),
+        [{id:"accept_"+orderId,title:TLF.acceptBtn},{id:"reject_"+orderId,title:TLF.rejectBtn}]
       );
       // Send customer location to tech so they can check distance
       await sendLocation(techPhone, msg.location.latitude, msg.location.longitude);
