@@ -439,7 +439,7 @@ async function detectRegion(lat, lng) {
       // Method 1: center point + radius
       if(r.lat && r.lng) {
         const dist   = haversineKm(lat, lng, parseFloat(r.lat), parseFloat(r.lng));
-        const radius = parseFloat(r.radiusKm) || 10;
+        const radius = parseFloat(r.radiusKm) || 25; // default 25km if not set
         console.log(`[REGION] "${rName}" dist=${dist.toFixed(2)}km radius=${radius}km → ${dist<=radius?"✅ MATCH":"❌"}`);
         if(dist <= radius) matched.push({name:rName, active:rActive, id:doc.id, dist});
       }
@@ -893,12 +893,41 @@ app.post("/webhook", async(req,res)=>{
       const regionName   = regionFound && regionObj.name ? String(regionObj.name) : null;
       const regionActive = regionObj?.active !== false;
 
-      // ── Step 2: منطقة غير موجودة في Firebase → غير مخدومة ───────────────
+      // ── Step 2: منطقة غير موجودة في Firebase ───────────────────────────────
+      // لا نرفض — نحفظ في الانتظار ونبلغ الأدمن
       if(!regionFound){
-        await sendMessage(from, userLang==="ar"
-          ? "📍 منطقتك ليست ضمن نطاق خدمتنا حالياً.\nسنقوم بتوسيع خدماتنا قريباً. شكراً! 🙏"
-          : userLang==="ur"?"📍 آپ کا علاقہ ابھی ہماری سروس میں شامل نہیں۔ جلد توسیع ہوگی۔ 🙏"
-          : "📍 Your area is not within our service coverage yet. We'll expand soon. Thank you! 🙏");
+        // حاول OSM لمعرفة اسم المنطقة للتسجيل فقط
+        let osmName = null;
+        try {
+          const osmRes = await axios.get(
+            `https://nominatim.openstreetmap.org/reverse?lat=${msg.location.latitude}&lon=${msg.location.longitude}&format=json&accept-language=ar`,
+            {headers:{"User-Agent":"TAQA-Bot/1.0"},timeout:4000}
+          );
+          const a = osmRes.data.address||{};
+          osmName = a.county||a.state_district||a.city||a.state||null;
+        } catch(e){}
+        console.log(`[LOC] region not in Firebase — osmName="${osmName}" — saving to waiting`);
+        // Save to waiting_orders so admin can review & assign manually
+        const wOrdId = generateOrderId();
+        const wParts = session.data.parts||[];
+        const wRaw   = calcTotal(session.data.servicePrice||selectedType.price, wParts);
+        const wDisc  = session.data.discount||0;
+        const wTotal = Math.max(0, Math.round((wRaw-wDisc)*1000)/1000);
+        await db.collection("waiting_orders").doc(wOrdId).set({
+          orderId:wOrdId, customer:from,
+          serviceName:service.name, serviceId:String(service.id||""),
+          type:selectedType.name, servicePrice:session.data.servicePrice||selectedType.price,
+          parts:wParts, totalPrice:wTotal, discount:wDisc,
+          couponCode:session.data.couponCode||null,
+          lang:userLang, region:osmName||"غير معروفة", regionId:null,
+          location:{latitude:msg.location.latitude, longitude:msg.location.longitude},
+          status:"waiting", technicianId:null, rejectedTechs:[],
+          note:"region_not_in_firebase",
+          createdAt:admin.firestore.FieldValue.serverTimestamp()
+        });
+        if(session.data.couponId) await applyCoupon(session.data.couponId,from);
+        await sendMessage(from, Lx.noTechAny);
+        await sendMessage(from, Lx.waitingQueue ? Lx.waitingQueue(wOrdId) : `⏳ رقم طلبك: ${wOrdId}\nسيتم التواصل معك قريباً.`);
         await clearSession(from); return;
       }
 
