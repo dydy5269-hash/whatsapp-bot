@@ -1,1462 +1,1603 @@
-const express     = require("express");
-const axios       = require("axios");
-const admin       = require("firebase-admin");
-const { v4: uuidv4 } = require("uuid");
-const PDFDocument = require("pdfkit");
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>TAQA — لوحة التحكم</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{--bg:#0a0e1a;--surface:#111827;--surface2:#1a2235;--border:#1e2d45;--accent:#f59e0b;--accent2:#3b82f6;--accent3:#10b981;--danger:#ef4444;--text:#f1f5f9;--muted:#64748b;--font-ar:'Cairo',sans-serif;--font-en:'Outfit',sans-serif;}
+*{margin:0;padding:0;box-sizing:border-box;}
+html[dir="rtl"] body{font-family:var(--font-ar);}
+html[dir="ltr"] body{font-family:var(--font-en);}
+body{background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+#login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;background-image:radial-gradient(ellipse at 20% 50%,rgba(245,158,11,.1),transparent 60%),radial-gradient(ellipse at 80% 20%,rgba(59,130,246,.08),transparent 60%);}
+.login-box{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:48px 40px;width:100%;max-width:420px;text-align:center;}
+.login-logo{font-size:3rem;font-weight:900;color:var(--accent);margin-bottom:4px;letter-spacing:-2px;}
+.login-sub{color:var(--muted);font-size:.9rem;margin-bottom:36px;}
+.login-field{text-align:right;margin-bottom:16px;}
+html[dir="ltr"] .login-field{text-align:left;}
+.login-field label{font-size:.8rem;font-weight:700;color:var(--muted);display:block;margin-bottom:6px;}
+.login-field input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:13px 16px;color:var(--text);font-size:.95rem;font-family:inherit;transition:border-color .2s;}
+.login-field input:focus{outline:none;border-color:var(--accent);}
+.login-btn{width:100%;background:var(--accent);color:#000;border:none;border-radius:10px;padding:14px;font-size:1rem;font-weight:800;cursor:pointer;margin-top:8px;font-family:inherit;}
+.login-btn:hover{background:#d97706;}
+.login-btn:disabled{opacity:.5;cursor:not-allowed;}
+.login-error{color:var(--danger);font-size:.83rem;margin-top:12px;min-height:20px;}
+#app{display:none;}
+.sidebar{position:fixed;top:0;right:0;width:230px;height:100vh;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;z-index:100;overflow-y:auto;}
+html[dir="ltr"] .sidebar{right:auto;left:0;border-left:none;border-right:1px solid var(--border);}
+.logo{padding:20px 20px 14px;font-size:1.4rem;font-weight:900;color:var(--accent);letter-spacing:-1px;border-bottom:1px solid var(--border);}
+.logo span{color:var(--muted);font-weight:400;font-size:.72rem;display:block;margin-top:2px;}
+.nav{flex:1;padding:12px 10px;display:flex;flex-direction:column;gap:2px;}
+.nav-item{display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:.83rem;font-weight:600;color:var(--muted);transition:all .2s;border:none;background:none;width:100%;text-align:right;}
+html[dir="ltr"] .nav-item{text-align:left;}
+.nav-item:hover{background:var(--surface2);color:var(--text);}
+.nav-item.active{background:rgba(245,158,11,.12);color:var(--accent);}
+.nav-item .icon{font-size:1rem;flex-shrink:0;}
+.nav-badge{margin-right:auto;background:var(--danger);color:#fff;font-size:.6rem;padding:2px 6px;border-radius:20px;animation:pulse 2s infinite;}
+html[dir="ltr"] .nav-badge{margin-right:0;margin-left:auto;}
+.nav-section{padding:8px 12px 4px;font-size:.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+.sidebar-footer{padding:10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;}
+.admin-info{padding:8px 10px;background:var(--surface2);border-radius:7px;font-size:.7rem;color:var(--muted);word-break:break-all;}
+.admin-info strong{color:var(--text);display:block;font-size:.75rem;}
+.admin-role-badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:.62rem;font-weight:700;margin-top:2px;}
+.role-admin{background:rgba(245,158,11,.2);color:var(--accent);}
+.role-supervisor{background:rgba(59,130,246,.2);color:var(--accent2);}
+.logout-btn,.lang-toggle{padding:7px 12px;border-radius:7px;border:none;cursor:pointer;font-size:.78rem;font-weight:700;font-family:inherit;width:100%;transition:all .2s;}
+.logout-btn{background:rgba(239,68,68,.1);color:var(--danger);}
+.logout-btn:hover{background:rgba(239,68,68,.2);}
+.lang-toggle{background:var(--surface2);color:var(--muted);display:flex;align-items:center;gap:5px;}
+.lang-toggle:hover{color:var(--text);}
+.main{margin-right:230px;min-height:100vh;}
+html[dir="ltr"] .main{margin-right:0;margin-left:230px;}
+.topbar{padding:14px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:50;}
+.topbar h1{font-size:1.1rem;font-weight:700;}
+.topbar-right{display:flex;align-items:center;gap:10px;}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--accent3);box-shadow:0 0 7px var(--accent3);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+/* Notification Bell */
+.notif-bell{position:relative;cursor:pointer;padding:6px;border-radius:8px;background:var(--surface2);border:none;color:var(--text);font-size:1.1rem;transition:background .2s;}
+.notif-bell:hover{background:var(--border);}
+.notif-count{position:absolute;top:-4px;right:-4px;background:var(--danger);color:#fff;font-size:.55rem;padding:1px 5px;border-radius:10px;font-weight:700;}
+/* Notification Panel */
+.notif-panel{position:fixed;top:54px;left:24px;width:320px;background:var(--surface);border:1px solid var(--border);border-radius:14px;z-index:300;box-shadow:0 8px 32px rgba(0,0,0,.5);display:none;max-height:480px;overflow-y:auto;}
+html[dir="ltr"] .notif-panel{right:24px;left:auto;}
+.notif-panel.open{display:block;}
+.notif-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.notif-header h4{font-size:.88rem;font-weight:700;}
+.notif-item{padding:12px 18px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .15s;}
+.notif-item:hover{background:var(--surface2);}
+.notif-item.unread{border-right:3px solid var(--accent);}
+html[dir="ltr"] .notif-item.unread{border-right:none;border-left:3px solid var(--accent);}
+.notif-title{font-size:.82rem;font-weight:600;margin-bottom:2px;}
+.notif-time{font-size:.7rem;color:var(--muted);}
+.notif-empty{padding:24px;text-align:center;color:var(--muted);font-size:.82rem;}
+/* Pages */
+.page{display:none;padding:22px;animation:fadeIn .3s;}
+.page.active{display:block;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+/* Stats */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px;}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;position:relative;overflow:hidden;transition:transform .2s;}
+.stat-card:hover{transform:translateY(-2px);}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
+.stat-card.yellow::before{background:var(--accent);}
+.stat-card.blue::before{background:var(--accent2);}
+.stat-card.green::before{background:var(--accent3);}
+.stat-card.red::before{background:var(--danger);}
+.stat-icon{font-size:1.4rem;margin-bottom:7px;}
+.stat-val{font-size:1.7rem;font-weight:900;line-height:1;}
+.stat-label{font-size:.7rem;color:var(--muted);margin-top:4px;font-weight:600;}
+/* Card */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:18px;}
+.card-header{padding:13px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:7px;}
+.card-header h3{font-size:.9rem;font-weight:700;}
+/* Badge */
+.badge{padding:2px 8px;border-radius:20px;font-size:.68rem;font-weight:700;}
+.badge.pending{background:rgba(245,158,11,.15);color:var(--accent);}
+.badge.accepted{background:rgba(59,130,246,.15);color:var(--accent2);}
+.badge.done{background:rgba(16,185,129,.15);color:var(--accent3);}
+.badge.rejected{background:rgba(239,68,68,.15);color:var(--danger);}
+.badge.waiting{background:rgba(249,115,22,.15);color:#f97316;}
+.badge.cancelled{background:rgba(100,116,139,.15);color:#94a3b8;}
+/* Table */
+.table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;min-width:500px;}
+th{padding:9px 15px;text-align:right;font-size:.68rem;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;}
+html[dir="ltr"] th{text-align:left;}
+td{padding:10px 15px;font-size:.8rem;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:rgba(255,255,255,.02);}
+/* Buttons */
+.btn{padding:6px 14px;border-radius:7px;border:none;cursor:pointer;font-size:.78rem;font-weight:700;transition:all .2s;font-family:inherit;}
+.btn-primary{background:var(--accent);color:#000;}
+.btn-primary:hover{background:#d97706;}
+.btn-danger{background:rgba(239,68,68,.15);color:var(--danger);}
+.btn-danger:hover{background:rgba(239,68,68,.3);}
+.btn-success{background:rgba(16,185,129,.15);color:var(--accent3);}
+.btn-success:hover{background:rgba(16,185,129,.3);}
+.btn-blue{background:rgba(59,130,246,.15);color:var(--accent2);}
+.btn-blue:hover{background:rgba(59,130,246,.3);}
+.btn-blue{background:rgba(59,130,246,.15);color:var(--accent2);}
+.btn-blue:hover{background:rgba(59,130,246,.3);}
+.btn-sm{padding:4px 9px;font-size:.72rem;}
+.btn-group{display:flex;gap:5px;flex-wrap:wrap;}
+/* Charts */
+.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px;}
+@media(max-width:900px){.charts-grid{grid-template-columns:1fr;}}
+.chart-wrap{padding:18px;}
+.chart-wrap h3{font-size:.88rem;font-weight:700;margin-bottom:14px;}
+/* Forms */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:18px;}
+.form-group{display:flex;flex-direction:column;gap:5px;}
+.form-group label{font-size:.73rem;font-weight:700;color:var(--muted);}
+.form-group input,.form-group select,.form-group textarea{background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:8px 11px;color:var(--text);font-size:.84rem;font-family:inherit;transition:border-color .2s;}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:var(--accent);}
+.form-group .hint{font-size:.65rem;color:var(--muted);margin-top:2px;}
+.form-actions{padding:0 18px 18px;display:flex;gap:8px;}
+/* Tech Cards */
+.tech-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;padding:18px;}
+.tech-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:15px;transition:all .2s;}
+.tech-card:hover{border-color:var(--accent2);transform:translateY(-2px);}
+.tech-avatar{width:38px;height:38px;border-radius:8px;background:linear-gradient(135deg,var(--accent2),var(--accent));display:flex;align-items:center;justify-content:center;font-size:1.1rem;margin-bottom:9px;}
+.tech-name{font-weight:700;font-size:.88rem;margin-bottom:2px;}
+.tech-phone{font-size:.74rem;color:var(--muted);margin-bottom:4px;}
+.tech-region{font-size:.7rem;color:var(--accent2);margin-bottom:8px;}
+.tech-stats{display:flex;gap:6px;margin-bottom:9px;}
+.tech-stat{flex:1;background:var(--surface);border-radius:6px;padding:5px;text-align:center;}
+.tech-stat-val{font-size:.9rem;font-weight:900;}
+.tech-stat-lbl{font-size:.58rem;color:var(--muted);}
+.tech-footer{display:flex;align-items:center;justify-content:space-between;gap:4px;}
+.active-pill{padding:2px 8px;border-radius:20px;font-size:.65rem;font-weight:700;}
+.active-pill.on{background:rgba(16,185,129,.15);color:var(--accent3);}
+.active-pill.off{background:rgba(239,68,68,.15);color:var(--danger);}
+/* Lists */
+.items-list{padding:16px;display:flex;flex-direction:column;gap:10px;}
+.item-row{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:13px 15px;display:flex;align-items:center;gap:11px;}
+.item-icon{font-size:1.6rem;flex-shrink:0;}
+.item-info{flex:1;}
+.item-name{font-weight:700;margin-bottom:2px;font-size:.88rem;}
+.item-meta{font-size:.73rem;color:var(--muted);}
+/* Finance */
+.fin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-bottom:18px;}
+.fin-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:15px;}
+.fin-amount{font-size:1.5rem;font-weight:900;color:var(--accent);}
+.fin-label{font-size:.7rem;color:var(--muted);margin-top:2px;font-weight:600;}
+/* Map */
+#orders-map{height:460px;border-radius:10px;overflow:hidden;border:1px solid var(--border);}
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(4px);}
+.modal-overlay.open{display:flex;}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;width:90%;max-width:500px;max-height:92vh;overflow-y:auto;}
+.modal-header{padding:15px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--surface);}
+.modal-header h3{font-weight:700;font-size:.92rem;}
+.modal-close{background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem;}
+/* Misc */
+.search-bar{padding:11px 18px;border-bottom:1px solid var(--border);}
+.search-bar input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:8px 12px;color:var(--text);font-family:inherit;font-size:.84rem;}
+.search-bar input:focus{outline:none;border-color:var(--accent);}
+.filter-bar{padding:8px 18px;border-bottom:1px solid var(--border);display:flex;gap:5px;flex-wrap:wrap;}
+.filter-btn{padding:3px 11px;border-radius:20px;border:1px solid var(--border);background:none;color:var(--muted);font-size:.73rem;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit;}
+.filter-btn.active{background:var(--accent);color:#000;border-color:var(--accent);}
+.loader{display:flex;align-items:center;justify-content:center;padding:40px;color:var(--muted);font-size:.84rem;gap:8px;}
+.spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{text-align:center;padding:32px;color:var(--muted);font-size:.84rem;}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:10px 18px;font-size:.8rem;font-weight:600;z-index:999;box-shadow:0 8px 24px rgba(0,0,0,.4);white-space:nowrap;animation:slideUp .3s;}
+@keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.toast.success{border-color:var(--accent3);color:var(--accent3);}
+.toast.error{border-color:var(--danger);color:var(--danger);}
+.region-pill{display:inline-block;padding:2px 8px;border-radius:6px;font-size:.66rem;font-weight:700;background:rgba(59,130,246,.12);color:var(--accent2);margin-right:4px;}
+.permission-notice{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:12px 16px;margin:16px;font-size:.82rem;color:var(--danger);}
 
-const app = express();
-app.use(express.json());
+.live-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--danger);margin-right:4px;animation:pulse 1s infinite;}
+.notif-bell{position:relative;cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:1rem;transition:all .2s;}
+.notif-bell:hover{border-color:var(--accent);}
+.notif-count{position:absolute;top:-5px;right:-5px;background:var(--danger);color:#fff;font-size:.58rem;font-weight:800;padding:1px 5px;border-radius:10px;min-width:16px;text-align:center;}
+.notif-dropdown{position:absolute;top:50px;right:0;width:300px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:300;display:none;max-height:380px;overflow-y:auto;}
+html[dir="ltr"] .notif-dropdown{right:auto;left:0;}
+.notif-dropdown.open{display:block;animation:fadeIn .2s;}
+.notif-header{padding:11px 15px;border-bottom:1px solid var(--border);font-size:.8rem;font-weight:700;display:flex;justify-content:space-between;align-items:center;}
+.notif-clear{font-size:.7rem;color:var(--muted);cursor:pointer;background:none;border:none;font-family:inherit;}
+.notif-item{padding:11px 15px;border-bottom:1px solid rgba(255,255,255,.04);transition:background .15s;}
+.notif-item.unread{border-right:3px solid var(--accent);}
+html[dir="ltr"] .notif-item.unread{border-right:none;border-left:3px solid var(--accent);}
+.notif-empty{padding:22px;text-align:center;color:var(--muted);font-size:.8rem;}
+.region-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:15px;transition:all .2s;}
+.region-card:hover{border-color:var(--accent3);}
+.regions-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;padding:16px;}
+.region-stat{flex:1;text-align:center;background:var(--surface);border-radius:6px;padding:5px;}
+.region-stat-val{font-size:1.1rem;font-weight:900;color:var(--accent);}
+.region-stat-lbl{font-size:.6rem;color:var(--muted);}
+.tech-region{font-size:.68rem;color:var(--accent2);margin-bottom:7px;}
+.admin-role-badge{display:inline-block;padding:1px 7px;border-radius:4px;font-size:.6rem;font-weight:700;margin-top:2px;}
+.role-admin{background:rgba(245,158,11,.2);color:var(--accent);}
+.role-supervisor{background:rgba(59,130,246,.2);color:var(--accent2);}
+#orders-map{height:460px;border-radius:10px;overflow:hidden;border:1px solid var(--border);}
+</style>
+</head>
+<body>
 
-if (!admin.apps.length) {
-  admin.initializeApp({ credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_KEY)) });
-}
-const db = admin.firestore();
+<!-- Login -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">TAQA</div>
+    <div class="login-sub">لوحة تحكم الإدارة</div>
+    <div class="login-field"><label>البريد الإلكتروني</label><input type="email" id="login-email" placeholder="admin@taqa.com"/></div>
+    <div class="login-field"><label>كلمة المرور</label><input type="password" id="login-pass" placeholder="••••••••"/></div>
+    <button class="login-btn" id="login-btn" onclick="doLogin()">تسجيل الدخول</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
 
-const VERIFY_TOKEN    = process.env.VERIFY_TOKEN;
-const WHATSAPP_TOKEN  = process.env.WHATSAPP_TOKEN;
-const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
-const normalize = (p) => String(p).replace(/\+/g, "");
+<!-- App -->
+<div id="app">
+  <aside class="sidebar">
+    <div class="logo">TAQA <span>لوحة التحكم</span></div>
+    <nav class="nav">
+      <div class="nav-section">الرئيسية</div>
+      <button class="nav-item active" onclick="showPage('overview',this)"><span class="icon">📊</span><span class="nl" data-ar="نظرة عامة" data-en="Overview">نظرة عامة</span></button>
+      <button class="nav-item" onclick="showPage('orders',this)"><span class="icon">📋</span><span class="nl" data-ar="الطلبات" data-en="Orders">الطلبات</span><span class="nav-badge" id="pending-badge" style="display:none">0</span></button>
+      <button class="nav-item" onclick="showPage('waiting',this)"><span class="icon">⏳</span><span class="nl" data-ar="قائمة الانتظار" data-en="Waiting Queue">قائمة الانتظار</span><span class="nav-badge" id="waiting-badge" style="display:none">0</span></button>
+      <button class="nav-item" onclick="showPage('map',this)"><span class="icon">🗺</span><span class="nl" data-ar="خريطة الطلبات" data-en="Orders Map">خريطة الطلبات</span></button>
+      <div class="nav-section">الإدارة</div>
+      <button class="nav-item" onclick="showPage('technicians',this)"><span class="icon">👨‍🔧</span><span class="nl" data-ar="الفنيون" data-en="Technicians">الفنيون</span></button>
+      <button class="nav-item" onclick="showPage('regions',this)"><span class="icon">📍</span><span class="nl" data-ar="الولايات/المناطق" data-en="Regions">الولايات/المناطق</span></button>
+      <button class="nav-item" onclick="showPage('services',this)"><span class="icon">🔧</span><span class="nl" data-ar="الخدمات" data-en="Services">الخدمات</span></button>
+      <button class="nav-item" onclick="showPage('parts',this)"><span class="icon">🔩</span><span class="nl" data-ar="القطع" data-en="Parts">القطع</span></button>
+      <button class="nav-item" id="nav-waiting" onclick="showPage('waiting',this)"><span class="icon">⏳</span><span class="nl" data-ar="الانتظار" data-en="Waiting">الانتظار</span></button>
+      <button class="nav-item" onclick="showPage('coupons',this)"><span class="icon">🎟</span><span class="nl" data-ar="الكوبونات" data-en="Coupons">الكوبونات</span></button>
+      <div class="nav-section">التقارير</div>
+      <button class="nav-item" onclick="showPage('map',this)"><span class="icon">🗺️</span><span class="nl" data-ar="خريطة الطلبات" data-en="Map">خريطة الطلبات</span></button>
+      <button class="nav-item" onclick="showPage('regions',this)"><span class="icon">📍</span><span class="nl" data-ar="المناطق" data-en="Regions">المناطق</span></button>
+      <button class="nav-item admin-only" onclick="showPage('users',this)"><span class="icon">👥</span><span class="nl" data-ar="الصلاحيات" data-en="Roles">الصلاحيات</span></button>
+      <button class="nav-item" onclick="showPage('finance',this)"><span class="icon">💰</span><span class="nl" data-ar="التقارير المالية" data-en="Finance">التقارير المالية</span></button>
+      <button class="nav-item" id="nav-users" onclick="showPage('users',this)"><span class="icon">👥</span><span class="nl" data-ar="المستخدمون" data-en="Users">المستخدمون</span></button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="admin-info">
+        <strong id="admin-email">—</strong>
+        <span class="admin-role-badge" id="admin-role-badge">مدير</span>
+      </div>
+      <button class="lang-toggle" onclick="toggleLang()">🌐 <span id="lang-label">English</span></button>
+      <button class="logout-btn" onclick="doLogout()">تسجيل الخروج 🚪</button>
+    </div>
+  </aside>
 
-// ─── Language ─────────────────────────────────────────────────────────────────
-const LANGS = {
-  ar: {
-    welcome:        "أهلاً وسهلاً! 👋\nاختر الخدمة المطلوبة:",
-    chooseService:  "الخدمات المتاحة",
-    servicesBtn:    "الخدمات",
-    chooseType:     (name) => `🔧 *${name}*\nاختر نوع الخدمة:`,
-    typesBtn:       "الأنواع",
-    chooseParts:    "🔩 اختر القطع المطلوبة\n(أرسل رقم القطعة، يمكنك اختيار أكثر من قطعة):",
-    partsMenu:      (parts) => parts.map((p,i)=>`${i+1}. ${p.name} — ${(parseFloat(p.price)||0).toFixed(3)} OMR / ${p.unit||"قطعة"}${p.stock!==undefined?` (متوفر: ${p.stock})`:""}`).join("\n") + "\n\n0 — متابعة بدون قطع",
-    partAdded:      (name, qty, total) => `✅ تمت إضافة: *${name}* × ${qty}\nإجمالي القطع: ${total.toFixed(3)} OMR\n\nأرسل رقم قطعة أخرى أو *0* للمتابعة.`,
-    qtyPrompt:      (name, price, stock, maxQty) => { const fmt=n=>(parseFloat(n)||0).toFixed(3); const rows=[]; const max=maxQty||5; for(let i=1;i<=max;i++) rows.push(`${i} — ${i} قطعة × ${fmt(price)} = ${fmt(i*parseFloat(price))} OMR`); return `🔩 *${name}*\nاختر الكمية:\n\n${rows.join('\n')}${stock!==undefined?`\n\nالمتوفر: ${stock} قطعة`:''}`; },
-    invalidInput:   "يرجى إرسال رقم صحيح.",
-    invalidPart:    (max) => `يرجى إرسال رقم بين 0 و ${max}.`,
-    outOfStock:     (name, stock) => `⚠️ عذراً، *${name}* متوفر ${stock} فقط. أرسل رقماً أقل أو 0 للمتابعة.`,
-    couponPrompt:   "🎟 هل لديك كوبون خصم؟\nأرسل الكود أو *0* للمتابعة بدون خصم.",
-    couponValid:    (code, disc, total) => `✅ كوبون *${code}* مقبول!\n💸 الخصم: ${disc.toFixed(3)} OMR\n💰 الإجمالي بعد الخصم: ${total.toFixed(3)} OMR`,
-    couponInvalid:  "❌ الكوبون غير صالح أو منتهي.\nأرسل *0* للمتابعة.",
-    couponUsed:     "❌ هذا الكوبون استُخدم مسبقاً.\nأرسل *0* للمتابعة.",
-    confirmTitle:   (sName, tName, partsTxt, svcPrice, partsTotal, disc, total) => {
-      const fmt = n => (parseFloat(n)||0).toFixed(3);
-      return `📋 *ملخص الطلب*\n🔧 الخدمة: ${sName} — ${fmt(svcPrice)} OMR\n📌 النوع: ${tName}${partsTxt!=='-'?`\n\n🔩 القطع:\n${partsTxt}\n💡 إجمالي القطع: ${fmt(partsTotal)} OMR`:''}${disc?`\n\n🎟 الخصم: -${fmt(disc)} OMR`:''}\n\n💰 *الإجمالي: ${fmt(total)} OMR*`;
-    },
-    confirmYes:     "✅ تأكيد الطلب",
-    confirmNo:      "❌ إلغاء",
-    confirmed:      "✅ تم التأكيد!\n📍 أرسل موقعك الحالي لإتمام الطلب.",
-    cancelled:      "❌ تم إلغاء الطلب.\nأرسل *مرحبا* للبدء من جديد.",
-    locationOnly:   "📍 يرجى إرسال موقعك باستخدام ميزة الموقع في واتساب.",
-    sessionExpired: "انتهت الجلسة. أرسل *مرحبا* للبدء.",
-    suspended:     (reason) => `⛔ *تم إيقاف حسابك من قِبل الإدارة.*\n\n📋 السبب:\n${reason}\n\nللاستفسار تواصل مع الإدارة.`,
-    reactivated:    "✅ *تم تفعيل حسابك!*\nيمكنك الآن استلام الطلبات. أهلاً بك مجدداً! 🎉",
-    noTech:         "📍 منطقتك ليست ضمن نطاق خدمتنا حالياً.\nسنقوم بتوسيع خدماتنا قريباً لمنطقتك.\nشكراً لتواصلك معنا! 🙏",
-    noTechRegion:   (r) => `📍 منطقتك ليست ضمن نطاق خدمتنا حالياً.\nسنقوم بتوسيع خدماتنا قريباً لمنطقتك.\nشكراً لتواصلك معنا! 🙏`,
-    noTechAny:      "⚠️ لا يوجد فني متاح الآن.\n\n📝 تم حفظ طلبك في قائمة الانتظار وسيتم إشعارك فور توفر فني.",
-    techAvailableNotify: (id, techName) => `✅ *تم العثور على فني لطلبك!*\n🆔 ${id}\n👨‍🔧 الفني: ${techName}\nسيتواصل معك قريباً.`,
-    cancelPrompt:   (id) => `هل تريد إلغاء الطلب *${id}*؟\nأرسل سبب الإلغاء أو *لا* للعودة.`,
-    cancelDone:     (id, reason) => `تم إلغاء طلبك\n🆔 ${id}\nالسبب: ${reason}\nشكراً لتواصلك معنا.`,
-    cancelNo:       "تم الإبقاء على طلبك. أرسل *مرحبا* للعودة.",
-    regionDetected: (r) => `📍 تم تحديد موقعك في: *${r}*`,
-    orderSent:      (id) => `✅ *تم إرسال طلبك!*\n🆔 رقم الطلب: ${id}\nسيتم إشعارك عند قبول الطلب.\n\nلمتابعة طلبك:\n*حالة ${id}*`,
-    activeOrder:    (id, sName, status) => `لديك طلب نشط:\n🆔 ${id}\n🔧 ${sName}\nالحالة: ${statusLabel(status,"ar")}`,
-    defaultMsg:     "أرسل *مرحبا* للبدء.\nأو *حالة [رقم الطلب]* للمتابعة.",
-    techInfo:       (t) => `👤 الاسم: ${t.name}\n📞 الهاتف: ${t.phone}\n⭐ التقييم: ${t.rating?`${t.rating} (${t.ratingCount||0})`:"لا يوجد"}\n💰 الرصيد: ${(t.balance||0).toFixed(3)} OMR\n🟢 الحالة: ${t.active?"متاح":"مشغول"}\n📍 المنطقة: ${t.region||"غير محدد"}`,
-    newOrder:       (id, sName, tName, parts, total) => `🔔 *طلب جديد!*\n🆔 ${id}\n🔧 ${sName}\n📌 ${tName}${parts!=="-"?`\n\n🔩 القطع:\n${parts}`:""}\n\n💰 الإجمالي: ${total.toFixed(3)} OMR`,
-    acceptBtn:      "✅ قبول الطلب",
-    rejectBtn:      "❌ رفض الطلب",
-    customerPhone:  (p) => `📞 هاتف العميل: ${p}`,
-    orderDoneBtn:   "✅ إنهاء الطلب",
-    orderDoneLabel: (id) => `الطلب ${id} — اضغط عند الإنهاء`,
-    accepted:       (name, phone) => `✅ *تم قبول طلبك!*\n👨‍🔧 الفني: ${name}\n📞 ${phone}\nفي الطريق إليك! 🚗`,
-    rejected:       (id) => `❌ رفض الفني طلبك.\n🆔 ${id}\nجارٍ البحث عن فني آخر...`,
-    noBackupTech:   (id) => `❌ لا يوجد فني متاح حالياً.\n🆔 ${id}\nأرسل *مرحبا* للمحاولة مجدداً.`,
-    techRejected:   "تم رفض الطلب.",
-    orderNotFound:  "الطلب غير موجود.",
-    alreadyProcessed:"الطلب تمت معالجته مسبقاً.",
-    alreadyDone:    "الطلب مكتمل مسبقاً.",
-    completed:      (id) => `✅ *اكتمل طلبك!*\n🆔 ${id}\nشكراً لثقتك بنا! 🙏`,
-    techDone:       (id, fee, bal) => `✅ الطلب ${id} مكتمل.\n💸 العمولة: ${fee.toFixed(3)} OMR\n💰 رصيدك: ${bal.toFixed(3)} OMR`,
-    ratePrompt:     (id) => `⭐ *قيّم خدمة الفني*\nأرسل رقماً من 1 إلى 5:\n\n1 — ⭐ ضعيف\n2 — ⭐⭐ مقبول\n3 — ⭐⭐⭐ جيد\n4 — ⭐⭐⭐⭐ جيد جداً\n5 — ⭐⭐⭐⭐⭐ ممتاز`,
-    ratingDone:     (s) => `شكراً على تقييمك! ${"⭐".repeat(s)}`,
-    invoiceCaption: (id) => `📄 فاتورة الطلب ${id}`,
-    finalInvoice:   (id) => `📄 *فاتورة الطلب ${id}*\nيرجى مراجعة الفاتورة وإتمام الدفع للفني.`,
-    waitingQueue:   (id) => `⏳ *تم تسجيل طلبك في قائمة الانتظار!*\n🆔 رقم الطلب: ${id}\n\nسيتم إشعارك فوراً عند توفر فني.\n\nلمتابعة طلبك:\n*حالة ${id}*`,
-    techAvailable:  (id) => `✅ *تم توفر فني لطلبك!*\n🆔 ${id}\nجارٍ إرسال الطلب للفني...`,
-    cancelPrompt:   (id) => `هل تريد إلغاء الطلب ${id}؟\nأرسل سبب الإلغاء أو أرسل *لا* للرجوع.`,
-    cancelDone:     (id) => `✅ تم إلغاء الطلب ${id}.\nشكراً لك.`,
-    cancelNo:       "تم الإبقاء على طلبك.",
-    orderMenu:      (o) => `📋 *تفاصيل الطلب*\n🆔 ${o.orderId}\n🔧 ${o.serviceName}\n📌 ${o.type||""}\n💰 ${(o.totalPrice||0).toFixed(3)} OMR\n📊 الحالة: ${statusLabel(o.status,"ar")}\n📍 المنطقة: ${o.region||"-"}\n\nأرسل *إلغاء_${o.orderId}* لإلغاء الطلب.`,
-    trackResult:    (o) => `📋 *تفاصيل الطلب*\n🆔 ${o.orderId}\n🔧 ${o.serviceName}\n📌 ${o.type||""}\n💰 ${(o.totalPrice||o.price||0).toFixed(3)} OMR\n📊 الحالة: ${statusLabel(o.status,"ar")}\n📍 المنطقة: ${o.region||"-"}\n📅 ${o.createdAt?new Date(o.createdAt.seconds*1000).toLocaleDateString("ar-OM"):"-"}`,
-    trackNotFound:  "❌ لم يتم العثور على طلب بهذا الرقم.",
-    trackPrompt:    "🔍 أرسل رقم الطلب:\nمثال: *حالة ORD-XXXXXXXX*",
-  },
-  en: {
-    welcome:        "Welcome! 👋\nChoose a service:",
-    chooseService:  "Available Services",
-    servicesBtn:    "Services",
-    chooseType:     (name) => `🔧 *${name}*\nChoose service type:`,
-    typesBtn:       "Types",
-    chooseParts:    "🔩 Choose required parts\n(Send part number, you can choose multiple):",
-    partsMenu:      (parts) => parts.map((p,i)=>`${i+1}. ${p.name} — ${(parseFloat(p.price)||0).toFixed(3)} OMR / ${p.unit||"piece"}${p.stock!==undefined?` (available: ${p.stock})`:""}`).join("\n") + "\n\n0 — Continue without parts",
-    partAdded:      (name, qty, total) => `✅ Added: *${name}* × ${qty}\nParts total: ${total.toFixed(3)} OMR\n\nSend another number or *0* to continue.`,
-    qtyPrompt:      (name, price, stock, maxQty) => { const fmt=n=>(parseFloat(n)||0).toFixed(3); const rows=[]; for(let i=1;i<=maxQty;i++) rows.push(`${i} — ${i} piece × ${fmt(price)} = ${fmt(i*parseFloat(price))} OMR`); return `🔩 *${name}*\nChoose quantity:\n\n${rows.join('\n')}${stock!==undefined?`\n\nAvailable: ${stock}`:''}`; },
-    invalidInput:   "Please send a valid number.",
-    invalidPart:    (max) => `Please send a number between 0 and ${max}.`,
-    outOfStock:     (name, stock) => `⚠️ Sorry, only ${stock} *${name}* available. Send a smaller number or 0 to continue.`,
-    couponPrompt:   "🎟 Do you have a coupon?\nSend the code or *0* to continue without discount.",
-    couponValid:    (code, disc, total) => `✅ Coupon *${code}* applied!\n💸 Discount: ${disc.toFixed(3)} OMR\n💰 Total: ${total.toFixed(3)} OMR`,
-    couponInvalid:  "❌ Invalid or expired coupon.\nSend *0* to continue.",
-    couponUsed:     "❌ Coupon already used.\nSend *0* to continue.",
-    confirmTitle:   (sName, tName, partsTxt, svcPrice, partsTotal, disc, total) => {
-      const fmt = n => (parseFloat(n)||0).toFixed(3);
-      return `📋 *Order Summary*\n🔧 Service: ${sName} — ${fmt(svcPrice)} OMR\n📌 Type: ${tName}${partsTxt!=='-'?`\n\n🔩 Parts:\n${partsTxt}\n💡 Parts total: ${fmt(partsTotal)} OMR`:''}${disc?`\n\n🎟 Discount: -${fmt(disc)} OMR`:''}\n\n💰 *Grand Total: ${fmt(total)} OMR*`;
-    },
-    confirmYes:     "✅ Confirm Order",
-    confirmNo:      "❌ Cancel",
-    confirmed:      "✅ Confirmed!\n📍 Please send your location to complete the order.",
-    cancelled:      "❌ Order cancelled.\nSend *mrhba* to start again.",
-    locationOnly:   "📍 Please send your location using WhatsApp location feature.",
-    sessionExpired: "Session expired. Send *mrhba* to start.",
-    suspended:     (reason) => `⛔ *Your account has been suspended by admin.*\n\n📋 Reason:\n${reason}\n\nContact admin for more info.`,
-    reactivated:    "✅ *Your account is reactivated!*\nYou can now receive orders. Welcome back! 🎉",
-    noTech:         "📍 Your area is not within our service coverage yet.\nWe will be expanding to your area soon.\nThank you for contacting us! 🙏",
-    noTechRegion:   (r) => `📍 Your area is not within our service coverage yet.\nWe will be expanding to your area soon.\nThank you for contacting us! 🙏`,
-    noTechAny:      "⚠️ No technician available now.\n\n📝 Your order has been saved in the waiting queue. You will be notified when a technician is available.",
-    techAvailableNotify: (id, techName) => `✅ *A technician has been found for your order!*\n🆔 ${id}\n👨‍🔧 Tech: ${techName}\nThey will contact you shortly.`,
-    cancelPrompt:   (id) => `Do you want to cancel order *${id}*?\nSend the reason or *no* to go back.`,
-    cancelDone:     (id, reason) => `Order cancelled\n🆔 ${id}\nReason: ${reason}\nThank you for contacting us.`,
-    cancelNo:       "Your order is still active. Send *mrhba* to return.",
-    regionDetected: (r) => `📍 Your location detected in: *${r}*`,
-    orderSent:      (id) => `✅ *Order sent!*\n🆔 Order ID: ${id}\nYou'll be notified when accepted.\n\nTrack your order:\n*status ${id}*`,
-    activeOrder:    (id, sName, status) => `Active order:\n🆔 ${id}\n🔧 ${sName}\nStatus: ${statusLabel(status,"en")}`,
-    defaultMsg:     "Send *mrhba* to start.\nOr *status [order ID]* to track.",
-    techInfo:       (t) => `👤 Name: ${t.name}\n📞 Phone: ${t.phone}\n⭐ Rating: ${t.rating?`${t.rating} (${t.ratingCount||0})`:"N/A"}\n💰 Balance: ${(t.balance||0).toFixed(3)} OMR\n🟢 Status: ${t.active?"Available":"Busy"}\n📍 Region: ${t.region||"N/A"}`,
-    newOrder:       (id, sName, tName, parts, total) => `🔔 *New Order!*\n🆔 ${id}\n🔧 ${sName}\n📌 ${tName}${parts!=="-"?`\n\n🔩 Parts:\n${parts}`:""}\n\n💰 Total: ${total.toFixed(3)} OMR`,
-    acceptBtn:      "✅ Accept Order",
-    rejectBtn:      "❌ Reject Order",
-    customerPhone:  (p) => `📞 Customer phone: ${p}`,
-    orderDoneBtn:   "✅ Mark as Done",
-    orderDoneLabel: (id) => `Order ${id} — tap when finished`,
-    accepted:       (name, phone) => `✅ *Order accepted!*\n👨‍🔧 Tech: ${name}\n📞 ${phone}\nOn the way! 🚗`,
-    rejected:       (id) => `❌ Technician rejected your order.\n🆔 ${id}\nSearching for another...`,
-    noBackupTech:   (id) => `❌ No technician available.\n🆔 ${id}\nSend *mrhba* to try again.`,
-    techRejected:   "Order rejected.",
-    orderNotFound:  "Order not found.",
-    alreadyProcessed:"Order already processed.",
-    alreadyDone:    "Order already completed.",
-    completed:      (id) => `✅ *Order completed!*\n🆔 ${id}\nThank you! 🙏`,
-    techDone:       (id, fee, bal) => `✅ Order ${id} done.\n💸 Fee: ${fee.toFixed(3)} OMR\n💰 Balance: ${bal.toFixed(3)} OMR`,
-    ratePrompt:     (id) => `⭐ *Rate the technician*\nSend a number from 1 to 5:\n\n1 — ⭐ Poor\n2 — ⭐⭐ Fair\n3 — ⭐⭐⭐ Good\n4 — ⭐⭐⭐⭐ Very Good\n5 — ⭐⭐⭐⭐⭐ Excellent`,
-    ratingDone:     (s) => `Thanks for rating! ${"⭐".repeat(s)}`,
-    invoiceCaption: (id) => `📄 Invoice for Order ${id}`,
-    finalInvoice:   (id) => `📄 *Invoice for Order ${id}*\nPlease review and complete payment to the technician.`,
-    waitingQueue:   (id) => `⏳ *Your order is in the waiting queue!*\n🆔 Order ID: ${id}\n\nYou'll be notified as soon as a technician is available.\n\nTrack your order:\n*status ${id}*`,
-    techAvailable:  (id) => `✅ *A technician is now available for your order!*\n🆔 ${id}\nSending order to technician...`,
-    cancelPrompt:   (id) => `Do you want to cancel order ${id}?\nSend the reason or send *no* to go back.`,
-    cancelDone:     (id) => `✅ Order ${id} has been cancelled.\nThank you.`,
-    cancelNo:       "Your order is still active.",
-    orderMenu:      (o) => `📋 *Order Details*\n🆔 ${o.orderId}\n🔧 ${o.serviceName}\n📌 ${o.type||""}\n💰 ${(o.totalPrice||0).toFixed(3)} OMR\n📊 Status: ${statusLabel(o.status,"en")}\n📍 Region: ${o.region||"-"}\n\nSend *cancel_${o.orderId}* to cancel this order.`,
-    trackResult:    (o) => `📋 *Order Details*\n🆔 ${o.orderId}\n🔧 ${o.serviceName}\n📌 ${o.type||""}\n💰 ${(o.totalPrice||o.price||0).toFixed(3)} OMR\n📊 Status: ${statusLabel(o.status,"en")}\n📍 Region: ${o.region||"-"}\n📅 ${o.createdAt?new Date(o.createdAt.seconds*1000).toLocaleDateString("en-OM"):"-"}`,
-    trackNotFound:  "❌ No order found with this ID.",
-    trackPrompt:    "🔍 Send your order ID:\nExample: *status ORD-XXXXXXXX*",
-  },
-  bn: {
-    newOrder:       (id,sName,tName,parts,total)=>`🔔 *নতুন অর্ডার!*\n🆔 ${id}\n🔧 ${sName}\n📌 ${tName}${parts!=="-"?`\n\n🔩 যন্ত্রাংশ:\n${parts}`:""}\n\n💰 মোট: ${total.toFixed(3)} OMR`,
-    acceptBtn:      "✅ অর্ডার গ্রহণ",
-    rejectBtn:      "❌ অর্ডার প্রত্যাখ্যান",
-    customerPhone:  (p)=>`📞 গ্রাহকের ফোন: ${p}`,
-    orderDoneBtn:   "✅ অর্ডার সম্পন্ন",
-    orderDoneLabel: (id)=>`অর্ডার ${id} — সম্পন্ন হলে চাপুন`,
-    techRejected:   "অর্ডার প্রত্যাখ্যাত।",
-    orderNotFound:  "অর্ডার পাওয়া যায়নি।",
-    alreadyProcessed:"অর্ডার আগেই প্রসেস হয়েছে।",
-    alreadyDone:    "অর্ডার আগেই সম্পন্ন।",
-    techDone:       (id,fee,bal)=>`✅ ${id} সম্পন্ন।\n💸 কমিশন: ${fee.toFixed(3)} OMR\n💰 ব্যালেন্স: ${bal.toFixed(3)} OMR`,
-    techInfo:       (t)=>`👤 নাম: ${t.name}\n📞 ফোন: ${t.phone}\n⭐ রেটিং: ${t.rating||"নেই"}\n💰 ব্যালেন্স: ${(t.balance||0).toFixed(3)} OMR\n🟢 অবস্থা: ${t.active?"উপলব্ধ":"ব্যস্ত"}\n📍 এলাকা: ${t.regionName||t.region||"অজানা"}`,
-    langChanged:    "✅ ভাষা বাংলায় পরিবর্তিত হয়েছে।",
-    suspended:     (reason) => `⛔ *ایڈمن نے آپ کا اکاؤنٹ معطل کر دیا ہے۔*\n\n📋 وجہ:\n${reason}\n\nمزید معلومات کے لیے ایڈمن سے رابطہ کریں۔`,
-    reactivated:    "✅ *آپ کا اکاؤنٹ دوبارہ فعال ہو گیا!*\nآپ اب آرڈر وصول کر سکتے ہیں۔ خوش آمدید! 🎉",
-    suspended:     (reason) => `⛔ *অ্যাডমিন আপনার অ্যাকাউন্ট স্থগিত করেছেন।*\n\n📋 কারণ:\n${reason}\n\nবিস্তারিত জানতে অ্যাডমিনের সাথে যোগাযোগ করুন।`,
-    reactivated:    "✅ *আপনার অ্যাকাউন্ট পুনরায় সক্রিয় হয়েছে!*\nআপনি এখন অর্ডার নিতে পারবেন। স্বাগতম! 🎉",
-    lowBalance:     (bal)=>`⚠️ ব্যালেন্স: ${(bal||0).toFixed(3)} OMR\nকাজের জন্য কমপক্ষে *2.000 OMR* প্রয়োজন।\nঅর্ডার নিতে রিচার্জ করুন।\n📞 অ্যাডমিনের সাথে যোগাযোগ করুন।`,
-  },
-  hi: {
-    newOrder:       (id,sName,tName,parts,total)=>`🔔 *नया ऑर्डर!*\n🆔 ${id}\n🔧 ${sName}\n📌 ${tName}${parts!=="-"?`\n\n🔩 पुर्जे:\n${parts}`:""}\n\n💰 कुल: ${total.toFixed(3)} OMR`,
-    acceptBtn:      "✅ ऑर्डर स्वीकार",
-    rejectBtn:      "❌ ऑर्डर अस्वीकार",
-    customerPhone:  (p)=>`📞 ग्राहक का फ़ोन: ${p}`,
-    orderDoneBtn:   "✅ ऑर्डर पूरा",
-    orderDoneLabel: (id)=>`ऑर्डर ${id} — पूरा होने पर दबाएं`,
-    techRejected:   "ऑर्डर अस्वीकार कर दिया।",
-    orderNotFound:  "ऑर्डर नहीं मिला।",
-    alreadyProcessed:"ऑर्डर पहले ही प्रोसेस हो चुका है।",
-    alreadyDone:    "ऑर्डर पहले ही पूरा हो चुका है।",
-    techDone:       (id,fee,bal)=>`✅ ${id} पूरा।\n💸 कमीशन: ${fee.toFixed(3)} OMR\n💰 बैलेंस: ${bal.toFixed(3)} OMR`,
-    techInfo:       (t)=>`👤 नाम: ${t.name}\n📞 फ़ोन: ${t.phone}\n⭐ रेटिंग: ${t.rating||"नहीं"}\n💰 बैलेंस: ${(t.balance||0).toFixed(3)} OMR\n🟢 स्थिति: ${t.active?"उपलब्ध":"व्यस्त"}\n📍 क्षेत्र: ${t.regionName||t.region||"अज्ञात"}`,
-    langChanged:    "✅ भाषा हिंदी में बदल गई।",
-    suspended:     (reason) => `⛔ *एडमिन ने आपका अकाउंट निलंबित कर दिया है।*\n\n📋 कारण:\n${reason}\n\nअधिक जानकारी के लिए एडमिन से संपर्क करें।`,
-    reactivated:    "✅ *आपका अकाउंट पुनः सक्रिय हो गया!*\nआप अब ऑर्डर ले सकते हैं। स्वागत है! 🎉",
-    lowBalance:     (bal)=>`⚠️ बैलेंस: ${(bal||0).toFixed(3)} OMR\nकाम के लिए कम से कम *2.000 OMR* चाहिए।\nऑर्डर लेने के लिए रिचार्ज करें।\n📞 एडमिन से संपर्क करें।`,
-  }
+  <main class="main">
+    <div class="topbar">
+      <h1 id="page-title">نظرة عامة</h1>
+      <div class="topbar-right">
+        <button class="notif-bell" onclick="toggleNotifPanel()" id="notif-bell">🔔<span class="notif-count" id="notif-count" style="display:none">0</span></button>
+        <div style="display:flex;align-items:center;gap:7px"><div class="status-dot"></div><span style="font-size:.73rem;color:var(--muted)">Firebase</span></div>
+      </div>
+    </div>
 
-};
+    <!-- Notification Panel -->
+    <div class="notif-panel" id="notif-panel">
+      <div class="notif-header">
+        <h4>الإشعارات</h4>
+        <button class="btn btn-sm" onclick="markAllRead()" style="background:none;color:var(--muted);font-size:.72rem">تحديد الكل كمقروء</button>
+      </div>
+      <div id="notif-list"><div class="notif-empty">لا توجد إشعارات</div></div>
+    </div>
 
-function statusLabel(s, l) {
-  return ({ar:{pending:"قيد الانتظار",accepted:"مقبول",done:"مكتمل",rejected:"مرفوض"},en:{pending:"Pending",accepted:"Accepted",done:"Done",rejected:"Rejected"},ur:{pending:"انتظار میں",accepted:"قبول",done:"مکمل",rejected:"رد"},bn:{pending:"অপেক্ষায়",accepted:"গৃহীত",done:"সম্পন্ন",rejected:"প্রত্যাখ্যাত"},hi:{pending:"प्रतीक्षा में",accepted:"स्वीकृत",done:"पूरा",rejected:"अस्वीकृत"}}[l]||{})[s]||s;
-}
-function getLang(s) { const l=s?.data?.lang; return ["ar","en","ur","bn","hi"].includes(l)?l:"ar"; }
-function L(s)       { return LANGS[getLang(s)]; }
+    <!-- Overview -->
+    <div id="page-overview" class="page active">
+      <div class="stats-grid" id="stats-grid"><div class="loader"><div class="spinner"></div></div></div>
+      <div class="charts-grid">
+        <div class="card chart-wrap"><h3>الطلبات (آخر 7 أيام)</h3><canvas id="ordersChart" height="200"></canvas></div>
+        <div class="card chart-wrap"><h3>توزيع الحالات</h3><canvas id="statusChart" height="200"></canvas></div>
+      </div>
+      <!-- Low balance alert -->
+      <div id="low-balance-alert" style="display:none;background:#3b1a1a;border:1px solid #7c2d12;border-radius:10px;padding:14px 18px;margin-bottom:16px;color:#fca5a5;font-size:13px">
+        ⚠️ <strong>فنيون برصيد منخفض (أقل من 2 OMR):</strong>
+        <span id="low-balance-list"></span>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>آخر الطلبات</h3></div>
+        <div class="table-wrap" id="recent-orders-table"></div>
+      </div>
+    </div>
 
-// ─── Session ──────────────────────────────────────────────────────────────────
-async function getSession(p) { const d = await db.collection("sessions").doc(p).get(); return d.exists?d.data():{state:null,data:{}}; }
-async function setSession(p, state, data) {
-  // Strip undefined values — Firestore rejects them
-  const clean = JSON.parse(JSON.stringify({state, data: data||{}}, (k,v) => v===undefined ? null : v));
-  await db.collection("sessions").doc(p).set(clean);
-}
-async function clearSession(p) { await db.collection("sessions").doc(p).delete(); }
-const MIN_TECH_BALANCE = 2.0; // OMR minimum balance
+    <!-- Waiting Queue -->
+    <div id="page-waiting" class="page">
+      <div class="card">
+        <div class="card-header">
+          <h3>⏳ قائمة الانتظار <span class="live-dot"></span></h3>
+          <div class="btn-group">
+            <button class="btn btn-primary btn-sm" onclick="loadWaiting()">🔄 تحديث</button>
+          </div>
+        </div>
+        <div style="padding:14px 18px;background:rgba(245,158,11,.08);border-bottom:1px solid var(--border);font-size:.82rem;color:var(--accent)">
+          💡 هذه الطلبات محفوظة بانتظار توفر فني. عند انتهاء فني من طلبه سيُعيَّن تلقائياً.
+          يمكنك أيضاً تعيين فني يدوياً من هنا.
+        </div>
+        <div class="table-wrap" id="waiting-table"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+    </div>
 
-function generateOrderId() { return "ORD-" + uuidv4().split("-")[0].toUpperCase(); }
+    <!-- Waiting Orders Banner -->
+    <div id="waiting-banner" style="display:none;background:#1e1e3b;border:1px solid #3b3b7a;border-radius:10px;padding:14px 18px;margin:16px 32px 0;color:#a5b4fc">
+      ⏳ <strong id="waiting-count">0</strong> طلبات في قائمة الانتظار
+      <button class="btn btn-sm" style="margin-right:12px;background:#312e81;color:#a5b4fc;border:1px solid #4338ca" onclick="showPage('waiting',this)">عرض طلبات الانتظار</button>
+    </div>
 
-// ─── WhatsApp Senders ─────────────────────────────────────────────────────────
-async function sendMessage(to, text) {
-  try {
-    await axios.post(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-      {messaging_product:"whatsapp",to,text:{body:text}},
-      {headers:{Authorization:`Bearer ${WHATSAPP_TOKEN}`,"Content-Type":"application/json"}});
-  } catch(e) { console.error("sendMsg:", e?.message); }
-}
+    <!-- Waiting Orders Page -->
+    <div id="page-waiting" class="page">
+      <div class="card">
+        <div class="card-header">
+          <h3>⏳ طلبات الانتظار</h3>
+          <button class="btn btn-sm" style="background:var(--surface2);color:var(--muted)" onclick="loadWaitingOrders()">🔄 تحديث</button>
+        </div>
+        <div class="table-wrap" id="waiting-table"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+    </div>
 
-// List — for services and types (many options)
-async function sendList(to, body, button, sections) {
-  try {
-    await axios.post(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-      {messaging_product:"whatsapp",to,type:"interactive",interactive:{type:"list",body:{text:body},action:{button,sections}}},
-      {headers:{Authorization:`Bearer ${WHATSAPP_TOKEN}`,"Content-Type":"application/json"}});
-  } catch(e) { console.error("sendList:", e?.message); }
-}
+    <!-- Orders -->
+    <div id="page-orders" class="page">
+      <div class="card">
+        <div class="card-header">
+          <h3>جميع الطلبات</h3>
+          <div class="btn-group">
+            <button class="btn btn-success btn-sm" onclick="exportOrdersExcel()">📊 Excel</button>
+            <button class="btn btn-blue btn-sm" onclick="exportOrdersPDF()">📄 PDF</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteAllPending()">🗑 حذف المعلقة</button>
+            <button class="btn btn-primary btn-sm" onclick="loadOrders()">🔄</button>
+          </div>
+        </div>
+        <div class="search-bar"><input type="text" id="order-search" placeholder="بحث..." oninput="renderFilteredOrders()"/></div>
+        <div class="filter-bar">
+          <button class="filter-btn active" onclick="setOrderFilter('all',this)">الكل</button>
+          <button class="filter-btn" onclick="setOrderFilter('pending',this)">قيد الانتظار</button>
+          <button class="filter-btn" onclick="setOrderFilter('accepted',this)">مقبول</button>
+          <button class="filter-btn" onclick="setOrderFilter('done',this)">مكتمل</button>
+          <button class="filter-btn" onclick="setOrderFilter('rejected',this)">مرفوض</button>
+          <button class="filter-btn" onclick="setOrderFilter('waiting',this)">⏳ قائمة الانتظار</button>
+          <button class="filter-btn" onclick="setOrderFilter('cancelled',this)">ملغي</button>
+        </div>
+        <div class="table-wrap" id="orders-table"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+    </div>
 
-// Buttons — for confirm/accept/reject/done (max 3)
-async function sendButtons(to, body, buttons) {
-  try {
-    await axios.post(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-      {messaging_product:"whatsapp",to,type:"interactive",interactive:{
-        type:"button",body:{text:body},
-        action:{buttons:buttons.slice(0,3).map(b=>({type:"reply",reply:{id:b.id,title:b.title.substring(0,20)}}))}
-      }},
-      {headers:{Authorization:`Bearer ${WHATSAPP_TOKEN}`,"Content-Type":"application/json"}});
-  } catch(e) { console.error("sendButtons:", e?.message); }
-}
+    <!-- Map -->
+    <div id="page-map" class="page">
+      <div class="card">
+        <div class="card-header">
+          <h3>🗺 خريطة الطلبات</h3>
+          <div class="btn-group">
+            <button class="filter-btn active" onclick="filterMap('all',this)" id="map-filter-all">الكل</button>
+            <button class="filter-btn" onclick="filterMap('pending',this)">معلقة</button>
+            <button class="filter-btn" onclick="filterMap('accepted',this)">مقبولة</button>
+            <button class="filter-btn" onclick="filterMap('done',this)">مكتملة</button>
+          </div>
+        </div>
+        <div style="padding:14px"><div id="orders-map"></div></div>
+      </div>
+    </div>
 
-async function sendLocation(to, lat, lng) {
-  try {
-    await axios.post(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-      {messaging_product:"whatsapp",to,type:"location",location:{latitude:lat,longitude:lng}},
-      {headers:{Authorization:`Bearer ${WHATSAPP_TOKEN}`,"Content-Type":"application/json"}});
-  } catch(e) { console.error("sendLoc:", e?.message); }
-}
+    <!-- Technicians -->
+    <div id="page-technicians" class="page">
+      <div class="card">
+        <div class="card-header">
+          <h3>الفنيون</h3>
+          <button class="btn btn-primary btn-sm" onclick="openModal('tech-modal')">+ إضافة فني</button>
+        </div>
+        <div id="tech-grid" class="tech-grid"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+    </div>
 
-async function sendDocument(to, buf, filename, caption) {
-  try {
-    const FormData = require("form-data");
-    const form = new FormData();
-    form.append("file", buf, {filename, contentType:"application/pdf"});
-    form.append("messaging_product","whatsapp");
-    const up = await axios.post(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/media`, form,
-      {headers:{Authorization:`Bearer ${WHATSAPP_TOKEN}`,...form.getHeaders()}});
-    await axios.post(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-      {messaging_product:"whatsapp",to,type:"document",document:{id:up.data.id,filename,caption}},
-      {headers:{Authorization:`Bearer ${WHATSAPP_TOKEN}`,"Content-Type":"application/json"}});
-  } catch(e) { console.error("sendDoc:", e?.message); }
-}
+    <!-- Regions -->
+    <div id="page-regions" class="page">
+      <div class="card">
+        <div class="card-header">
+          <h3>📍 الولايات والمناطق</h3>
+          <button class="btn btn-primary btn-sm" onclick="openModal('region-modal')">+ إضافة منطقة</button>
+        </div>
+        <div style="padding:12px 16px;font-size:.78rem;color:var(--muted);border-bottom:1px solid var(--border)">
+          حدد المناطق المخدومة. كل منطقة تحتاج إلى إحداثيات جغرافية. الفنيون المخصصون لمنطقة يستقبلون فقط طلبات تلك المنطقة.
+        </div>
+        <div id="regions-list" class="items-list"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+    </div>
 
-// ─── PDF Invoice ──────────────────────────────────────────────────────────────
-function generateInvoicePDF(order, lang) {
-  return new Promise((resolve) => {
-    const doc = new PDFDocument({margin:40,size:"A4"});
-    const chunks = [];
-    doc.on("data",d=>chunks.push(d));
-    doc.on("end",()=>resolve(Buffer.concat(chunks)));
-    const isAr = lang==="ar";
-    doc.rect(0,0,595,80).fill("#0a0e1a");
-    doc.fillColor("#f59e0b").fontSize(28).font("Helvetica-Bold").text("TAQA",40,20);
-    doc.fillColor("#ffffff").fontSize(11).font("Helvetica").text(isAr?"فاتورة خدمة":"Service Invoice",40,52);
-    doc.fillColor("#64748b").text(new Date().toLocaleDateString(isAr?"ar-OM":"en-OM"),400,52,{align:"right"});
-    doc.fillColor("#1a2235").rect(0,82,595,70).fill();
-    doc.fillColor("#f1f5f9").fontSize(10).font("Helvetica-Bold");
-    doc.text(isAr?"رقم الطلب":"Order ID",40,100); doc.text(isAr?"العميل":"Customer",200,100); doc.text(isAr?"الخدمة":"Service",360,100);
-    doc.fillColor("#f59e0b").fontSize(11).font("Helvetica");
-    doc.text(order.orderId,40,118); doc.fillColor("#f1f5f9"); doc.text(order.customer,200,118); doc.text(order.serviceName,360,118);
-    let y=170;
-    doc.fillColor("#64748b").fontSize(9).font("Helvetica-Bold");
-    doc.text(isAr?"القطعة":"Item",40,y); doc.text(isAr?"الكمية":"Qty",340,y,{width:60,align:"center"});
-    doc.text(isAr?"السعر":"Price",410,y,{width:80,align:"right"}); doc.text(isAr?"الإجمالي":"Total",500,y,{width:55,align:"right"});
-    y+=18; doc.rect(40,y,515,1).fill("#1e2d45"); y+=8;
-    doc.fillColor("#f1f5f9").fontSize(10).font("Helvetica");
-    doc.text(`${order.serviceName} — ${order.type||""}`,40,y,{width:280});
-    doc.text("1",340,y,{width:60,align:"center"}); doc.text(`${order.servicePrice||0}`,410,y,{width:80,align:"right"}); doc.text(`${order.servicePrice||0}`,500,y,{width:55,align:"right"});
-    y+=22;
-    (order.parts||[]).forEach(p=>{
-      const lt=(p.price*p.qty).toFixed(3);
-      doc.text(p.name,40,y,{width:280}); doc.text(String(p.qty),340,y,{width:60,align:"center"});
-      doc.text(`${p.price}`,410,y,{width:80,align:"right"}); doc.text(lt,500,y,{width:55,align:"right"});
-      y+=20; if(y>700){doc.addPage();y=40;}
-    });
-    y+=10; doc.rect(40,y,515,1).fill("#1e2d45"); y+=12;
-    const sub=(order.parts||[]).reduce((s,p)=>s+p.price*p.qty,0)+(order.servicePrice||0);
-    const disc=order.discount||0; const after=sub-disc;
-    const vat=Math.round(after*0.05*1000)/1000; const total=Math.round((after+vat)*1000)/1000;
-    doc.fillColor("#64748b").fontSize(10);
-    doc.text(isAr?"المجموع":"Subtotal",350,y); doc.fillColor("#f1f5f9").text(`${sub.toFixed(3)} OMR`,500,y,{width:55,align:"right"}); y+=18;
-    if(disc>0){doc.fillColor("#10b981").text(isAr?"خصم الكوبون":"Coupon",350,y); doc.text(`-${disc.toFixed(3)} OMR`,500,y,{width:55,align:"right"}); y+=18;}
-    doc.fillColor("#64748b").text(isAr?"ضريبة 5%":"VAT 5%",350,y); doc.fillColor("#f1f5f9").text(`${vat.toFixed(3)} OMR`,500,y,{width:55,align:"right"}); y+=18;
-    doc.fillColor("#f59e0b").rect(340,y,215,30).fill(); doc.fillColor("#000").fontSize(12).font("Helvetica-Bold");
-    doc.text(isAr?"الإجمالي":"Total",355,y+8); doc.text(`${total.toFixed(3)} OMR`,500,y+8,{width:55,align:"right"});
-    y+=50; doc.fillColor("#1a2235").rect(40,y,515,36).fill();
-    doc.fillColor("#64748b").fontSize(9).font("Helvetica").text(isAr?"شكراً لاستخدامكم خدمات طاقة":"Thank you for using TAQA services",50,y+12,{width:495,align:"center"});
-    doc.fillColor("#111827").rect(0,780,595,60).fill();
-    doc.fillColor("#64748b").fontSize(8).text("TAQA Services | Oman",40,800,{align:"center",width:515});
-    doc.end();
-  });
-}
+    <!-- Services -->
+    <div id="page-services" class="page">
+      <div class="card">
+        <div class="card-header"><h3>الخدمات</h3><button class="btn btn-primary btn-sm" onclick="openModal('service-modal')">+ إضافة خدمة</button></div>
+        <div id="services-list" class="items-list"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+    </div>
 
-// ─── DB Helpers ───────────────────────────────────────────────────────────────
-async function getServices() {
-  const snap = await db.collection("services").get();
-  return snap.docs.map(d=>({id:d.id,...d.data()}));
-}
-async function getTechByPhone(phone) {
-  const snap = await db.collection("technicians").where("phone","==",normalize(phone)).get();
-  if(snap.empty) return null;
-  return {id:snap.docs[0].id,...snap.docs[0].data()};
-}
+    <!-- Parts -->
+    <div id="page-parts" class="page">
+      <div class="card">
+        <div class="card-header"><h3>القطع والمواد</h3><button class="btn btn-primary btn-sm" onclick="openAddPartModal()">+ إضافة قطعة</button></div>
+        <div class="search-bar"><input type="text" id="part-search" placeholder="بحث..." oninput="renderFilteredParts()"/></div>
+        <div class="filter-bar" id="parts-filter-bar"><button class="filter-btn active" onclick="setPartsFilter('all',this)">الكل</button></div>
+        <div id="parts-list" class="items-list"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+    </div>
 
-const normAr = s => (String(s||"")||"").toLowerCase()
-  .replace(/\s+/g,"").replace(/ة/g,"ه").replace(/ى/g,"ي").replace(/أ|إ|آ/g,"ا");
+    <!-- Coupons -->
+    <div id="page-coupons" class="page">
+      <div class="card">
+        <div class="card-header"><h3>الكوبونات</h3><button class="btn btn-primary btn-sm" onclick="openModal('coupon-modal')">+ إضافة كوبون</button></div>
+        <div class="table-wrap" id="coupons-table"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+    </div>
 
-function techMatchesRegion(t, regionName, regionId) {
-  const tr = String(t.regionName||t.region||"");
-  const tid = String(t.regionId||"");
-  const rn = normAr(regionName||""); const rid = normAr(regionId||"");
-  const tn = normAr(tr); const tidn = normAr(tid);
-  return (rn&&tn&&(tn.includes(rn)||rn.includes(tn)))||(rid&&tidn&&tidn===rid)||(rid&&tn&&tn.includes(rid));
-}
+    <!-- Map -->
+    <div id="page-map" class="page">
+      <div class="card">
+        <div class="card-header">
+          <h3>🗺️ خريطة الطلبات</h3>
+          <div style="display:flex;gap:6px">
+            <button class="filter-btn active" onclick="setMapFilter('all',this)">الكل</button>
+            <button class="filter-btn" onclick="setMapFilter('pending',this)">معلقة</button>
+            <button class="filter-btn" onclick="setMapFilter('accepted',this)">مقبولة</button>
+            <button class="filter-btn" onclick="setMapFilter('done',this)">مكتملة</button>
+          </div>
+        </div>
+        <div style="padding:12px"><div id="orders-map"></div></div>
+      </div>
+    </div>
 
-async function getAvailableTechs(serviceId, regionName, excludeIds=[]) {
-  const snap = await db.collection("technicians")
-    .where("active","==",true).where("services","array-contains",serviceId).get();
-  let techs = snap.docs.map(d=>({id:d.id,...d.data()})).filter(t=>!excludeIds.includes(t.id));
+    <!-- Regions -->
+    <div id="page-regions" class="page">
+      <div class="card">
+        <div class="card-header"><h3>📍 المناطق والولايات</h3><button class="btn btn-primary btn-sm" onclick="openModal('region-modal')">+ إضافة منطقة</button></div>
+        <div id="regions-grid" class="regions-grid"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+    </div>
 
-  const norm = s => (s||"").toLowerCase().replace(/\s+/g,"").replace(/ة/g,"ه").replace(/ى/g,"ي").replace(/أ|إ|آ/g,"ا");
+    <!-- Users -->
+    <div id="page-users" class="page">
+      <div class="card">
+        <div class="card-header"><h3>👥 إدارة الصلاحيات</h3><button class="btn btn-primary btn-sm" onclick="openModal('user-modal')">+ إضافة مستخدم</button></div>
+        <div class="table-wrap" id="users-table"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+    </div>
 
-  if(regionName){
-    const rn = norm(regionName);
-    // Try strict same-region match first
-    const sameRegion = techs.filter(t => {
-      const tn = norm(t.region||"");
-      return tn && (tn.includes(rn) || rn.includes(tn));
-    });
-    if(sameRegion.length){
-      // Found techs in same region — use ONLY them
-      sameRegion.sort((a,b)=>(b.rating||0)-(a.rating||0));
-      return sameRegion;
+    <!-- Finance -->
+    <div id="page-finance" class="page">
+      <div class="fin-grid" id="fin-cards"><div class="loader"><div class="spinner"></div></div></div>
+      <div class="card">
+        <div class="card-header">
+          <h3>تفاصيل الفنيين المالية</h3>
+          <button class="btn btn-success btn-sm" onclick="exportFinanceExcel()">📊 تصدير Excel</button>
+        </div>
+        <div class="table-wrap" id="fin-table"></div>
+      </div>
+    </div>
+
+    <!-- Users / Roles -->
+    <div id="page-users" class="page">
+      <div class="card">
+        <div class="card-header"><h3>👥 المستخدمون والصلاحيات</h3><button class="btn btn-primary btn-sm" onclick="openModal('user-modal')">+ إضافة مستخدم</button></div>
+        <div class="table-wrap" id="users-table"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Tech Modal -->
+<div class="modal-overlay" id="tech-modal">
+  <div class="modal">
+    <div class="modal-header"><h3>إضافة فني جديد</h3><button class="modal-close" onclick="closeModal('tech-modal')">×</button></div>
+    <div class="form-grid">
+      <div class="form-group"><label>الاسم</label><input type="text" id="tech-name"/></div>
+      <div class="form-group"><label>رقم الهاتف</label><input type="text" id="tech-phone" placeholder="968xxxxxxxxx" style="direction:ltr"/></div>
+      <div class="form-group"><label>🔑 Document ID (اختياري)</label><input type="text" id="tech-id" placeholder="tech1" style="direction:ltr;font-family:monospace"/></div>
+      <div class="form-group"><label>المنطقة/الولاية</label><select id="tech-region"><option value="">بدون تحديد منطقة</option></select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>الخدمات (مفصولة بفاصلة) — يجب مطابقة Document ID الخدمة</label><input type="text" id="tech-services" placeholder="electric, plumbing, ac" style="direction:ltr;font-family:monospace"/></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="addTechnician()">حفظ</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('tech-modal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- Region Modal -->
+<div class="modal-overlay" id="region-modal">
+  <div class="modal">
+    <div class="modal-header"><h3>إضافة ولاية/منطقة</h3><button class="modal-close" onclick="closeModal('region-modal')">×</button></div>
+    <div class="form-grid">
+      <div class="form-group"><label>اسم المنطقة</label><input type="text" id="region-name" placeholder="ولاية طاقة"/></div>
+      <div class="form-group"><label>🔑 Document ID</label><input type="text" id="region-id" placeholder="taqah" style="direction:ltr;font-family:monospace"/></div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>طريقة التحديد</label>
+        <select id="region-type" onchange="toggleRegionType()">
+          <option value="bbox">إطار جغرافي (خطوط الطول والعرض)</option>
+          <option value="radius">مركز + نطاق (كيلومتر)</option>
+        </select>
+      </div>
+      <!-- BBox fields -->
+      <div class="form-group" id="bbox-fields" style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group"><label>أدنى خط عرض (minLat)</label><input type="number" id="region-minlat" step="0.001" placeholder="22.500" style="direction:ltr"/></div>
+        <div class="form-group"><label>أقصى خط عرض (maxLat)</label><input type="number" id="region-maxlat" step="0.001" placeholder="22.800" style="direction:ltr"/></div>
+        <div class="form-group"><label>أدنى خط طول (minLng)</label><input type="number" id="region-minlng" step="0.001" placeholder="59.300" style="direction:ltr"/></div>
+        <div class="form-group"><label>أقصى خط طول (maxLng)</label><input type="number" id="region-maxlng" step="0.001" placeholder="59.700" style="direction:ltr"/></div>
+      </div>
+      <!-- Radius fields -->
+      <div id="radius-fields" style="grid-column:1/-1;display:none;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        <div class="form-group"><label>خط العرض المركزي</label><input type="number" id="region-clat" step="0.001" placeholder="22.640" style="direction:ltr"/></div>
+        <div class="form-group"><label>خط الطول المركزي</label><input type="number" id="region-clng" step="0.001" placeholder="59.500" style="direction:ltr"/></div>
+        <div class="form-group"><label>النطاق (كم)</label><input type="number" id="region-radius" placeholder="20" style="direction:ltr"/></div>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="addRegion()">حفظ</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('region-modal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- Service Modal -->
+<div class="modal-overlay" id="service-modal">
+  <div class="modal">
+    <div class="modal-header"><h3>إضافة خدمة جديدة</h3><button class="modal-close" onclick="closeModal('service-modal')">×</button></div>
+    <div class="form-grid">
+      <div class="form-group"><label>اسم الخدمة</label><input type="text" id="svc-name"/></div>
+      <div class="form-group"><label>الأيقونة (emoji)</label><input type="text" id="svc-icon" placeholder="🔧"/></div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>🔑 Document ID — بالإنجليزي بدون مسافات</label>
+        <input type="text" id="svc-id" placeholder="electric | plumbing | ac" style="direction:ltr;font-family:monospace"/>
+        <span class="hint">يجب أن يطابق serviceId في القطع والفنيين</span>
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>الأنواع (اسم:سعر — كل نوع في سطر)</label>
+        <textarea id="svc-types" rows="4" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:9px;color:var(--text);font-family:inherit;resize:none" placeholder="أساسي:100&#10;متقدم:200"></textarea>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="addService()">حفظ</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('service-modal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- Part Modal -->
+<div class="modal-overlay" id="part-modal">
+  <div class="modal">
+    <div class="modal-header"><h3 id="part-modal-title">إضافة قطعة</h3><button class="modal-close" onclick="closeModal('part-modal')">×</button></div>
+    <div class="form-grid">
+      <div class="form-group"><label>اسم القطعة</label><input type="text" id="part-name"/></div>
+      <div class="form-group"><label>وحدة القياس</label><input type="text" id="part-unit" placeholder="قطعة / متر / لتر"/></div>
+      <div class="form-group"><label>السعر (OMR)</label><input type="number" id="part-price" placeholder="0" step="0.001"/></div>
+      <div class="form-group"><label>الخدمة المرتبطة</label><select id="part-service"><option value="">اختر...</option></select></div>
+      <div class="form-group"><label>📦 المخزون (عدد القطع)</label><input type="number" id="part-stock" placeholder="اتركه فارغاً = غير محدود" min="0"/></div>
+      <div class="form-group"><label>وصف (اختياري)</label><input type="text" id="part-desc"/></div>
+      <div class="form-group" style="grid-column:1/-1"><label>🔑 Document ID (اختياري)</label><input type="text" id="part-id" placeholder="part_switch" style="direction:ltr;font-family:monospace"/></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="savePart()">حفظ</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('part-modal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- Coupon Modal -->
+<div class="modal-overlay" id="coupon-modal">
+  <div class="modal">
+    <div class="modal-header"><h3>إضافة كوبون</h3><button class="modal-close" onclick="closeModal('coupon-modal')">×</button></div>
+    <div class="form-grid">
+      <div class="form-group"><label>كود الكوبون</label><input type="text" id="coupon-code" placeholder="TAQA20" style="direction:ltr;font-family:monospace;text-transform:uppercase"/></div>
+      <div class="form-group"><label>نوع الخصم</label><select id="coupon-type"><option value="fixed">مبلغ ثابت (OMR)</option><option value="percent">نسبة مئوية (%)</option></select></div>
+      <div class="form-group"><label>قيمة الخصم</label><input type="number" id="coupon-discount" placeholder="0"/></div>
+      <div class="form-group"><label>الحد الأقصى للاستخدام (0 = غير محدود)</label><input type="number" id="coupon-max" placeholder="0"/></div>
+      <div class="form-group" style="grid-column:1/-1"><label>تاريخ الانتهاء (اختياري)</label><input type="date" id="coupon-expiry"/></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="addCoupon()">حفظ</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('coupon-modal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- User/Role Modal -->
+<div class="modal-overlay" id="user-modal">
+  <div class="modal">
+    <div class="modal-header"><h3>إضافة مستخدم للوحة التحكم</h3><button class="modal-close" onclick="closeModal('user-modal')">×</button></div>
+    <div class="form-grid">
+      <div class="form-group"><label>الاسم</label><input type="text" id="user-name"/></div>
+      <div class="form-group"><label>البريد الإلكتروني</label><input type="email" id="user-email" style="direction:ltr"/></div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>الصلاحية</label>
+        <select id="user-role">
+          <option value="admin">مدير — صلاحيات كاملة</option>
+          <option value="supervisor">مشرف — عرض فقط + إدارة الطلبات</option>
+        </select>
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>المنطقة المخصصة (للمشرف فقط)</label>
+        <select id="user-region"><option value="">كل المناطق</option></select>
+      </div>
+    </div>
+    <div style="padding:0 16px 16px;font-size:.75rem;color:var(--muted)">⚠️ سيتم إرسال رابط تعيين كلمة المرور للبريد المُدخل عبر Firebase Authentication Console.</div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="addUser()">حفظ</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('user-modal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- Region Modal -->
+<div class="modal-overlay" id="region-modal">
+  <div class="modal">
+    <div class="modal-header"><h3>إضافة منطقة جديدة</h3><button class="modal-close" onclick="closeModal('region-modal')">×</button></div>
+    <div class="form-grid">
+      <div class="form-group"><label>اسم المنطقة</label><input type="text" id="region-name" placeholder="ولاية طاقة"/></div>
+      <div class="form-group"><label>🔑 Document ID</label><input type="text" id="region-id" placeholder="taqah" style="direction:ltr;font-family:monospace"/></div>
+      <div class="form-group"><label>📍 خط العرض (Latitude)</label><input type="number" id="region-lat" placeholder="17.0494" step="0.0001"/></div>
+      <div class="form-group"><label>📍 خط الطول (Longitude)</label><input type="number" id="region-lng" placeholder="54.4025" step="0.0001"/></div>
+      <div class="form-group"><label>📏 نصف القطر (كم)</label><input type="number" id="region-radius" placeholder="10" min="1" max="100"/></div>
+      <div class="form-group"><label>الحالة</label>
+        <select id="region-active">
+          <option value="true">✅ مفعّلة</option>
+          <option value="false">❌ غير مفعّلة</option>
+        </select>
+      </div>
+      <div class="form-group" style="grid-column:1/-1"><label>وصف (اختياري)</label><input type="text" id="region-desc" placeholder="ولاية طاقة — محافظة ظفار"/></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="addRegion()">حفظ</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('region-modal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- User Modal -->
+<div class="modal-overlay" id="user-modal">
+  <div class="modal">
+    <div class="modal-header"><h3>إضافة مستخدم / صلاحية</h3><button class="modal-close" onclick="closeModal('user-modal')">×</button></div>
+    <div class="form-grid">
+      <div class="form-group"><label>الاسم</label><input type="text" id="user-name"/></div>
+      <div class="form-group"><label>البريد الإلكتروني</label><input type="email" id="user-email"/></div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>الصلاحية</label>
+        <select id="user-role">
+          <option value="admin">أدمن رئيسي — صلاحيات كاملة</option>
+          <option value="supervisor">مشرف — عرض + إدارة الطلبات فقط</option>
+        </select>
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>المنطقة المسؤول عنها (للمشرف)</label>
+        <select id="user-region"><option value="">كل المناطق</option></select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="addUser()">حفظ</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('user-modal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const firebaseConfig={apiKey:"AIzaSyAJAJe3NgjQIeNihq0pTreixKhdQaGxvrE",authDomain:"taqa-services.firebaseapp.com",projectId:"taqa-services",storageBucket:"taqa-services.firebasestorage.app",messagingSenderId:"338454990474",appId:"1:338454990474:web:afd20c42cdeae871aea773"};
+firebase.initializeApp(firebaseConfig);
+// Bot API URL — update this to your Railway URL
+window.BOT_URL = "https://whatsapp-bot-production-1471.up.railway.app";
+const db=firebase.firestore(),auth=firebase.auth();
+
+let currentLang="ar",allOrders=[],allParts=[],allServices=[],allRegions=[];
+let orderFilter="all",partsFilter="all",editingPartId=null;
+let ordersChart=null,statusChart=null,mapInstance=null,mapMarkers=[];
+let currentUserRole="admin",currentUserRegion=null;
+let notifications=[],unreadCount=0,notifUnsubscribe=null;
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+auth.onAuthStateChanged(async user=>{
+  if(user){
+    document.getElementById("login-screen").style.display="none";
+    document.getElementById("app").style.display="block";
+    document.getElementById("admin-email").textContent=user.email;
+    // Load user role from Firestore
+    const uSnap=await db.collection("adminUsers").doc(user.uid).get();
+    if(uSnap.exists){
+      const ud=uSnap.data();
+      currentUserRole=ud.role||"admin";
+      currentUserRegion=ud.regionId||null;
+      document.getElementById("admin-role-badge").textContent=currentUserRole==="admin"?"مدير":"مشرف";
+      document.getElementById("admin-role-badge").className=`admin-role-badge role-${currentUserRole}`;
+      if(currentUserRole!=="admin")document.getElementById("nav-users").style.display="none";
     }
-    // No tech in this region → return empty (will go to waiting queue)
-    return [];
+    loadOverview();
+    startNotifications();
+  }else{
+    document.getElementById("login-screen").style.display="flex";
+    document.getElementById("app").style.display="none";
+    if(notifUnsubscribe)notifUnsubscribe();
   }
-
-  // No region info → return all available sorted by rating
-  techs.sort((a,b)=>(b.rating||0)-(a.rating||0));
-  return techs;
-}
-async function getActiveOrder(phone) {
-  const snap = await db.collection("orders").where("customer","==",phone).where("status","in",["pending","accepted"]).limit(1).get();
-  if(snap.empty) return null;
-  return {id:snap.docs[0].id,...snap.docs[0].data()};
-}
-async function getPartsByService(serviceId) {
-  const snap = await db.collection("parts").where("serviceId","==",serviceId).get();
-  return snap.docs.map(d=>({id:d.id,...d.data()}))
-    .filter(p => p.stock === undefined || p.stock > 0); // exclude out-of-stock
-}
-async function checkActiveCoupons() {
-  try { const s=await db.collection("coupons").where("active","==",true).limit(1).get(); return !s.empty; }
-  catch(e){ return false; }
-}
-
-// ─── Region Detection from Firebase ──────────────────────────────────────────
-// Each region in Firebase has: name, active, lat, lng, radiusKm
-function haversineKm(lat1, lng1, lat2, lng2) {
-  const R = 6371;
-  const dLat = (lat2-lat1)*Math.PI/180;
-  const dLng = (lng2-lng1)*Math.PI/180;
-  const a = Math.sin(dLat/2)**2 +
-    Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
-
-async function detectRegion(lat, lng) {
-  try {
-    const snap = await db.collection("regions").get();
-    let matched = [];
-    snap.docs.forEach(doc => {
-      const r = doc.data();
-      // Method 1: center point + radius
-      if(r.lat && r.lng) {
-        const dist   = haversineKm(lat, lng, parseFloat(r.lat), parseFloat(r.lng));
-        const radius = parseFloat(r.radiusKm) || 10;
-        if(dist <= radius) matched.push({name:r.name,active:r.active!==false,id:doc.id,dist});
-      }
-      // Method 2: bounding box
-      else if(r.maxLat && r.minLat && r.maxLng && r.minLng) {
-        const inBox = lat<=parseFloat(r.maxLat) && lat>=parseFloat(r.minLat) &&
-                      lng<=parseFloat(r.maxLng) && lng>=parseFloat(r.minLng);
-        if(inBox) matched.push({name:r.name,active:r.active!==false,id:doc.id,dist:0});
-      }
-    });
-
-    if(matched.length) {
-      matched.sort((a,b)=>a.dist-b.dist);
-      return matched[0];
-    }
-
-    // Fallback: OpenStreetMap reverse geocoding
-    try {
-      const res = await axios.get(
-        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ar`,
-        {headers:{"User-Agent":"TAQA-Bot/1.0"},timeout:5000}
-      );
-      const a = res.data.address||{};
-      const osmName = a.county||a.state_district||a.suburb||a.city||a.state||null;
-      if(osmName) return {name:osmName, active:true}; // assume active if from OSM
-    } catch(e2){ console.error("OSM fallback:", e2?.message); }
-
-    return { name: null, active: true }; // unknown region but allow
-  } catch(e) {
-    console.error("detectRegion:", e?.message);
-    return { name: null, active: true };
-  }
-}
-
-// ─── Coupon ───────────────────────────────────────────────────────────────────
-async function validateCoupon(code, userId) {
-  const snap = await db.collection("coupons").where("code","==",code.toUpperCase()).limit(1).get();
-  if(snap.empty) return {valid:false,reason:"invalid"};
-  const doc=snap.docs[0]; const data=doc.data();
-  if(!data.active) return {valid:false,reason:"invalid"};
-  if(data.expiresAt&&data.expiresAt.toDate()<new Date()) return {valid:false,reason:"invalid"};
-  if(data.usedBy&&data.usedBy.includes(userId)) return {valid:false,reason:"used"};
-  if(data.maxUses&&(data.useCount||0)>=data.maxUses) return {valid:false,reason:"invalid"};
-  return {valid:true,id:doc.id,discount:data.discount||0,type:data.type||"fixed",code:data.code};
-}
-async function applyCoupon(couponId, userId) {
-  await db.runTransaction(async tx=>{
-    const ref=db.collection("coupons").doc(couponId); const snap=await tx.get(ref);
-    tx.update(ref,{useCount:(snap.data().useCount||0)+1,usedBy:admin.firestore.FieldValue.arrayUnion(userId)});
-  });
-}
-
-// ─── Rating ───────────────────────────────────────────────────────────────────
-async function updateTechRating(techId, stars) {
-  await db.runTransaction(async tx=>{
-    const ref=db.collection("technicians").doc(techId); const snap=await tx.get(ref);
-    if(!snap.exists) return;
-    const d=snap.data(); const count=(d.ratingCount||0)+1;
-    tx.update(ref,{rating:Math.round((((d.rating||0)*(count-1))+stars)/count*10)/10,ratingCount:count});
-  });
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function buildPartsText(parts) {
-  if(!parts||!parts.length) return "-";
-  return parts.map(p=>`• ${p.name} × ${p.qty} = ${(p.price*p.qty).toFixed(3)} OMR`).join("\n");
-}
-function calcTotal(servicePrice, parts) {
-  const svcTotal   = parseFloat(servicePrice)||0;
-  const partsTotal = (parts||[]).reduce((s,p)=>s+(parseFloat(p.price)||0)*(p.qty||1), 0);
-  return Math.round((svcTotal + partsTotal)*1000)/1000;
-}
-
-// ─── Webhook ──────────────────────────────────────────────────────────────────
-app.get("/webhook",(req,res)=>{
-  if(req.query["hub.verify_token"]===VERIFY_TOKEN) return res.send(req.query["hub.challenge"]);
-  res.sendStatus(403);
 });
 
-app.post("/webhook", async(req,res)=>{
-  res.sendStatus(200);
-  try {
-    const val = req.body.entry?.[0]?.changes?.[0]?.value;
-    if(!val?.messages?.[0]) return;
-    const msg  = val.messages[0];
-    const from = normalize(msg.from);
+async function doLogin(){
+  const email=document.getElementById("login-email").value.trim();
+  const pass=document.getElementById("login-pass").value.trim();
+  const btn=document.getElementById("login-btn"),err=document.getElementById("login-error");
+  if(!email||!pass){err.textContent="يرجى إدخال البريد وكلمة المرور";return;}
+  btn.disabled=true;btn.textContent="جارٍ تسجيل الدخول...";err.textContent="";
+  try{await auth.signInWithEmailAndPassword(email,pass);}
+  catch(e){
+    const msgs={"auth/invalid-credential":"بريد أو كلمة مرور خاطئة","auth/too-many-requests":"محاولات كثيرة","auth/user-not-found":"البريد غير موجود","auth/wrong-password":"كلمة المرور خاطئة"};
+    err.textContent=msgs[e.code]||e.message;btn.disabled=false;btn.textContent="تسجيل الدخول";
+  }
+}
+function doLogout(){if(confirm("هل تريد تسجيل الخروج؟"))auth.signOut();}
+document.getElementById("login-pass").addEventListener("keydown",e=>{if(e.key==="Enter")doLogin();});
 
-    // Extract text from text or interactive messages
-    let text = "";
-    if(msg.type==="text") text = msg.text.body.trim();
-    else if(msg.type==="interactive") {
-      text = msg.interactive?.button_reply?.id || msg.interactive?.list_reply?.id || "";
-    }
-    console.log("FROM:", from, "TYPE:", msg.type, "TEXT:", text);
-
-    // ── Tech handler ─────────────────────────────────────────────────────────
-    const tech = await getTechByPhone(from);
-    if(tech) { await handleTechMessage(from, text, msg, tech); return; }
-
-    // ── Rating: handled via session state "rating" ─────────────────────────────
-    // Legacy support: تقييم_ORD-XXX_5
-    const rateMatch = text.match(/^(تقييم|rate)_(.+)_([1-5])$/i);
-    if(rateMatch){
-      const orderId=rateMatch[2]; const stars=parseInt(rateMatch[3]);
-      const oSnap=await db.collection("orders").doc(orderId).get();
-      if(oSnap.exists&&!oSnap.data().rating){
-        await updateTechRating(oSnap.data().technicianId, stars);
-        await db.collection("orders").doc(orderId).update({rating:stars});
-        const session=await getSession(from);
-        await sendMessage(from, LANGS[getLang(session)].ratingDone(stars));
+// ── Realtime Notifications ────────────────────────────────────────────────────
+function startNotifications(){
+  let query=db.collection("orders").where("status","==","pending").orderBy("createdAt","desc").limit(20);
+  if(currentUserRegion)query=query.where("regionId","==",currentUserRegion);
+  notifUnsubscribe=query.onSnapshot(snap=>{
+    snap.docChanges().forEach(change=>{
+      if(change.type==="added"){
+        const o=change.doc.data();
+        const n={id:change.doc.id,title:`🔔 طلب جديد — ${o.serviceName||""}`,subtitle:`${o.region||""} · ${o.customer||""} · ${o.totalPrice||0} OMR`,time:new Date(),read:false};
+        notifications.unshift(n);
+        unreadCount++;
+        // Play sound
+        try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const osc=ctx.createOscillator();osc.connect(ctx.destination);osc.frequency.value=800;osc.start();setTimeout(()=>osc.stop(),120);}catch(e){}
+        updateNotifBell();
+        renderNotifList();
+        // Badge update
+        const badge=document.getElementById("pending-badge");
+        badge.style.display="inline";badge.textContent=(parseInt(badge.textContent)||0)+1;
       }
-      return;
-    }
+    });
+  });
+}
 
-    // ── Order tracking ────────────────────────────────────────────────────────
-    // Cancel order: إلغاء_ORD-XXX or cancel_ORD-XXX
-    const cancelAr = text.match(/^إلغاء_(.+)/i);
-    const cancelEn = text.match(/^cancel_(.+)/i);
-    if(cancelAr||cancelEn){
-      const session=await getSession(from);
-      const lang=getLang(session);
-      const orderId=(cancelAr?.[1]||cancelEn?.[1]).trim().toUpperCase();
-      const oSnap=await db.collection("orders").doc(orderId).get();
-      if(!oSnap.exists){ await sendMessage(from,LANGS[lang].trackNotFound); return; }
-      const order=oSnap.data();
-      if(order.customer!==from){ await sendMessage(from,LANGS[lang].trackNotFound); return; }
-      if(["done","rejected","cancelled"].includes(order.status)){
-        await sendMessage(from, LANGS[lang].trackResult(order)); return;
-      }
-      // Ask for cancel reason
-      await setSession(from,"cancel_reason",{lang,orderId,order});
-      await sendMessage(from, LANGS[lang].cancelPrompt(orderId));
-      return;
-    }
+function updateNotifBell(){
+  const cnt=document.getElementById("notif-count");
+  if(unreadCount>0){cnt.style.display="inline";cnt.textContent=unreadCount>9?"9+":unreadCount;}
+  else cnt.style.display="none";
+}
 
-    // Cancel reason state handled below in session flow
-    const trackAr = text.match(/^حالة\s+(.+)/i);
-    const trackEn = text.match(/^status\s+(.+)/i);
-    if(trackAr||trackEn){
-      const session=await getSession(from); const lang=getLang(session);
-      const id=(trackAr?.[1]||trackEn?.[1]).trim().toUpperCase();
-      let oSnap=await db.collection("orders").doc(id).get();
-      if(!oSnap.exists){ const q=await db.collection("orders").where("orderId","==",id).limit(1).get(); if(!q.empty) oSnap=q.docs[0]; }
-      await sendMessage(from, oSnap?.exists?LANGS[lang].trackResult({...(oSnap.data?oSnap.data():oSnap.data())}):LANGS[lang].trackNotFound);
-      return;
-    }
-    if(text==="حالة"||text.toLowerCase()==="status"){
-      const session=await getSession(from);
-      await sendMessage(from, LANGS[getLang(session)].trackPrompt); return;
-    }
+function toggleNotifPanel(){document.getElementById("notif-panel").classList.toggle("open");}
 
-    // ── Session flow ──────────────────────────────────────────────────────────
-    let session = await getSession(from);
-    const isStartAr = ["مرحبا","هلا","مرحبً","ابدا"].includes(text);
-    const isStartEn = ["mrhba","hello","hi","start"].includes(text.toLowerCase());
-    const isStart   = isStartAr || isStartEn;
-    const newLang   = isStartAr?"ar":isStartEn?"en":null;
+function renderNotifList(){
+  const list=document.getElementById("notif-list");
+  if(!notifications.length){list.innerHTML='<div class="notif-empty">لا توجد إشعارات</div>';return;}
+  list.innerHTML=notifications.slice(0,15).map(n=>`
+    <div class="notif-item ${n.read?"":"unread"}" onclick="openOrderFromNotif('${n.id}')">
+      <div class="notif-title">${n.title}</div>
+      <div class="notif-time">${n.subtitle}</div>
+    </div>`).join("");
+}
 
-    // ── STATE: cancel_reason ────────────────────────────────────────────────
-    if(session.state==="cancel_reason"){
-      const lang     = session.data.lang||"ar";
-      const Lc       = LANGS[lang];
-      const orderId  = session.data.orderId;
-      const docId    = session.data.orderDocId;
-      const isWaiting= session.data.isWaiting||false;
+function openOrderFromNotif(id){
+  document.getElementById("notif-panel").classList.remove("open");
+  showPage("orders",document.querySelector("[onclick=\"showPage('orders',this)\"]"));
+}
 
-      if(text.toLowerCase()==="لا"||text.toLowerCase()==="no"){
-        await clearSession(from);
-        await sendMessage(from, Lc.cancelNo);
-        return;
-      }
-      const reason = text;
-      const cancelData = { status:"cancelled", cancelledAt:admin.firestore.FieldValue.serverTimestamp(), cancelReason:reason, cancelledBy:"customer" };
-      if(isWaiting){
-        await db.collection("waiting_orders").doc(docId).update(cancelData);
-      } else {
-        await db.collection("orders").doc(docId).update(cancelData);
-        // Free up tech if accepted
-        const oSnap = await db.collection("orders").doc(docId).get();
-        const oData = oSnap.data();
-        if(oData?.technicianId && oData?.status==="accepted"){
-          await db.collection("technicians").doc(oData.technicianId).update({active:true});
-        }
-      }
-      await clearSession(from);
-      await sendMessage(from, Lc.cancelDone(orderId, reason));
-      return;
-    }
+function markAllRead(){notifications.forEach(n=>n.read=true);unreadCount=0;updateNotifBell();renderNotifList();}
 
-    if(!session.state||isStart){
-      const lang     = newLang||getLang(session)||"ar";
-      const Lx       = LANGS[lang];
-      const active   = await getActiveOrder(from);
-      if(active){ await sendMessage(from, Lx.activeOrder(active.orderId,active.serviceName,active.status)); return; }
-      await clearSession(from);
-      const services = await getServices();
-      // Services as LIST
-      await sendList(from, Lx.welcome, Lx.servicesBtn, [{
-        title: Lx.chooseService,
-        rows: services.map((s,i)=>({id:"svc_"+i, title:s.name.substring(0,24)}))
-      }]);
-      await setSession(from, "service", {lang, services});
-      return;
-    }
-
-    const Lx = L(session);
-
-    // ── service ───────────────────────────────────────────────────────────────
-    if(session.state==="service"){
-      const services = session.data.services||[];
-      let idx = -1;
-      if(text.startsWith("svc_")) idx=parseInt(text.replace("svc_",""));
-      else { const n=parseInt(text); if(!isNaN(n)&&n>=1&&n<=services.length) idx=n-1; }
-      if(idx<0||idx>=services.length){ await sendMessage(from,`يرجى اختيار خدمة من القائمة.`); return; }
-      const service = services[idx];
-      // Types as LIST
-      await sendList(from, Lx.chooseType(service.name), Lx.typesBtn, [{
-        title: Lx.typesBtn,
-        rows: [...service.types.map((t,i)=>({id:"typ_"+i, title:t.name.substring(0,24), description:`${t.price} OMR`})), backRow(getLang(session))]
-      }]);
-      // Store minimal service data - RESET discount
-      await setSession(from,"type",{
-        lang: session.data.lang||"ar",
-        service: {id:service.id, name:service.name, types:service.types},
-        discount: 0,
-        couponId: null,
-        couponCode: null
-      });
-      return;
-    }
-
-    // ── type ──────────────────────────────────────────────────────────────────
-    if(session.state==="type"){
-      if(text==="nav_back"){ await handleBack(from,session); return; }
-      const service = session.data.service;
-      let idx = -1;
-      if(text.startsWith("typ_")) idx=parseInt(text.replace("typ_",""));
-      else { const n=parseInt(text); if(!isNaN(n)&&n>=1&&n<=service.types.length) idx=n-1; }
-      if(idx<0||idx>=service.types.length){ await sendMessage(from,`يرجى اختيار نوع من القائمة.`); return; }
-      const type  = service.types[idx];
-      const parts = await getPartsByService(service.id);
-      if(!parts.length){
-        // No parts for this service — skip
-        await goNextAfterParts(from,{
-          lang: getLang(session)||"ar",
-          serviceId: service.id||null,
-          serviceName: service.name||null,
-          selectedType: {name:type.name||"", price:type.price||0},
-          servicePrice: type.price||0,
-          parts: [],
-          couponId: null,
-          couponCode: null,
-          discount: 0
-        },Lx);
-      } else {
-        // Ask if customer wants parts
-        // Store MINIMAL data in session - no undefined for Firestore
-        await setSession(from,"parts_ask",{
-          lang: getLang(session)||"ar",
-          serviceId: service.id||null,
-          serviceName: service.name||null,
-          selectedType: {name: type.name||"", price: type.price||0},
-          servicePrice: type.price||0,
-          parts: [],
-          couponId: null,
-          couponCode: null,
-          discount: 0
-        });
-        const lang2 = getLang(session);
-        const partsRows = parts.slice(0,10).map((p,i) => ({
-          id: "part_" + i,
-          title: p.name.substring(0,24),
-          description: `${(parseFloat(p.price)||0).toFixed(3)} OMR${p.stock!==undefined?" · متوفر: "+p.stock:""}`
-        }));
-        partsRows.push({ id:"part_skip", title: lang2==="ar"?"0 — بدون قطع":"0 — No parts" });
-        partsRows.push(backRow(lang2));
-        await sendList(from,
-          lang2==="ar"?"🔩 هل تريد إضافة قطع غيار؟":"🔩 Add spare parts?",
-          lang2==="ar"?"القطع":"Parts",
-          [{ title: lang2==="ar"?"القطع المتاحة":"Available Parts", rows: partsRows }]
-        );
-      }
-      return;
-    }
-
-    // ── parts_ask & parts — unified handler ─────────────────────────────────────
-    if(session.state==="parts_ask"){
-      const cleanPartsData = {...session.data, pendingPartIdx:null, pendingMaxQty:null};
-      await setSession(from, "parts", cleanPartsData);
-      session.data = cleanPartsData;
-      session.state = "parts";
-    }
-    if(session.state==="parts"){
-      // Fetch parts fresh from DB
-      const serviceIdForParts = session.data.serviceId||session.data.service?.id||"";
-      const avail = await getPartsByService(serviceIdForParts);
-      const selected = JSON.parse(JSON.stringify(session.data.parts||[]));
-      const pending  = session.data.pendingPartIdx != null ? session.data.pendingPartIdx : undefined;
-
-      // ── nav_back MUST be checked before any ID conversion ──
-      if(text==="nav_back"){
-        if(pending!==undefined){
-          // In qty selection → back to parts list
-          await setSession(from,"parts",{...session.data,pendingPartIdx:null,pendingMaxQty:null});
-          const lang3b = getLang(session);
-          const fp = await getPartsByService(serviceIdForParts);
-          const rb = fp.slice(0,10).map((p,i)=>({id:"part_"+i,title:p.name.substring(0,24),description:`${(parseFloat(p.price)||0).toFixed(3)} OMR${p.stock!==undefined?" · "+p.stock:""}`}));
-          rb.push({id:"part_skip",title:lang3b==="ar"?"0 — بدون قطع":"0 — No parts"});
-          rb.push(backRow(lang3b));
-          await sendList(from,lang3b==="ar"?"🔩 اختر قطعة:":"🔩 Choose part:",lang3b==="ar"?"القطع":"Parts",[{title:lang3b==="ar"?"القطع المتاحة":"Available Parts",rows:rb}]);
-        } else {
-          await handleBack(from, session);
-        }
-        return;
-      }
-
-      // ── Convert list reply IDs (AFTER nav_back check) ──
-      if(text==="part_skip")                                   text = "0";
-      else if(text.startsWith("part_"))                        text = String(parseInt(text.replace("part_",""))+1);
-      if(text.startsWith("qty_"))                              text = text.replace("qty_","");
-
-      if(pending!==undefined){
-        // "0" while waiting for qty = cancel part selection, go back to menu
-        if(text==="0"||text==="part_skip"){
-          await setSession(from,"parts",{...session.data,pendingPartIdx:undefined});
-          const freshParts2 = await getPartsByService(session.data.serviceId||session.data.service?.id||"");
-          const lang3 = getLang(session);
-          const rows2 = freshParts2.slice(0,10).map((p,i)=>({
-            id:"part_"+i,
-            title:p.name.substring(0,24),
-            description:`${(parseFloat(p.price)||0).toFixed(3)} OMR${p.stock!==undefined?" · متوفر: "+p.stock:""}`
-          }));
-          rows2.push({id:"part_skip",title:lang3==="ar"?"0 — بدون قطع":"0 — No parts"});
-          rows2.push(backRow(lang3));
-          await sendList(from,
-            lang3==="ar"?"🔩 اختر قطعة أخرى:":"🔩 Choose another part:",
-            lang3==="ar"?"القطع":"Parts",
-            [{title:lang3==="ar"?"القطع المتاحة":"Available Parts",rows:rows2}]
-          );
-          return;
-        }
-        const qty = parseInt(text);
-        const maxQty2 = session.data.pendingMaxQty || 5;
-        const part = avail[pending];
-        // Safety check - if part not found reset
-        if(!part){
-          await setSession(from,"parts",{...session.data,pendingPartIdx:undefined,pendingMaxQty:undefined});
-          await sendMessage(from, getLang(session)==="ar"?"حدث خطأ. أرسل رقم القطعة مجدداً.":"Error. Please send part number again.");
-          return;
-        }
-        if(isNaN(qty) || qty < 1 || qty > maxQty2){
-          await sendMessage(from, getLang(session)==="ar"
-            ? `يرجى إرسال رقم بين 1 و ${maxQty2}.`
-            : `Please send a number between 1 and ${maxQty2}.`);
-          return;
-        }
-        const ex=selected.find(p=>p.id===part.id);
-        if(ex) ex.qty+=qty; else selected.push({id:part.id,name:part.name,price:part.price,unit:part.unit||"قطعة",qty,stock:part.stock});
-        const ptotal = selected.reduce((s,p)=>s+(parseFloat(p.price)||0)*p.qty, 0);
-        // Save ONLY essential data in session (no undefined values for Firestore)
-        const newData = {
-          lang: session.data.lang||"ar",
-          serviceId: session.data.serviceId||session.data.service?.id||null,
-          serviceName: session.data.serviceName||session.data.service?.name||null,
-          selectedType: session.data.selectedType||null,
-          servicePrice: session.data.servicePrice||0,
-          parts: selected.map(p=>({id:p.id,name:p.name,price:p.price||0,unit:p.unit||"قطعة",qty:p.qty||1})),
-          couponId: null,
-          couponCode: null,
-          discount: 0  // reset — coupon applied in next step
-        };
-        await setSession(from,"parts", newData);
-        const fmt = (n) => (parseFloat(n)||0).toFixed(3);
-        // Go directly to confirm after adding part
-        const confirmMsg = getLang(session)==="ar"
-          ? `✅ تمت إضافة: *${part.name}* × ${qty} = ${fmt(qty*(parseFloat(part.price)||0))} OMR`
-          : `✅ Added: *${part.name}* × ${qty} = ${fmt(qty*(parseFloat(part.price)||0))} OMR`;
-        await sendMessage(from, confirmMsg);
-        await goNextAfterParts(from, newData, Lx);
-        return;
-      }
-
-      if(text==="0"){
-        const minData = {
-          lang: session.data.lang||"ar",
-          serviceId: session.data.serviceId||session.data.service?.id||null,
-          serviceName: session.data.serviceName||session.data.service?.name||null,
-          selectedType: session.data.selectedType||null,
-          servicePrice: session.data.servicePrice||0,
-          parts: selected.map(p=>({id:p.id,name:p.name,price:p.price||0,unit:p.unit||"قطعة",qty:p.qty||1})),
-          couponId: null,
-          couponCode: null,
-          discount: 0  // reset — coupon applied later if exists
-        };
-        await goNextAfterParts(from, minData, Lx); return;
-      }
-
-      const num=parseInt(text);
-      if(isNaN(num)||num<1||num>avail.length){ await sendMessage(from,Lx.invalidPart(avail.length)); return; }
-      const part=avail[num-1];
-      const maxQty = part.stock !== undefined ? Math.min(part.stock, 5) : 5;
-      // Save to DB BEFORE sending qty list so next message has correct state
-      await setSession(from,"parts",{...session.data,pendingPartIdx:num-1,pendingMaxQty:maxQty});
-      // Send qty as list
-      const qtyRows = [];
-      for(let i=1;i<=maxQty;i++){
-        const lineTotal = ((parseFloat(part.price)||0)*i).toFixed(3);
-        qtyRows.push({id:"qty_"+i, title:`${i} ${ getLang(session)==="ar"?"قطعة":"piece"}`, description:`${lineTotal} OMR`});
-      }
-      qtyRows.push(backRow(getLang(session)));
-      await sendList(from,
-        `🔩 *${part.name}*\n${ getLang(session)==="ar"?"اختر الكمية:":"Choose quantity:"}`,
-        getLang(session)==="ar"?"الكمية":"Qty",
-        [{title: getLang(session)==="ar"?"الكمية المطلوبة":"Required Qty", rows:qtyRows}]
-      );
-      return;
-    }
-
-    // ── coupon ────────────────────────────────────────────────────────────────
-    if(session.state==="coupon"){
-      if(text==="nav_back"){ await handleBack(from,session); return; }
-      if(text==="coupon_skip"||text==="0"){ await goToConfirm(from,session,Lx,0,null); return; }
-      const result=await validateCoupon(text,from);
-      if(!result.valid){ await sendMessage(from,result.reason==="used"?Lx.couponUsed:Lx.couponInvalid); return; }
-      const raw=calcTotal(session.data.servicePrice,session.data.parts);
-      const disc=result.type==="percent"?Math.round(raw*result.discount/100*1000)/1000:result.discount;
-      const final=Math.max(0,Math.round((raw-disc)*1000)/1000);
-      await sendMessage(from,Lx.couponValid(result.code,disc,final));
-      const newData={...session.data,couponId:result.id,couponCode:result.code,discount:disc};
-      await setSession(from,"coupon",newData);
-      await goToConfirm(from,{...session,data:newData},Lx,disc,result.code);
-      return;
-    }
-
-    // ── confirm — BUTTONS ─────────────────────────────────────────────────────
-    if(session.state==="confirm"){
-      if(text==="nav_back"){ await handleBack(from,session); return; }
-      if(text==="confirm_no"||text==="2"){ await clearSession(from); await sendMessage(from,Lx.cancelled); return; }
-      if(text==="confirm_yes"||text==="1"){ await setSession(from,"location",session.data); await sendMessage(from,Lx.confirmed); return; }
-      // Resend buttons if invalid
-      await goToConfirm(from,session,Lx,session.data.discount||0,session.data.couponCode||null);
-      return;
-    }
-
-    // ── location ──────────────────────────────────────────────────────────────
-    if(session.state==="location"){
-      if(text==="nav_back"){ await handleBack(from,session); return; }
-      if(msg.type!=="location"){ await sendMessage(from,Lx.locationOnly); return; }
-      const service = session.data.service || {
-        id: session.data.serviceId,
-        name: session.data.serviceName
-      };
-      const selectedType=session.data.selectedType;
-      const userLang=getLang(session);
-      if(!service||!selectedType){ await sendMessage(from,Lx.sessionExpired); await clearSession(from); return; }
-
-      // detectRegion returns {name, active} object
-      const regionObj  = await detectRegion(msg.location.latitude, msg.location.longitude);
-      const regionName = regionObj?.name || null;  // extract string name
-      const regionActive = regionObj?.active !== false;
-
-      if(regionName) await sendMessage(from, Lx.regionDetected(regionName));
-
-      // Block if region is inactive (not served)
-      if(regionName && !regionActive){
-        await sendMessage(from, getLang(session)==="ar"
-          ? `⚠️ عذراً، منطقة *${regionName}* غير مخدومة حالياً.`
-          : `⚠️ Sorry, region *${regionName}* is not currently served.`);
-        await clearSession(from); return;
-      }
-
-      const parts      = session.data.parts||[];
-      const rawTotal   = calcTotal(session.data.servicePrice||selectedType.price, parts);
-      const discount   = session.data.discount||0;
-      const totalPrice = Math.max(0, Math.round((rawTotal-discount)*1000)/1000);
-      const partsText  = buildPartsText(parts);
-
-      const techs = await getAvailableTechs(service.id, regionName||"", []);
-      if(!techs.length){
-        // Region not served — just notify, no waiting queue
-        await sendMessage(from, regionName ? Lx.noTechRegion(regionName) : Lx.noTech);
-        await clearSession(from); return;
-      }
-
-      const chosenTech = techs[0];
-      const orderId    = generateOrderId();
-
-      await db.collection("orders").doc(orderId).set({
-        orderId, customer:from,
-        serviceName:service.name, serviceId:service.id,
-        type:selectedType.name, servicePrice:session.data.servicePrice||selectedType.price,
-        parts, totalPrice, discount,
-        couponCode:session.data.couponCode||null,
-        technicianId:chosenTech.id, rejectedTechs:[],
-        status:"pending", lang:userLang, region:regionName||null,
-        location:{latitude:msg.location.latitude,longitude:msg.location.longitude},
-        createdAt:admin.firestore.FieldValue.serverTimestamp()
-      });
-
-      if(session.data.couponId) await applyCoupon(session.data.couponId,from);
-
-      // Notify tech with BUTTONS (accept/reject) + customer location
-      const techPhone=normalize(chosenTech.phone);
-      await sendButtons(techPhone,
-        (LANGS[firstTechLang]||LANGS.en).newOrder(orderId,service.name,selectedType.name,partsText,totalPrice),
-        [{id:"accept_"+orderId,title:(LANGS[firstTechLang]||LANGS.en).acceptBtn},{id:"reject_"+orderId,title:(LANGS[firstTechLang]||LANGS.en).rejectBtn}]
-      );
-      // Send customer location to tech so they can check distance
-      await sendLocation(techPhone, msg.location.latitude, msg.location.longitude);
-      await sendMessage(techPhone, `📍 موقع العميل — ${regionName||"غير محدد"}\nاضغط على الموقع لحساب المسافة.`);
-
-      await sendMessage(from,Lx.orderSent(orderId));
-      // Invoice sent only after completion (for payment)
-      await clearSession(from);
-      return;
-    }
-
-    // ── rating state — customer replies 1-5 ────────────────────────────────────
-    if(session.state==="rating"){
-      const stars = parseInt(text);
-      if(isNaN(stars)||stars<1||stars>5){
-        await sendMessage(from, getLang(session)==="ar"?"يرجى إرسال رقم بين 1 و 5":"Please send a number between 1 and 5");
-        return;
-      }
-      const { orderId, technicianId, lang } = session.data;
-      try {
-        // Update tech rating
-        await updateTechRating(technicianId, stars);
-        // Save rating in order
-        const oSnap = await db.collection("orders").doc(orderId).get();
-        if(oSnap.exists && !oSnap.data().rating){
-          await db.collection("orders").doc(orderId).update({ rating: stars });
-        }
-        await clearSession(from);
-        await sendMessage(from, LANGS[lang||"ar"].ratingDone(stars));
-      } catch(e) {
-        console.error("rating state error:", e?.message);
-        await clearSession(from);
-      }
-      return;
-    }
-
-    await sendMessage(from,Lx.defaultMsg);
-  } catch(err){ console.error("WEBHOOK ERROR:", err); }
+document.addEventListener("click",e=>{
+  const panel=document.getElementById("notif-panel"),bell=document.getElementById("notif-bell");
+  if(!panel.contains(e.target)&&!bell.contains(e.target))panel.classList.remove("open");
 });
 
-// ─── goNextAfterParts ─────────────────────────────────────────────────────────
-
-// ─── Back Navigation ──────────────────────────────────────────────────────────
-function backRow(lang) {
-  const labels = {ar:"↩️ رجوع", en:"↩️ Back", ur:"↩️ واپس", bn:"↩️ ফিরে যান", hi:"↩️ वापस"};
-  return {id:"nav_back", title: labels[lang]||"↩️ رجوع"};
+// ── Lang ──────────────────────────────────────────────────────────────────────
+function toggleLang(){
+  currentLang=currentLang==="ar"?"en":"ar";
+  document.documentElement.lang=currentLang;
+  document.documentElement.dir=currentLang==="ar"?"rtl":"ltr";
+  document.getElementById("lang-label").textContent=currentLang==="ar"?"English":"العربية";
+  document.querySelectorAll(".nl").forEach(el=>{el.textContent=el.dataset[currentLang]||el.textContent;});
 }
 
-async function handleBack(from, session) {
-  const lang = getLang(session);
-  const Lx   = LANGS[lang]||LANGS.ar;
-  const st   = session.state;
-
-  // type → go back to service list
-  if(st==="type"){
-    const services = await getServices();
-    await sendList(from, Lx.welcome, Lx.servicesBtn, [{
-      title: Lx.chooseService,
-      rows: services.map((s,i)=>({id:"svc_"+i, title:s.name.substring(0,24)}))
-    }]);
-    await setSession(from,"service",{lang, services});
-    return true;
-  }
-
-  // parts/parts_ask → go back to type list
-  if(st==="parts"||st==="parts_ask"){
-    const svcId = session.data.serviceId||session.data.service?.id;
-    const svcName = session.data.serviceName||session.data.service?.name;
-    // Try to get types from session first, else reload
-    let types = session.data.service?.types||session.data.types||[];
-    if(!types.length && svcId){
-      const services = await getServices();
-      types = services.find(s=>s.id===svcId)?.types||[];
-    }
-    if(types.length){
-      await sendList(from, Lx.chooseType ? Lx.chooseType(svcName) : `🔧 ${svcName}`, Lx.typesBtn||"الأنواع", [{
-        title: Lx.typesBtn||"الأنواع",
-        rows: [...types.map((t,i)=>({id:"typ_"+i, title:t.name.substring(0,24), description:`${t.price} OMR`})), backRow(lang)]
-      }]);
-      await setSession(from,"type",{lang, service:{id:svcId,name:svcName,types}, discount:0, couponId:null, couponCode:null});
-    }
-    return true;
-  }
-
-  // coupon → go back to parts list (or type if no parts)
-  if(st==="coupon"){
-    const svcId = session.data.serviceId||session.data.service?.id||"";
-    const parts = await getPartsByService(svcId);
-    if(parts.length){
-      const lang2 = lang;
-      const partsRows = parts.slice(0,10).map((p,i)=>({
-        id:"part_"+i, title:p.name.substring(0,24),
-        description:`${(parseFloat(p.price)||0).toFixed(3)} OMR${p.stock!==undefined?" · "+p.stock:""}`
-      }));
-      partsRows.push({id:"part_skip", title:lang2==="ar"?"0 — بدون قطع":"0 — No parts"});
-      partsRows.push(backRow(lang2));
-      await sendList(from,
-        lang2==="ar"?"🔩 اختر القطع:":"🔩 Choose parts:",
-        lang2==="ar"?"القطع":"Parts",
-        [{title:lang2==="ar"?"القطع المتاحة":"Available Parts", rows:partsRows}]
-      );
-      await setSession(from,"parts",{...session.data, parts:[], pendingPartIdx:null, pendingMaxQty:null});
-    } else {
-      // No parts → back to type
-      await handleBack(from, {...session, state:"parts"});
-    }
-    return true;
-  }
-
-  // confirm → go back to coupon (or parts if no coupon)
-  if(st==="confirm"){
-    const hasCoupons = await checkActiveCoupons();
-    const cleanData  = {...session.data, discount:0, couponId:null, couponCode:null, pendingPartIdx:null, pendingMaxQty:null};
-    if(hasCoupons){
-      await setSession(from,"coupon",cleanData);
-      const lang2 = lang;
-      await sendButtons(from,
-        lang2==="ar"?"🎟 هل لديك كوبون خصم؟ أرسل الكود أو اضغط تخطي.":
-        lang2==="ur"?"🎟 کیا آپ کے پاس ڈسکاؤنٹ کوڈ ہے؟ کوڈ بھیجیں یا چھوڑیں۔":
-        "🎟 Do you have a discount coupon? Send code or skip.",
-        [
-          {id:"coupon_skip", title:lang2==="ar"?"تخطي":lang2==="ur"?"چھوڑیں":"Skip"},
-          {id:"nav_back",    title:backRow(lang2).title}
-        ]
-      );
-    } else {
-      await handleBack(from, {...session, state:"coupon"});
-    }
-    return true;
-  }
-
-  // location → go back to confirm
-  if(st==="location"){
-    await goToConfirm(from, session, LANGS[lang]||LANGS.ar, session.data.discount||0, session.data.couponCode||null);
-    return true;
-  }
-
-  return false;
+// ── Navigation ────────────────────────────────────────────────────────────────
+function showPage(name,btn){
+  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+  document.querySelectorAll(".nav-item").forEach(n=>n.classList.remove("active"));
+  document.getElementById("page-"+name).classList.add("active");
+  if(btn)btn.classList.add("active");
+  const lbl=btn?.querySelector(".nl");
+  if(lbl)document.getElementById("page-title").textContent=lbl.dataset[currentLang]||lbl.textContent;
+  if(name==="orders")loadOrders();
+  if(name==="technicians")loadTechnicians();
+  if(name==="regions")loadRegions();
+  if(name==="services")loadServices();
+  if(name==="parts")loadParts();
+  if(name==="coupons")loadCoupons();
+  if(name==="finance")loadFinance();
+  if(name==="map")loadMap();
+  if(name==="users")loadUsers();
 }
 
-async function goNextAfterParts(from, data, Lx) {
-  // Ensure servicePrice is always present
-  const svcPrice = parseFloat(data.servicePrice) || parseFloat(data.selectedType?.price) || 0;
-  const cleanData = {
-    ...data,
-    servicePrice: svcPrice,
-    discount: 0,
-    couponId: null,
-    couponCode: null
-  };
-  const hasCoupons = await checkActiveCoupons();
-  if(hasCoupons){
-    await setSession(from,"coupon",cleanData);
-    const cl = cleanData.lang||"ar";
-    await sendButtons(from,
-      LANGS[cl]?.couponPrompt||"🎟 هل لديك كوبون خصم؟ أرسل الكود أو اضغط تخطي.",
-      [
-        {id:"coupon_skip", title:cl==="ar"?"تخطي":cl==="ur"?"چھوڑیں":cl==="bn"?"এড়িয়ে যান":cl==="hi"?"छोड़ें":"Skip"},
-        {id:"nav_back",    title:backRow(cl).title}
-      ]
-    );
+const SL={ar:{pending:"قيد الانتظار",accepted:"مقبول",done:"مكتمل",rejected:"مرفوض",cancelled:"ملغي",waiting:"انتظار"},en:{pending:"Pending",accepted:"Accepted",done:"Done",rejected:"Rejected",cancelled:"Cancelled",waiting:"Waiting"}};
+const sl=s=>SL[currentLang][s]||s;
+
+function showToast(msg,type="success"){
+  const t=document.createElement("div");t.className="toast "+type;t.textContent=msg;
+  document.body.appendChild(t);setTimeout(()=>t.remove(),3000);
+}
+
+function getTypeName(o){if(!o.type)return"-";if(typeof o.type==="string")return o.type;if(typeof o.type==="object"&&o.type.name)return o.type.name;return"-";}
+
+// ── Overview ──────────────────────────────────────────────────────────────────
+async function loadOverview(){
+  try{
+    const[ordSnap,techSnap]=await Promise.all([db.collection("orders").get(),db.collection("technicians").get()]);
+    const orders=ordSnap.docs.map(d=>({id:d.id,...d.data()}));
+    const techs=techSnap.docs.map(d=>d.data());
+    const pending=orders.filter(o=>o.status==="pending").length;
+    const done=orders.filter(o=>o.status==="done").length;
+    const revenue=orders.filter(o=>o.status==="done").reduce((s,o)=>s+(o.totalPrice||o.price||0),0);
+    const activeTechs=techs.filter(t=>t.active).length;
+    const badge=document.getElementById("pending-badge");
+    badge.style.display=pending>0?"inline":"none";badge.textContent=pending;
+    document.getElementById("stats-grid").innerHTML=`
+      <div class="stat-card yellow"><div class="stat-icon">📋</div><div class="stat-val">${orders.length}</div><div class="stat-label">إجمالي الطلبات</div></div>
+      <div class="stat-card blue"><div class="stat-icon">⏳</div><div class="stat-val">${pending}</div><div class="stat-label">قيد الانتظار</div></div>
+      <div class="stat-card green"><div class="stat-icon">✅</div><div class="stat-val">${done}</div><div class="stat-label">مكتملة</div></div>
+      <div class="stat-card yellow"><div class="stat-icon">💰</div><div class="stat-val">${revenue.toFixed(3)}</div><div class="stat-label">الإيرادات (OMR)</div></div>
+      <div class="stat-card green"><div class="stat-icon">👨‍🔧</div><div class="stat-val">${activeTechs}/${techs.length}</div><div class="stat-label">فنيون متاحون</div></div>
+    `;
+    buildOrdersChart(orders);buildStatusChart(orders);
+    renderOrdersTable(orders.slice(-8).reverse(),"recent-orders-table",false);
+  }catch(e){console.error(e);}
+}
+
+function buildOrdersChart(orders){
+  const days=[],counts=[];
+  for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const k=d.toLocaleDateString("en-CA");days.push(d.toLocaleDateString(currentLang==="ar"?"ar-OM":"en-OM",{weekday:"short"}));counts.push(orders.filter(o=>o.createdAt&&new Date(o.createdAt.seconds*1000).toLocaleDateString("en-CA")===k).length);}
+  if(ordersChart)ordersChart.destroy();
+  ordersChart=new Chart(document.getElementById("ordersChart"),{type:"bar",data:{labels:days,datasets:[{data:counts,backgroundColor:"rgba(245,158,11,.75)",borderRadius:5,borderSkipped:false}]},options:{plugins:{legend:{display:false}},scales:{x:{grid:{color:"rgba(255,255,255,.05)"},ticks:{color:"#64748b"}},y:{grid:{color:"rgba(255,255,255,.05)"},ticks:{color:"#64748b",stepSize:1}}}}});
+}
+function buildStatusChart(orders){
+  const counts=["pending","accepted","done","rejected"].map(s=>orders.filter(o=>o.status===s).length);
+  if(statusChart)statusChart.destroy();
+  statusChart=new Chart(document.getElementById("statusChart"),{type:"doughnut",data:{labels:currentLang==="ar"?["قيد الانتظار","مقبول","مكتمل","مرفوض"]:["Pending","Accepted","Done","Rejected"],datasets:[{data:counts,backgroundColor:["#f59e0b","#3b82f6","#10b981","#ef4444"],borderWidth:0}]},options:{plugins:{legend:{labels:{color:"#94a3b8",font:{size:10}}}},cutout:"65%"}});
+}
+
+// ── Orders ────────────────────────────────────────────────────────────────────
+async function loadOrders(){
+  document.getElementById("orders-table").innerHTML='<div class="loader"><div class="spinner"></div></div>';
+  try{
+    let q=db.collection("orders").orderBy("createdAt","desc");
+    if(currentUserRole==="supervisor"&&currentUserRegion)q=q.where("regionId","==",currentUserRegion);
+    const snap=await q.get();
+    allOrders=snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderFilteredOrders();
+  }catch(e){document.getElementById("orders-table").innerHTML='<div class="empty">خطأ في التحميل</div>';}
+}
+function setOrderFilter(f,btn){orderFilter=f;document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));btn.classList.add("active");renderFilteredOrders();}
+function renderFilteredOrders(){
+  const q=(document.getElementById("order-search").value||"").toLowerCase();
+  let list=orderFilter==="all"?allOrders:allOrders.filter(o=>o.status===orderFilter);
+  if(q)list=list.filter(o=>(o.orderId||"").toLowerCase().includes(q)||(o.customer||"").includes(q)||(o.serviceName||"").toLowerCase().includes(q)||(o.region||"").includes(q));
+  renderOrdersTable(list,"orders-table",true);
+}
+function renderOrdersTable(list,targetId,showDel){
+  if(!list.length){document.getElementById(targetId).innerHTML=`<div class="empty">لا توجد طلبات</div>`;return;}
+  const canDelete=currentUserRole==="admin";
+  const rows=list.map(o=>{
+    const date=o.createdAt?new Date(o.createdAt.seconds*1000).toLocaleDateString(currentLang==="ar"?"ar-OM":"en-OM"):"-";
+    const assignBtn = (showDel && o.status==="pending")
+      ? `<td><button class="btn btn-sm btn-blue" onclick="openAssignModal('${o.id}','${o.orderId||o.id}','${o.serviceId||""}')" title="تعيين فني">👨‍🔧 تعيين</button></td>`
+      : (showDel ? "<td></td>" : "");
+    const del = showDel && canDelete
+      ? `<td><button class="btn btn-sm btn-danger" onclick="deleteOrder('${o.id}')">🗑</button></td>`
+      : "";
+    return`<tr>
+      <td style="font-weight:700;color:var(--accent);font-size:.72rem">${o.orderId||o.id}</td>
+      <td style="font-size:.74rem">${o.customer||"-"}</td>
+      <td><span class="region-pill">${o.region||"-"}</span></td>
+      <td>${o.serviceName||"-"}</td>
+      <td>${getTypeName(o)}</td>
+      <td style="font-weight:700;color:var(--accent3)">
+        ${(o.totalPrice||o.price||0).toFixed?.(3)||0} OMR
+        ${(o.parts&&o.parts.length)?`<br><span style="font-size:.65rem;color:var(--muted)">خدمة: ${(o.servicePrice||0).toFixed(3)} + قطع: ${o.parts.reduce((s,p)=>s+p.price*p.qty,0).toFixed(3)}</span>`:""}
+        ${o.discount?`<br><span style="font-size:.65rem;color:var(--accent3)">خصم: -${(o.discount||0).toFixed(3)}</span>`:""}
+      </td>
+      <td>${o.rating?"⭐".repeat(Math.min(o.rating,5)):"-"}</td>
+      <td><span class="badge ${o.status}">${sl(o.status)}</span></td>
+      <td style="color:var(--muted);font-size:.7rem">${date}</td>
+      <td style="font-size:.72rem;color:var(--danger)">${o.cancelReason||"-"}</td>
+      ${assignBtn}${del}
+    </tr>`;
+  }).join("");
+  document.getElementById(targetId).innerHTML=`<table><thead><tr>
+    <th>رقم الطلب</th><th>العميل</th><th>المنطقة</th><th>الخدمة</th><th>النوع</th>
+    <th>الإجمالي</th><th>التقييم</th><th>الحالة</th><th>سبب الإلغاء</th><th>التاريخ</th>
+    ${showDel?"<th>تعيين</th><th></th>":""}
+  </tr></thead><tbody>${rows}</tbody></table>`;
+}
+async function deleteOrder(id){
+  if(!confirm("حذف هذا الطلب؟"))return;
+  try{
+    const order = allOrders.find(o=>o.id===id);
+    const col   = order?._collection||"orders";
+    await db.collection(col).doc(id).delete();
+    showToast("تم الحذف");
+    allOrders=allOrders.filter(o=>o.id!==id);
+    renderFilteredOrders();
+  }catch(e){showToast(e.message,"error");}
+}
+async function deleteAllPending(){
+  if(currentUserRole!=="admin"){showToast("ليس لديك صلاحية","error");return;}
+  const p=allOrders.filter(o=>o.status==="pending");
+  if(!p.length){showToast("لا توجد طلبات معلقة","error");return;}
+  if(!confirm(`حذف ${p.length} طلب معلق؟`))return;
+  try{const b=db.batch();p.forEach(o=>b.delete(db.collection("orders").doc(o.id)));await b.commit();showToast(`تم حذف ${p.length}`);loadOrders();}catch(e){showToast(e.message,"error");}
+}
+
+// ── Export Excel ──────────────────────────────────────────────────────────────
+function exportOrdersExcel(){
+  if(!allOrders.length){showToast("لا توجد بيانات","error");return;}
+  const data=allOrders.map(o=>({
+    "رقم الطلب":o.orderId||o.id,"العميل":o.customer||"-","المنطقة":o.region||"-",
+    "الخدمة":o.serviceName||"-","النوع":getTypeName(o),"الإجمالي (OMR)":o.totalPrice||o.price||0,
+    "الخصم (OMR)":o.discount||0,"التقييم":o.rating||"-","الحالة":sl(o.status),
+    "التاريخ":o.createdAt?new Date(o.createdAt.seconds*1000).toLocaleDateString("ar-OM"):"-"
+  }));
+  const ws=XLSX.utils.json_to_sheet(data),wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,"الطلبات");
+  XLSX.writeFile(wb,`taqa_orders_${new Date().toLocaleDateString("en-CA")}.xlsx`);
+  showToast("✅ تم تصدير Excel");
+}
+
+function exportOrdersPDF(){
+  const rows=allOrders.slice(0,50);
+  if(!rows.length){showToast("لا توجد بيانات","error");return;}
+  const w=window.open("","_blank");
+  w.document.write(`<html><head><meta charset="UTF-8"><title>تقرير الطلبات</title>
+  <style>body{font-family:Arial,sans-serif;direction:rtl;padding:20px}h1{color:#f59e0b}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#111827;color:#f1f5f9;padding:8px;text-align:right}td{padding:7px;border-bottom:1px solid #eee}
+.live-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--danger);margin-right:4px;animation:pulse 1s infinite;}
+.notif-bell{position:relative;cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:1rem;transition:all .2s;}
+.notif-bell:hover{border-color:var(--accent);}
+.notif-count{position:absolute;top:-5px;right:-5px;background:var(--danger);color:#fff;font-size:.58rem;font-weight:800;padding:1px 5px;border-radius:10px;min-width:16px;text-align:center;}
+.notif-dropdown{position:absolute;top:50px;right:0;width:300px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:300;display:none;max-height:380px;overflow-y:auto;}
+html[dir="ltr"] .notif-dropdown{right:auto;left:0;}
+.notif-dropdown.open{display:block;animation:fadeIn .2s;}
+.notif-header{padding:11px 15px;border-bottom:1px solid var(--border);font-size:.8rem;font-weight:700;display:flex;justify-content:space-between;align-items:center;}
+.notif-clear{font-size:.7rem;color:var(--muted);cursor:pointer;background:none;border:none;font-family:inherit;}
+.notif-item{padding:11px 15px;border-bottom:1px solid rgba(255,255,255,.04);transition:background .15s;}
+.notif-item.unread{border-right:3px solid var(--accent);}
+html[dir="ltr"] .notif-item.unread{border-right:none;border-left:3px solid var(--accent);}
+.notif-empty{padding:22px;text-align:center;color:var(--muted);font-size:.8rem;}
+.region-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:15px;transition:all .2s;}
+.region-card:hover{border-color:var(--accent3);}
+.regions-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;padding:16px;}
+.region-stat{flex:1;text-align:center;background:var(--surface);border-radius:6px;padding:5px;}
+.region-stat-val{font-size:1.1rem;font-weight:900;color:var(--accent);}
+.region-stat-lbl{font-size:.6rem;color:var(--muted);}
+.tech-region{font-size:.68rem;color:var(--accent2);margin-bottom:7px;}
+.admin-role-badge{display:inline-block;padding:1px 7px;border-radius:4px;font-size:.6rem;font-weight:700;margin-top:2px;}
+.role-admin{background:rgba(245,158,11,.2);color:var(--accent);}
+.role-supervisor{background:rgba(59,130,246,.2);color:var(--accent2);}
+#orders-map{height:460px;border-radius:10px;overflow:hidden;border:1px solid var(--border);}
+</style></head><body>
+  <h1>TAQA — تقرير الطلبات</h1><p>${new Date().toLocaleDateString("ar-OM")}</p>
+  <table><thead><tr><th>رقم الطلب</th><th>المنطقة</th><th>الخدمة</th><th>الإجمالي</th><th>الحالة</th></tr></thead>
+  <tbody>${rows.map(o=>`<tr><td>${o.orderId||o.id}</td><td>${o.region||"-"}</td><td>${o.serviceName||"-"}</td><td>${(o.totalPrice||0).toFixed?.(3)} OMR</td><td>${sl(o.status)}</td></tr>`).join("")}</tbody></table>
+  <script>window.print();window.close();<\/script>
+<!-- Suspend Tech Modal -->
+<div class="modal-overlay" id="suspend-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <h3>⛔ إيقاف الفني: <span id="suspend-tech-name" style="color:var(--danger)"></span></h3>
+      <button class="modal-close" onclick="closeModal('suspend-modal')">×</button>
+    </div>
+    <input type="hidden" id="suspend-tech-id"/>
+    <div class="form-group" style="margin-top:16px">
+      <label style="display:block;margin-bottom:8px;font-weight:700;color:var(--muted)">
+        سبب الإيقاف <span style="color:var(--danger)">*</span>
+      </label>
+      <textarea id="suspend-reason" rows="4"
+        placeholder="اكتب سبب إيقاف الفني... سيتم إرسال هذا السبب للفني عبر واتساب"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-family:inherit;font-size:.9rem;resize:vertical"></textarea>
+      <p style="font-size:.75rem;color:var(--muted);margin-top:6px">
+        📱 سيصل الفني رسالة واتساب تحتوي سبب الإيقاف فور الحفظ.
+      </p>
+    </div>
+    <div class="form-actions" style="margin-top:16px">
+      <button class="btn btn-danger" onclick="confirmSuspend()" style="background:var(--danger)">⛔ إيقاف وإشعار الفني</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('suspend-modal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+</body></html>`);
+  w.document.close();
+}
+
+function exportFinanceExcel(){
+  db.collection("technicians").get().then(snap=>{
+    const data=snap.docs.map(d=>{const t=d.data();return{"الاسم":t.name||"-","الهاتف":t.phone||"-","المنطقة":t.regionName||t.regionId||"-","الرصيد (OMR)":t.balance||0,"التقييم":t.rating||0,"عدد التقييمات":t.ratingCount||0,"الحالة":t.active?"متاح":"مشغول"};});
+    const ws=XLSX.utils.json_to_sheet(data),wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"الفنيون");
+    XLSX.writeFile(wb,`taqa_finance_${new Date().toLocaleDateString("en-CA")}.xlsx`);
+    showToast("✅ تم تصدير Excel");
+  });
+}
+
+// ── Map ───────────────────────────────────────────────────────────────────────
+let mapFilter="all";
+async function loadMap(){
+  if(!mapInstance){
+    mapInstance=L.map("orders-map").setView([22.6,59.5],9);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap"}).addTo(mapInstance);
+  }
+  const snap=await db.collection("orders").get();
+  allOrders=snap.docs.map(d=>({id:d.id,...d.data()}));
+  renderMapMarkers();
+}
+function filterMap(f,btn){mapFilter=f;document.querySelectorAll("#page-map .filter-btn").forEach(b=>b.classList.remove("active"));btn.classList.add("active");renderMapMarkers();}
+function renderMapMarkers(){
+  mapMarkers.forEach(m=>m.remove());mapMarkers=[];
+  const colors={pending:"#f59e0b",accepted:"#3b82f6",done:"#10b981",rejected:"#ef4444"};
+  const filtered=mapFilter==="all"?allOrders:allOrders.filter(o=>o.status===mapFilter);
+  filtered.forEach(o=>{
+    if(!o.location?.latitude)return;
+    const color=colors[o.status]||"#64748b";
+    const icon=L.divIcon({html:`<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)"></div>`,className:"",iconSize:[14,14]});
+    const m=L.marker([o.location.latitude,o.location.longitude],{icon}).addTo(mapInstance);
+    m.bindPopup(`<b>${o.orderId||o.id}</b><br>${o.serviceName||""}<br>${o.region||""}<br>${sl(o.status)}<br>${(o.totalPrice||0)} OMR`);
+    mapMarkers.push(m);
+  });
+}
+
+// ── Regions ───────────────────────────────────────────────────────────────────
+async function loadRegions(){
+  document.getElementById("regions-list").innerHTML='<div class="loader"><div class="spinner"></div></div>';
+  try{
+    const snap=await db.collection("regions").get();
+    allRegions=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(!allRegions.length){document.getElementById("regions-list").innerHTML='<div class="empty">لا توجد مناطق. أضف منطقة للبدء.</div>';return;}
+    document.getElementById("regions-list").innerHTML=allRegions.map(r=>`
+      <div class="item-row">
+        <div class="item-icon">📍</div>
+        <div class="item-info">
+          <div class="item-name">${r.name} <span style="font-size:.68rem;color:var(--muted);font-family:monospace">(${r.id})</span></div>
+          <div class="item-meta">
+            ${r.minLat?`إطار: ${r.minLat},${r.minLng} → ${r.maxLat},${r.maxLng}`:""}
+            ${r.centerLat?`مركز: ${r.centerLat},${r.centerLng} · نطاق: ${r.radiusKm}كم`:""}
+          </div>
+        </div>
+        <div style="display:flex;gap:5px;align-items:center">
+          <span class="active-pill ${r.active?"on":"off"}">${r.active?"مفعّل":"معطّل"}</span>
+          <button class="btn btn-sm ${r.active?"btn-danger":"btn-success"}" onclick="toggleRegion('${r.id}',${r.active})">${r.active?"تعطيل":"تفعيل"}</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteRegion('${r.id}')">🗑</button>
+        </div>
+      </div>`).join("");
+    // Refresh region selects
+    populateRegionSelects();
+  }catch(e){console.error(e);}
+}
+
+function populateRegionSelects(){
+  const selects=["tech-region","user-region"];
+  selects.forEach(id=>{
+    const sel=document.getElementById(id);
+    if(!sel)return;
+    const cur=sel.value;
+    sel.innerHTML=id==="tech-region"?'<option value="">بدون تحديد منطقة</option>':'<option value="">كل المناطق</option>';
+    allRegions.forEach(r=>{sel.innerHTML+=`<option value="${r.id}">${r.name}</option>`;});
+    sel.value=cur;
+  });
+}
+
+function toggleRegionType(){
+  const t=document.getElementById("region-type").value;
+  document.getElementById("bbox-fields").style.display=t==="bbox"?"grid":"none";
+  document.getElementById("radius-fields").style.display=t==="radius"?"grid":"none";
+}
+
+async function addRegion(){
+  const name=document.getElementById("region-name").value.trim();
+  const id=document.getElementById("region-id").value.trim().toLowerCase();
+  const type=document.getElementById("region-type").value;
+  if(!name||!id){showToast("يرجى إدخال الاسم والمعرف","error");return;}
+  const data={name,active:true};
+  if(type==="bbox"){
+    data.minLat=parseFloat(document.getElementById("region-minlat").value);
+    data.maxLat=parseFloat(document.getElementById("region-maxlat").value);
+    data.minLng=parseFloat(document.getElementById("region-minlng").value);
+    data.maxLng=parseFloat(document.getElementById("region-maxlng").value);
+  }else{
+    data.centerLat=parseFloat(document.getElementById("region-clat").value);
+    data.centerLng=parseFloat(document.getElementById("region-clng").value);
+    data.radiusKm=parseFloat(document.getElementById("region-radius").value);
+  }
+  try{await db.collection("regions").doc(id).set(data);showToast("✅ تمت إضافة المنطقة");closeModal("region-modal");loadRegions();}
+  catch(e){showToast(e.message,"error");}
+}
+async function toggleRegion(id,cur){try{await db.collection("regions").doc(id).update({active:!cur});showToast("✅");loadRegions();}catch(e){showToast(e.message,"error");}}
+async function toggleRegion(id, current){
+  try{
+    await db.collection("regions").doc(id).update({active:!current});
+    showToast(current?"⛔ تم التعطيل":"✅ تم التفعيل");
+    loadRegions();
+  }catch(e){showToast(e.message,"error");}
+}
+async function toggleRegion(id, currentActive) {
+  try {
+    await db.collection("regions").doc(id).update({ active: !currentActive });
+    showToast(currentActive ? "⏸ تم إيقاف المنطقة" : "✅ تم تفعيل المنطقة");
+    loadRegions();
+  } catch(e) { showToast(e.message,"error"); }
+}
+async function deleteRegion(id){if(!confirm("حذف هذه المنطقة؟"))return;try{await db.collection("regions").doc(id).delete();showToast("تم الحذف");loadRegions();}catch(e){showToast(e.message,"error");}}
+
+// ── Technicians ───────────────────────────────────────────────────────────────
+async function loadTechnicians(){
+  document.getElementById("tech-grid").innerHTML='<div class="loader"><div class="spinner"></div></div>';
+  try{
+    const snap=await db.collection("technicians").get();
+    const techs=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(!techs.length){document.getElementById("tech-grid").innerHTML='<div class="empty">لا يوجد فنيون</div>';return;}
+    document.getElementById("tech-grid").innerHTML=techs.map(tc=>`
+      <div class="tech-card">
+        <div class="tech-avatar">👨‍🔧</div>
+        <div class="tech-name">${tc.name||"-"}</div>
+        <div class="tech-phone">📞 ${tc.phone||"-"}</div>
+        <div class="tech-region">📍 ${tc.regionName||tc.regionId||"غير محدد"}</div>
+        <div class="tech-stats">
+          <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent)">${tc.rating?tc.rating.toFixed(1):"-"}</div><div class="tech-stat-lbl">تقييم</div></div>
+          <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent3)">${tc.ratingCount||0}</div><div class="tech-stat-lbl">تقييمات</div></div>
+          <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent2)">${tc.balance||0}</div><div class="tech-stat-lbl">OMR</div></div>
+        </div>
+        <div class="tech-footer">
+          <span class="active-pill ${tc.active?"on":"off"}">${tc.active?"متاح":"مشغول"}</span>
+          <div style="display:flex;gap:4px">
+            <button class="btn btn-sm ${tc.active?"btn-danger":"btn-success"}" onclick="techAction('${tc.id}','${tc.name}',${tc.active})">${tc.active?"⛔ إيقاف":"✅ تفعيل"}</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteTech('${tc.id}')">🗑</button>
+          </div>
+        </div>
+      </div>`).join("");
+  }catch(e){console.error(e);}
+}
+function techAction(techId, techName, isActive) {
+  if(isActive) {
+    openSuspendModal(techId, techName);
   } else {
-    await goToConfirm(from,{state:"coupon",data:cleanData},Lx,0,null);
+    reactivateTech(techId, techName);
   }
 }
 
-// ─── goToConfirm — sends BUTTONS ─────────────────────────────────────────────
-async function goToConfirm(from, session, Lx, discount, couponCode) {
-  const d         = session.data || {};
-  const svcName   = d.serviceName || d.service?.name || "";
-  const typeName  = d.selectedType?.name || "";
-  // servicePrice: try all possible sources
-  const svcPrice  = parseFloat(d.servicePrice) || parseFloat(d.selectedType?.price) || 0;
-  const parts     = d.parts || [];
-  const partsTotal= Math.round(parts.reduce((s,p)=>s+(parseFloat(p.price)||0)*(p.qty||1),0)*1000)/1000;
-  const disc      = parseFloat(discount)||0;
-  const total     = Math.max(0, Math.round((svcPrice + partsTotal - disc)*1000)/1000);
-  const partsTxt  = buildPartsText(parts);
-
-  console.log("goToConfirm:", {svcName, typeName, svcPrice, partsTotal, disc, total});
-
-  await setSession(from,"confirm",{...d, discount:disc, couponCode, totalPrice:total, servicePrice:svcPrice});
-  await sendButtons(from,
-    Lx.confirmTitle(svcName, typeName, partsTxt, svcPrice, partsTotal, disc>0?disc:null, total),
-    [{id:"confirm_yes",title:Lx.confirmYes},{id:"confirm_no",title:Lx.confirmNo},{id:"nav_back",title:backRow(d.lang||"ar").title}]
-  );
+function openSuspendModal(techId, techName) {
+  document.getElementById("suspend-tech-id").value   = techId;
+  document.getElementById("suspend-tech-name").textContent = techName;
+  document.getElementById("suspend-reason").value    = "";
+  openModal("suspend-modal");
 }
 
-// ─── Tech Handlers ────────────────────────────────────────────────────────────
-
-// ─── Tech Language Menu ───────────────────────────────────────────────────────
-async function sendLangMenu(techPhone, currentLang) {
-  const tl = currentLang || "ar";
-  const title =
-    tl==="ar" ? "🌐 اختر لغتك" :
-    tl==="ur" ? "🌐 اپنی زبان منتخب کریں" :
-    tl==="bn" ? "🌐 আপনার ভাষা বেছে নিন" :
-    tl==="hi" ? "🌐 अपनी भाषा चुनें" :
-    "🌐 Choose your language";
-
-  const rows = [
-    { id:"lang_ar", title:"🇴🇲 عربي",    description:"Arabic"   },
-    { id:"lang_en", title:"🇬🇧 English",  description:"English"  },
-    { id:"lang_ur", title:"🇵🇰 اردو",     description:"Urdu"     },
-    { id:"lang_bn", title:"🇧🇩 বাংলা",    description:"Bengali"  },
-    { id:"lang_hi", title:"🇮🇳 हिंदी",    description:"Hindi"    },
-  ];
-  // Mark current lang
-  rows.forEach(r => { if(r.id === "lang_"+tl) r.title = "✅ " + r.title; });
-
-  await sendList(techPhone, title, tl==="ar"?"اختر":"Select",
-    [{ title: tl==="ar"?"اللغات المتاحة":"Available Languages", rows }]
-  );
-}
-
-async function handleTechMessage(techPhone, text, msg, tech) {
-  // ── Order action buttons ────────────────────────────────────────────────────
-  if(text.startsWith("accept_")){ await handleAccept(text.replace("accept_",""),techPhone,tech); return; }
-  if(text.startsWith("reject_")){ await handleReject(text.replace("reject_",""),techPhone,tech); return; }
-  if(text.startsWith("done_")){ await handleDone(text.replace("done_",""),techPhone,tech); return; }
-
-  // ── Language selection from list ────────────────────────────────────────────
-  if(text.startsWith("lang_")){
-    const newLang = text.replace("lang_","");
-    if(["ar","en","ur","bn","hi"].includes(newLang)){
-      await db.collection("technicians").doc(tech.id).update({lang: newLang});
-      const TLN = LANGS[newLang] || LANGS.en;
-      const changed = TLN.langChanged || "✅ Language changed.";
-      await sendMessage(techPhone, changed);
-      // Show tech info in new lang
-      const updatedTech = {...tech, lang: newLang};
-      if(TLN.techInfo) await sendMessage(techPhone, TLN.techInfo(updatedTech));
-    }
-    return;
-  }
-
-  // ── "لغة" / "language" / "lang" → show language menu ──────────────────────
-  const langTriggers = ["لغة","language","lang","lingua","langue","भाषा","ভাষা","زبان"];
-  if(langTriggers.includes(text.toLowerCase().trim())){
-    await sendLangMenu(techPhone, tech.lang||"ar");
-    return;
-  }
-
-  // ── Legacy text-based lang change (ar/en/ur/bn/hi) ─────────────────────────
-  if(["ar","en","ur","bn","hi"].includes(text.toLowerCase())){
-    const newLang = text.toLowerCase();
-    await db.collection("technicians").doc(tech.id).update({lang: newLang});
-    const TLN = LANGS[newLang]||LANGS.en;
-    await sendMessage(techPhone, TLN.langChanged||"✅ Language changed.");
-    return;
-  }
-
-  // ── Default: show tech info + lang menu ────────────────────────────────────
-  const tl = tech.lang || "ar";
-  const TL = LANGS[tl] || LANGS.en;
-  if(TL.techInfo) await sendMessage(techPhone, TL.techInfo(tech));
-  // Show language selection list
-  await sendLangMenu(techPhone, tl);
-}
-
-
-async function checkTechBalance(techId, techPhone, techLang) {
-  const snap = await db.collection("technicians").doc(techId).get();
-  if(!snap.exists) return true;
-  const bal = parseFloat(snap.data()?.balance||0);
-  if(bal < MIN_TECH_BALANCE){
-    await db.collection("technicians").doc(techId).update({active:false});
-    const tl = ["ar","en","ur","bn","hi"].includes(techLang)?techLang:"ar";
-    const TL = LANGS[tl]||LANGS.en;
-    const msg = TL.lowBalance
-      ? TL.lowBalance(bal)
-      : `⚠️ Balance: ${bal.toFixed(3)} OMR. Min required: 2.000 OMR. Please recharge.`;
-    await sendMessage(techPhone, msg);
-    return false;
-  }
-  return true;
-}
-
-async function handleAccept(orderId, techPhone, tech) {
-  const allowed = await checkTechBalance(tech.id, techPhone, tech.lang||"ar");
-  if(!allowed) return;
-  const ref=db.collection("orders").doc(orderId); const snap=await ref.get();
-  if(!snap.exists){ await sendMessage(techPhone,(LANGS[tech.lang||"ar"]||LANGS.en).orderNotFound); return; }
-  const order=snap.data();
-  if(order.status!=="pending"){ await sendMessage(techPhone,(LANGS[tech.lang||"ar"]||LANGS.en).alreadyProcessed); return; }
-  await ref.update({status:"accepted"});
-  await db.collection("technicians").doc(order.technicianId).update({active:false});
-  const customerPhone=normalize(order.customer);
-  const CL=LANGS[order.lang||"ar"];
-  // Send customer info + location to tech
-  await sendMessage(techPhone, (LANGS[tech.lang||"ar"]||LANGS.en).customerPhone(customerPhone));
-  if(order.location?.latitude){
-    // Send location so tech can navigate
-    await sendLocation(techPhone, order.location.latitude, order.location.longitude);
-    // Also send Google Maps link
-    const mapsLink = `https://www.google.com/maps?q=${order.location.latitude},${order.location.longitude}`;
-    await sendMessage(techPhone, `🗺️ موقع العميل على خرائط Google:\n${mapsLink}\n📍 المنطقة: ${order.region||"-"}`);
-  }
-  // Done button for tech
-  const tld=tech.lang||"ar"; const TLD=LANGS[tld]||LANGS.en;
-  await sendButtons(techPhone, TLD.orderDoneLabel(orderId), [{id:"done_"+orderId,title:TLD.orderDoneBtn}]);
-  await sendMessage(customerPhone, CL.accepted(tech.name,tech.phone));
-}
-
-async function handleReject(orderId, techPhone, tech) {
-  const ref=db.collection("orders").doc(orderId); const snap=await ref.get();
-  if(!snap.exists){ await sendMessage(techPhone,LANGS.ar.orderNotFound); return; }
-  const order=snap.data();
-  if(order.status!=="pending"){ await sendMessage(techPhone,LANGS.ar.alreadyProcessed); return; }
-  await sendMessage(techPhone,(LANGS[tech.lang||"ar"]||LANGS.en).techRejected);
-  const rejected=[...(order.rejectedTechs||[]),order.technicianId];
-  await ref.update({status:"pending",rejectedTechs:rejected});
-  const customerPhone=normalize(order.customer);
-  const CL=LANGS[order.lang||"ar"];
-  await sendMessage(customerPhone,CL.rejected(orderId));
-  const backup=await getAvailableTechs(order.serviceId,order.region||"",rejected);
-  if(!backup.length){ await ref.update({status:"rejected"}); await sendMessage(customerPhone,CL.noBackupTech(orderId)); return; }
-  await ref.update({technicianId:backup[0].id});
-  const backupPhone = normalize(backup[0].phone);
-  await sendButtons(backupPhone,
-    LANGS.ar.newOrder(orderId,order.serviceName,order.type||"",buildPartsText(order.parts),order.totalPrice||0),
-    [{id:"accept_"+orderId,title:LANGS.ar.acceptBtn},{id:"reject_"+orderId,title:LANGS.ar.rejectBtn}]
-  );
-  // Send location to backup tech too
-  if(order.location?.latitude){
-    await sendLocation(backupPhone, order.location.latitude, order.location.longitude);
-    await sendMessage(backupPhone, `📍 موقع العميل — ${order.region||"غير محدد"}`);
-  }
-}
-
-async function handleDone(orderId, techPhone, tech) {
-  const ref=db.collection("orders").doc(orderId); const snap=await ref.get();
-  if(!snap.exists){ await sendMessage(techPhone,LANGS.ar.orderNotFound); return; }
-  const order=snap.data();
-  if(order.status==="done"){ await sendMessage(techPhone,(LANGS[tech.lang||"ar"]||LANGS.en).alreadyDone); return; }
-  await ref.update({status:"done",completedAt:admin.firestore.FieldValue.serverTimestamp()});
-  const techRef=db.collection("technicians").doc(order.technicianId);
-  const techData=(await techRef.get()).data();
-  const fee=Math.round((order.totalPrice||0)*0.2*1000)/1000;
-  const newBal=Math.max(0,Math.round(((techData?.balance||0)-fee)*1000)/1000);
-  await techRef.update({balance:newBal,active:true});
-  // Deduct parts stock
-  if(order.parts && order.parts.length){
-    const batch = db.batch();
-    for(const p of order.parts){
-      if(!p.id) continue;
-      const pRef = db.collection("parts").doc(p.id);
-      const pSnap = await pRef.get();
-      if(pSnap.exists && pSnap.data().stock !== undefined){
-        batch.update(pRef, { stock: Math.max(0, pSnap.data().stock - p.qty) });
-      }
-    }
-    await batch.commit();
-  }
-  // Check waiting queue for this service
-  processWaitingQueue(order.serviceId, order.region||null).catch(console.error);
-  await sendMessage(techPhone,(LANGS[tech.lang||"ar"]||LANGS.en).techDone(orderId,fee,newBal));
-  const customerPhone=normalize(order.customer);
-  const CL=LANGS[order.lang||"ar"];
-  await sendMessage(customerPhone,CL.completed(orderId));
-  const pdf=await generateInvoicePDF(order,order.lang||"ar");
-  await sendDocument(customerPhone,pdf,`final_invoice_${orderId}.pdf`,CL.finalInvoice(orderId));
-  // Save rating session so customer just replies with 1-5
-  await db.collection("sessions").doc(normalize(order.customer)).set({
-    state: "rating",
-    data: { lang: order.lang||"ar", orderId, technicianId: order.technicianId }
-  });
-  await sendMessage(customerPhone, CL.ratePrompt(orderId));
-}
-
-// ─── Admin Assign Endpoint ────────────────────────────────────────────────────
-// Called from dashboard to notify tech via WhatsApp after admin assigns order
-app.post("/admin/assign", async(req,res)=>{
+async function confirmSuspend() {
+  const techId  = document.getElementById("suspend-tech-id").value;
+  const reason  = document.getElementById("suspend-reason").value.trim();
+  if(!reason){ showToast("يرجى كتابة سبب الإيقاف","error"); return; }
   try {
-    const { orderId, techId } = req.body;
-    if(!orderId||!techId) return res.status(400).json({error:"orderId and techId required"});
-
-    const [orderSnap, techSnap] = await Promise.all([
-      db.collection("orders").doc(orderId).get(),
-      db.collection("technicians").doc(techId).get()
-    ]);
-    if(!orderSnap.exists) return res.status(404).json({error:"Order not found"});
-    if(!techSnap.exists)  return res.status(404).json({error:"Tech not found"});
-
-    const order = orderSnap.data();
-    const tech  = techSnap.data();
-    const techPhone = normalize(tech.phone);
-    const partsText = buildPartsText(order.parts||[]);
-
-    // Send WhatsApp buttons to tech with order details
-    await sendButtons(techPhone,
-      LANGS.ar.newOrder(order.orderId, order.serviceName, order.type||"", partsText, order.totalPrice||0),
-      [{id:"accept_"+orderId, title:LANGS.ar.acceptBtn}, {id:"reject_"+orderId, title:LANGS.ar.rejectBtn}]
-    );
-    // Send location preview so tech knows where the job is
-    if(order.location?.latitude){
-      await sendLocation(techPhone, order.location.latitude, order.location.longitude);
-      const mapsLink = `https://www.google.com/maps?q=${order.location.latitude},${order.location.longitude}`;
-      await sendMessage(techPhone, `📍 موقع الطلب: ${order.region||"-"}\n🗺️ ${mapsLink}`);
-    }
-
-    res.json({success:true, techName:tech.name, techPhone:tech.phone});
-  } catch(e) {
-    console.error("admin/assign:", e?.message);
-    res.status(500).json({error:e.message});
-  }
-});
-
-// ── Waiting Queue Checker (called via endpoint or on tech activation) ─────────
-// When a tech becomes available, check waiting_orders and assign
-async function processWaitingQueue(serviceId, region) {
-  try {
-    const snap = await db.collection("waiting_orders").where("status","==","waiting").get();
-    if(snap.empty) return;
-
-    for(const doc of snap.docs){
-      const order = doc.data();
-      // Filter by serviceId if provided
-      if(serviceId && order.serviceId !== serviceId) continue;
-      const techs = await getAvailableTechs(order.serviceId||serviceId, order.region||"", []);
-      if(!techs.length) continue;
-
-      const tech   = techs[0];
-      const orderId = order.orderId;
-
-      // Move to orders collection
-      await db.collection("orders").doc(orderId).set({
-        ...order,
-        technicianId: tech.id,
-        rejectedTechs: [],
-        status: "pending",
-        movedFromWaiting: true,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    // Update Firestore
+    await db.collection("technicians").doc(techId).update({
+      active: false,
+      suspendedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      suspendReason: reason,
+      suspendedBy: firebase.auth().currentUser?.email || "admin"
+    });
+    // Notify tech via bot API
+    try {
+      await fetch(`${window.BOT_URL||""}/admin/suspend-tech`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ techId, reason })
       });
-      await doc.ref.update({status:"assigned"});
-      await db.collection("technicians").doc(tech.id).update({active:false});
+    } catch(e){ console.warn("Bot notify failed:", e.message); }
+    showToast("⛔ تم إيقاف الفني وإشعاره");
+    closeModal("suspend-modal");
+    loadTechnicians();
+  } catch(e){ showToast(e.message,"error"); }
+}
 
-      // Notify customer
-      const CL = LANGS[order.lang||"ar"];
-      await sendMessage(normalize(order.customer), CL.techAvailableNotify(orderId, tech.name));
+async function reactivateTech(techId, techName) {
+  if(!confirm(`تفعيل الفني ${techName}؟`)) return;
+  try {
+    await db.collection("technicians").doc(techId).update({
+      active: true,
+      suspendReason: null,
+      suspendedAt: null
+    });
+    // Notify tech via bot API
+    try {
+      await fetch(`${window.BOT_URL||""}/admin/reactivate-tech`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ techId })
+      });
+    } catch(e){ console.warn("Bot notify failed:", e.message); }
+    showToast("✅ تم تفعيل الفني");
+    loadTechnicians();
+  } catch(e){ showToast(e.message,"error"); }
+}
+async function deleteTech(id){if(!confirm("حذف؟"))return;try{await db.collection("technicians").doc(id).delete();showToast("تم الحذف");loadTechnicians();}catch(e){showToast(e.message,"error");}}
+async function addTechnician(){
+  const name=document.getElementById("tech-name").value.trim();
+  const phone=document.getElementById("tech-phone").value.trim();
+  const svcs=document.getElementById("tech-services").value.split(",").map(s=>s.trim()).filter(Boolean);
+  const regionId=document.getElementById("tech-region").value;
+  const regionName=regionId?(allRegions.find(r=>r.id===regionId)?.name||regionId):"";
+  const techId=document.getElementById("tech-id").value.trim();
+  if(!name||!phone){showToast("يرجى ملء الحقول","error");return;}
+  try{
+    const data={name,phone,services:svcs,serviceIds:svcs,active:true,balance:0,rating:0,ratingCount:0,regionId:regionId||null,regionName:regionName||null};
+    if(techId)await db.collection("technicians").doc(techId).set(data);
+    else await db.collection("technicians").add(data);
+    showToast("✅ تمت الإضافة");closeModal("tech-modal");
+    ["tech-name","tech-phone","tech-id","tech-services"].forEach(id=>document.getElementById(id).value="");
+    document.getElementById("tech-region").value="";
+    loadTechnicians();
+  }catch(e){showToast(e.message,"error");}
+}
 
-      // Notify tech
-      const partsText = buildPartsText(order.parts||[]);
-      await sendButtons(normalize(tech.phone),
-        LANGS.ar.newOrder(orderId, order.serviceName, order.type||"", partsText, order.totalPrice||0),
-        [{id:"accept_"+orderId, title:LANGS.ar.acceptBtn},{id:"reject_"+orderId, title:LANGS.ar.rejectBtn}]
+// ── Services ──────────────────────────────────────────────────────────────────
+async function loadServices(){
+  document.getElementById("services-list").innerHTML='<div class="loader"><div class="spinner"></div></div>';
+  try{
+    const snap=await db.collection("services").get();
+    allServices=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(!allServices.length){document.getElementById("services-list").innerHTML='<div class="empty">لا توجد خدمات</div>';return;}
+    document.getElementById("services-list").innerHTML=allServices.map(s=>`
+      <div class="item-row">
+        <div class="item-icon">${s.icon||"🔧"}</div>
+        <div class="item-info">
+          <div class="item-name">${s.name} <span style="font-size:.65rem;color:var(--muted);font-family:monospace">(${s.id})</span></div>
+          <div class="item-meta">${(s.types||[]).map(t=>`${t.name}: ${t.price} OMR`).join(" · ")}</div>
+        </div>
+        <button class="btn btn-sm btn-danger" onclick="deleteService('${s.id}')">🗑</button>
+      </div>`).join("");
+  }catch(e){console.error(e);}
+}
+async function addService(){
+  const name=document.getElementById("svc-name").value.trim();
+  const icon=document.getElementById("svc-icon").value.trim()||"🔧";
+  const svcId=document.getElementById("svc-id").value.trim().toLowerCase().replace(/\s+/g,"-");
+  const types=document.getElementById("svc-types").value.split("\n").filter(Boolean).map(l=>{const[n,p]=l.split(":");return{name:(n||"").trim(),price:parseFloat(p)||0};});
+  if(!name||!svcId){showToast("يرجى إدخال الاسم والمعرف","error");return;}
+  try{await db.collection("services").doc(svcId).set({name,icon,types});showToast("✅ تمت الإضافة");closeModal("service-modal");["svc-name","svc-icon","svc-id","svc-types"].forEach(id=>document.getElementById(id).value="");loadServices();}
+  catch(e){showToast(e.message,"error");}
+}
+async function deleteService(id){if(!confirm("حذف؟"))return;try{await db.collection("services").doc(id).delete();showToast("تم الحذف");loadServices();}catch(e){showToast(e.message,"error");}}
+
+// ── Parts ─────────────────────────────────────────────────────────────────────
+async function loadParts(){
+  document.getElementById("parts-list").innerHTML='<div class="loader"><div class="spinner"></div></div>';
+  try{
+    const[pSnap,sSnap]=await Promise.all([db.collection("parts").get(),db.collection("services").get()]);
+    allParts=pSnap.docs.map(d=>({id:d.id,...d.data()}));
+    allServices=sSnap.docs.map(d=>({id:d.id,...d.data()}));
+    const fb=document.getElementById("parts-filter-bar");
+    fb.innerHTML=`<button class="filter-btn ${partsFilter==="all"?"active":""}" onclick="setPartsFilter('all',this)">الكل</button>`;
+    allServices.forEach(s=>{fb.innerHTML+=`<button class="filter-btn ${partsFilter===s.id?"active":""}" onclick="setPartsFilter('${s.id}',this)">${s.name}</button>`;});
+    const sel=document.getElementById("part-service");
+    sel.innerHTML='<option value="">اختر...</option>';
+    allServices.forEach(s=>{sel.innerHTML+=`<option value="${s.id}">${s.name}</option>`;});
+    renderFilteredParts();
+  }catch(e){console.error(e);}
+}
+function setPartsFilter(f,btn){partsFilter=f;document.querySelectorAll("#parts-filter-bar .filter-btn").forEach(b=>b.classList.remove("active"));btn.classList.add("active");renderFilteredParts();}
+function renderFilteredParts(){
+  const q=(document.getElementById("part-search").value||"").toLowerCase();
+  const svcMap={};allServices.forEach(s=>svcMap[s.id]=s.name);
+  let list=partsFilter==="all"?allParts:allParts.filter(p=>p.serviceId===partsFilter);
+  if(q)list=list.filter(p=>(p.name||"").toLowerCase().includes(q));
+  if(!list.length){document.getElementById("parts-list").innerHTML='<div class="empty">لا توجد قطع</div>';return;}
+  document.getElementById("parts-list").innerHTML=list.map(p=>`
+    <div class="item-row">
+      <div class="item-icon">🔩</div>
+      <div class="item-info">
+        <div class="item-name">${p.name}</div>
+        <div class="item-meta"><span class="region-pill">${svcMap[p.serviceId]||p.serviceId||"-"}</span>${p.unit||""} · ${p.price||0} OMR${p.desc?` · ${p.desc}`:""}</div>
+      </div>
+      <div style="display:flex;gap:5px">
+        <button class="btn btn-sm btn-success" onclick="editPart('${p.id}')">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="deletePart('${p.id}')">🗑</button>
+      </div>
+    </div>`).join("");
+}
+function openAddPartModal(){editingPartId=null;document.getElementById("part-modal-title").textContent="إضافة قطعة";["part-name","part-unit","part-price","part-desc","part-id","part-stock"].forEach(id=>document.getElementById(id).value="");document.getElementById("part-service").value="";openModal("part-modal");}
+function editPart(id){const p=allParts.find(x=>x.id===id);if(!p)return;editingPartId=id;document.getElementById("part-modal-title").textContent="تعديل القطعة";document.getElementById("part-name").value=p.name||"";document.getElementById("part-unit").value=p.unit||"";document.getElementById("part-price").value=p.price||0;document.getElementById("part-desc").value=p.desc||"";document.getElementById("part-service").value=p.serviceId||"";document.getElementById("part-stock").value=p.stock!==undefined?p.stock:"";document.getElementById("part-id").value="";openModal("part-modal");}
+async function savePart(){
+  const name=document.getElementById("part-name").value.trim();
+  const unit=document.getElementById("part-unit").value.trim()||"قطعة";
+  const price=parseFloat(document.getElementById("part-price").value)||0;
+  const serviceId=document.getElementById("part-service").value;
+  const desc=document.getElementById("part-desc").value.trim();
+  const stockInput=document.getElementById("part-stock").value;
+  const stockVal=stockInput!==""?parseInt(stockInput):undefined;
+  if(!name||!serviceId){showToast("يرجى ملء الاسم والخدمة","error");return;}
+  const data={name,unit,price,serviceId,desc};if(stockVal!==undefined)data.stock=stockVal;
+  try{
+    if(editingPartId){await db.collection("parts").doc(editingPartId).update(data);showToast("✅ تم التحديث");}
+    else{const cId=document.getElementById("part-id").value.trim().toLowerCase().replace(/\s+/g,"_");if(cId)await db.collection("parts").doc(cId).set(data);else await db.collection("parts").add(data);showToast("✅ تمت الإضافة");}
+    closeModal("part-modal");loadParts();
+  }catch(e){showToast(e.message,"error");}
+}
+async function deletePart(id){if(!confirm("حذف؟"))return;try{await db.collection("parts").doc(id).delete();showToast("تم الحذف");loadParts();}catch(e){showToast(e.message,"error");}}
+
+// ── Coupons ───────────────────────────────────────────────────────────────────
+async function loadCoupons(){
+  document.getElementById("coupons-table").innerHTML='<div class="loader"><div class="spinner"></div></div>';
+  try{
+    const snap=await db.collection("coupons").get();
+    const coupons=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(!coupons.length){document.getElementById("coupons-table").innerHTML='<div class="empty">لا توجد كوبونات</div>';return;}
+    const rows=coupons.map(c=>{
+      const exp=c.expiresAt?new Date(c.expiresAt.seconds*1000).toLocaleDateString("ar-OM"):"—";
+      const dsc=c.type==="percent"?`${c.discount}%`:`${c.discount} OMR`;
+      return`<tr>
+        <td style="font-weight:700;color:var(--accent);font-family:monospace">${c.code}</td>
+        <td>${dsc}</td><td>${c.type==="percent"?"نسبة":"مبلغ ثابت"}</td>
+        <td>${c.useCount||0} / ${c.maxUses||"∞"}</td>
+        <td style="font-size:.72rem;color:var(--muted)">${exp}</td>
+        <td><span class="badge ${c.active?"done":"rejected"}">${c.active?"مفعّل":"معطّل"}</span></td>
+        <td><div style="display:flex;gap:4px">
+          <button class="btn btn-sm ${c.active?"btn-danger":"btn-success"}" onclick="toggleCoupon('${c.id}',${c.active})">${c.active?"تعطيل":"تفعيل"}</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteCoupon('${c.id}')">🗑</button>
+        </div></td>
+      </tr>`;
+    }).join("");
+    document.getElementById("coupons-table").innerHTML=`<table><thead><tr><th>الكود</th><th>الخصم</th><th>النوع</th><th>الاستخدام</th><th>الانتهاء</th><th>الحالة</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  }catch(e){console.error(e);}
+}
+async function addCoupon(){
+  const code=document.getElementById("coupon-code").value.trim().toUpperCase();
+  const type=document.getElementById("coupon-type").value;
+  const discount=parseFloat(document.getElementById("coupon-discount").value)||0;
+  const maxUses=parseInt(document.getElementById("coupon-max").value)||0;
+  const expiry=document.getElementById("coupon-expiry").value;
+  if(!code||!discount){showToast("يرجى إدخال الكود والخصم","error");return;}
+  try{
+    const data={code,type,discount,maxUses:maxUses||null,useCount:0,usedBy:[],active:true,createdAt:firebase.firestore.FieldValue.serverTimestamp()};
+    if(expiry)data.expiresAt=firebase.firestore.Timestamp.fromDate(new Date(expiry));
+    await db.collection("coupons").doc(code).set(data);
+    showToast("✅ تمت الإضافة");closeModal("coupon-modal");
+    ["coupon-code","coupon-discount","coupon-max","coupon-expiry"].forEach(id=>document.getElementById(id).value="");
+    loadCoupons();
+  }catch(e){showToast(e.message,"error");}
+}
+async function toggleCoupon(id,cur){try{await db.collection("coupons").doc(id).update({active:!cur});showToast("✅");loadCoupons();}catch(e){showToast(e.message,"error");}}
+async function deleteCoupon(id){if(!confirm("حذف؟"))return;try{await db.collection("coupons").doc(id).delete();showToast("تم الحذف");loadCoupons();}catch(e){showToast(e.message,"error");}}
+
+// ── Finance ───────────────────────────────────────────────────────────────────
+async function loadFinance(){
+  try{
+    const[oS,tS]=await Promise.all([db.collection("orders").where("status","==","done").get(),db.collection("technicians").get()]);
+    const orders=oS.docs.map(d=>d.data()),techs=tS.docs.map(d=>({id:d.id,...d.data()}));
+    const tr=orders.reduce((s,o)=>s+(o.totalPrice||o.price||0),0);
+    const tf=Math.round(tr*0.2*1000)/1000;
+    const avg=orders.length?Math.round(tr/orders.length*1000)/1000:0;
+    document.getElementById("fin-cards").innerHTML=`
+      <div class="fin-card"><div class="fin-amount">${tr.toFixed(3)}</div><div class="fin-label">إجمالي الإيرادات (OMR)</div></div>
+      <div class="fin-card"><div class="fin-amount" style="color:var(--accent3)">${tf.toFixed(3)}</div><div class="fin-label">إجمالي العمولات (20%)</div></div>
+      <div class="fin-card"><div class="fin-amount" style="color:var(--accent2)">${orders.length}</div><div class="fin-label">طلبات مكتملة</div></div>
+      <div class="fin-card"><div class="fin-amount" style="color:var(--danger)">${avg.toFixed(3)}</div><div class="fin-label">متوسط الطلب (OMR)</div></div>
+    `;
+    document.getElementById("fin-table").innerHTML=`
+      <table><thead><tr><th>الاسم</th><th>الهاتف</th><th>المنطقة</th><th>الرصيد</th><th>التقييم</th><th>تقييمات</th><th>الحالة</th></tr></thead>
+      <tbody>${techs.map(t=>`<tr>
+        <td style="font-weight:700">${t.name||"-"}</td><td>${t.phone||"-"}</td>
+        <td><span class="region-pill">${t.regionName||t.regionId||"-"}</span></td>
+        <td style="color:var(--accent)">${t.balance||0} OMR</td>
+        <td>${t.rating?("⭐".repeat(Math.round(t.rating))+" "+t.rating.toFixed(1)):"-"}</td>
+        <td>${t.ratingCount||0}</td>
+        <td><span class="active-pill ${t.active?"on":"off"}">${t.active?"متاح":"مشغول"}</span></td>
+      </tr>`).join("")}</tbody></table>`;
+  }catch(e){console.error(e);}
+}
+
+// ── Users / Roles ─────────────────────────────────────────────────────────────
+async function loadUsers(){
+  if(currentUserRole!=="admin"){document.getElementById("users-table").innerHTML='<div class="permission-notice">⚠️ هذه الصفحة للمدراء فقط.</div>';return;}
+  document.getElementById("users-table").innerHTML='<div class="loader"><div class="spinner"></div></div>';
+  try{
+    const snap=await db.collection("adminUsers").get();
+    const users=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(!users.length){document.getElementById("users-table").innerHTML='<div class="empty">لا يوجد مستخدمون</div>';return;}
+    const rows=users.map(u=>`<tr>
+      <td style="font-weight:700">${u.name||"-"}</td>
+      <td style="direction:ltr">${u.email||"-"}</td>
+      <td><span class="admin-role-badge role-${u.role||"admin"}">${u.role==="supervisor"?"مشرف":"مدير"}</span></td>
+      <td><span class="region-pill">${u.regionName||u.regionId||"كل المناطق"}</span></td>
+      <td><button class="btn btn-sm btn-danger" onclick="deleteUser('${u.id}')">🗑</button></td>
+    </tr>`).join("");
+    document.getElementById("users-table").innerHTML=`<table><thead><tr><th>الاسم</th><th>البريد</th><th>الصلاحية</th><th>المنطقة</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+    // Populate region select in modal
+    const sel=document.getElementById("user-region");
+    sel.innerHTML='<option value="">كل المناطق</option>';
+    allRegions.forEach(r=>{sel.innerHTML+=`<option value="${r.id}">${r.name}</option>`;});
+  }catch(e){console.error(e);}
+}
+async function addUser(){
+  const name=document.getElementById("user-name").value.trim();
+  const email=document.getElementById("user-email").value.trim();
+  const role=document.getElementById("user-role").value;
+  const regionId=document.getElementById("user-region").value;
+  const regionName=regionId?(allRegions.find(r=>r.id===regionId)?.name||regionId):"";
+  if(!name||!email){showToast("يرجى ملء الاسم والبريد","error");return;}
+  try{
+    await db.collection("adminUsers").add({name,email,role,regionId:regionId||null,regionName:regionName||null,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+    showToast("✅ تمت الإضافة. أنشئ المستخدم في Firebase Auth Console يدوياً بنفس البريد.");
+    closeModal("user-modal");loadUsers();
+  }catch(e){showToast(e.message,"error");}
+}
+async function deleteUser(id){if(!confirm("حذف هذا المستخدم؟"))return;try{await db.collection("adminUsers").doc(id).delete();showToast("تم الحذف");loadUsers();}catch(e){showToast(e.message,"error");}}
+
+// ── Waiting Queue ────────────────────────────────────────────────────────────
+async function loadWaiting() {
+  document.getElementById("waiting-table").innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+  try {
+    const snap = await db.collection("waiting_orders").where("status","==","waiting").orderBy("createdAt","asc").get();
+    const list = snap.docs.map(d=>({id:d.id,...d.data()}));
+    const badge = document.getElementById("waiting-badge");
+    if(list.length){ badge.style.display="inline"; badge.textContent=list.length; }
+    else { badge.style.display="none"; }
+    if(!list.length){
+      document.getElementById("waiting-table").innerHTML = '<div class="empty">لا توجد طلبات في قائمة الانتظار ✅</div>';
+      return;
+    }
+    const rows = list.map(o => {
+      const date = o.createdAt ? new Date(o.createdAt.seconds*1000).toLocaleDateString("ar-OM") : "-";
+      const wait = o.createdAt ? Math.floor((Date.now()-o.createdAt.seconds*1000)/60000) + " دقيقة" : "-";
+      return `<tr>
+        <td style="font-weight:700;color:var(--accent);font-size:.72rem">${o.orderId||o.id}</td>
+        <td style="font-size:.74rem">${o.customer||"-"}</td>
+        <td style="color:var(--accent2);font-size:.75rem">${o.region||"-"}</td>
+        <td>${o.serviceName||"-"}</td>
+        <td>${o.type||"-"}</td>
+        <td style="font-weight:700;color:var(--accent3)">${(o.totalPrice||0).toFixed(3)} OMR</td>
+        <td style="color:var(--warn)">${wait}</td>
+        <td style="color:var(--muted);font-size:.7rem">${date}</td>
+        <td>
+          <div style="display:flex;gap:5px">
+            <button class="btn btn-sm btn-blue" onclick="openAssignModal('${o.id}','${o.orderId||o.id}','${o.serviceId||""}',true)" title="تعيين فني">👨‍🔧 تعيين</button>
+            <button class="btn btn-sm btn-danger" onclick="cancelWaiting('${o.id}')">🗑</button>
+          </div>
+        </td>
+      </tr>`;
+    }).join("");
+    document.getElementById("waiting-table").innerHTML = `
+      <table><thead><tr>
+        <th>رقم الطلب</th><th>العميل</th><th>المنطقة</th><th>الخدمة</th><th>النوع</th>
+        <th>الإجمالي</th><th>وقت الانتظار</th><th>التاريخ</th><th>إجراء</th>
+      </tr></thead><tbody>${rows}</tbody></table>`;
+  } catch(e) { document.getElementById("waiting-table").innerHTML = `<div class="empty">خطأ: ${e.message}</div>`; }
+}
+
+async function cancelWaiting(id) {
+  if(!confirm("إلغاء هذا الطلب من قائمة الانتظار؟")) return;
+  try {
+    await db.collection("waiting_orders").doc(id).update({status:"cancelled",cancelledAt:firebase.firestore.FieldValue.serverTimestamp(),cancelledBy:"admin"});
+    showToast("تم إلغاء الطلب");
+    loadWaiting();
+  } catch(e) { showToast(e.message,"error"); }
+}
+
+// ── Trigger Queue Check ──────────────────────────────────────────────────────
+async function triggerQueueCheck() {
+  try {
+    const res = await fetch("https://whatsapp-bot-production-1471.up.railway.app/admin/check-queue", {
+      method:"POST", headers:{"Content-Type":"application/json"}
+    });
+    const data = await res.json();
+    showToast("✅ تم فحص قائمة الانتظار");
+    loadOrders();
+  } catch(e) { showToast("خطأ في الاتصال بالسيرفر","error"); }
+}
+
+// ── Assign Tech to Order ──────────────────────────────────────────────────────
+let assignOrderDocId = null;
+let assignIsWaiting = false;
+
+async function openAssignModal(docId, orderId, serviceId, isWaiting=false) {
+  assignIsWaiting = isWaiting;
+  assignOrderDocId = docId;
+  document.getElementById("assign-modal-title").textContent = "تعيين فني — " + orderId;
+  document.getElementById("assign-order-info").innerHTML =
+    `<span style="color:var(--muted)">رقم الطلب:</span> <strong style="color:var(--accent)">${orderId}</strong>`;
+  const sel = document.getElementById("assign-tech-select");
+  sel.innerHTML = '<option value="">جارٍ التحميل...</option>';
+  document.getElementById("assign-modal").classList.add("open");
+  try {
+    const snap = await db.collection("technicians").where("active","==",true).get();
+    let techs = snap.docs.map(d=>({id:d.id,...d.data()}));
+    if (serviceId) {
+      techs = techs.filter(t=>
+        (t.services||[]).includes(serviceId)||(t.serviceIds||[]).includes(serviceId)
       );
     }
-  } catch(e){ console.error("processWaitingQueue:", e?.message); }
-}
-
-// ── Admin endpoint: trigger waiting queue (call after adding a tech) ──────────
-app.post("/admin/process-waiting", async(req,res)=>{
-  try {
-    const { serviceId, region } = req.body;
-    await processWaitingQueue(serviceId||null, region||null);
-    res.json({success:true});
-  } catch(e){ res.status(500).json({error:e.message}); }
-});
-
-// Patch handleDone to process waiting queue after tech freed
-const _origHandleDone = handleDone;
-
-// ── Waiting Queue Checker — runs every 2 min ──────────────────────────────────
-async function checkWaitingQueue() {
-  try {
-    // Note: waiting orders are in waiting_orders collection
-    const snap = await db.collection("waiting_orders").where("status","==","waiting").get();
-    if(snap.empty) return;
-    for(const doc of snap.docs){
-      const order = doc.data();
-      const techs = await getAvailableTechs(order.serviceId, order.region||"", order.rejectedTechs||[]);
-      if(!techs.length) continue;
-      const tech  = techs[0];
-      const CL    = LANGS[order.lang||"ar"];
-      // Notify customer
-      await sendMessage(normalize(order.customer), CL.techAvailable(order.orderId));
-      // Update order
-      await doc.ref.update({ status:"pending", technicianId:tech.id });
-      // Notify tech with buttons
-      const partsText = buildPartsText(order.parts||[]);
-      await sendButtons(normalize(tech.phone),
-        LANGS.ar.newOrder(order.orderId,order.serviceName,order.type||"",partsText,order.totalPrice||0),
-        [{id:"accept_"+order.orderId,title:LANGS.ar.acceptBtn},{id:"reject_"+order.orderId,title:LANGS.ar.rejectBtn}]
-      );
-      console.log("Waiting order assigned:", order.orderId, "->", tech.name);
+    if (!techs.length) {
+      sel.innerHTML = '<option value="">لا يوجد فني متاح لهذه الخدمة</option>';
+      return;
     }
-  } catch(e){ console.error("checkWaitingQueue:", e?.message); }
+    sel.innerHTML = '<option value="">اختر فني...</option>' +
+      techs.map(t=>`<option value="${t.id}">👨‍🔧 ${t.name||"-"} — ⭐${t.rating?t.rating.toFixed(1):"—"} — 📍${t.regionName||t.region||"—"}</option>`).join("");
+  } catch(e) {
+    sel.innerHTML = '<option value="">خطأ في التحميل</option>';
+    showToast(e.message,"error");
+  }
 }
-setInterval(checkWaitingQueue, 2*60*1000); // every 2 minutes
 
-// ── Admin endpoint to manually trigger queue check ────────────────────────────
-app.post("/admin/check-queue", async(req,res)=>{
-  await checkWaitingQueue();
-  res.json({success:true});
-});
-
-
-async function autoReactivateTechs() {
+async function assignTechToOrder() {
+  const techId = document.getElementById("assign-tech-select").value;
+  if (!techId) { showToast("يرجى اختيار فني","error"); return; }
+  if (!assignOrderDocId) return;
   try {
-    const snap = await db.collection("technicians").where("active","==",false).get();
-    for(const doc of snap.docs){
-      const t = doc.data();
-      if((parseFloat(t.balance)||0) < MIN_TECH_BALANCE) continue;
-      const busy = await db.collection("orders").where("technicianId","==",doc.id).where("status","in",["pending","accepted"]).limit(1).get();
-      if(!busy.empty) continue;
-      await doc.ref.update({active:true});
-      console.log("[AUTO] reactivated:", t.name);
+    if (assignIsWaiting) {
+      // Move from waiting to orders
+      const wSnap = await db.collection("waiting_orders").doc(assignOrderDocId).get();
+      const wData = wSnap.data();
+      await db.collection("orders").doc(wData.orderId).set({
+        ...wData, technicianId:techId, rejectedTechs:[], status:"pending",
+        assignedByAdmin:true, movedFromWaiting:true,
+        assignedAt:firebase.firestore.FieldValue.serverTimestamp()
+      });
+      await db.collection("waiting_orders").doc(assignOrderDocId).update({status:"assigned"});
+    } else {
+      await db.collection("orders").doc(assignOrderDocId).update({
+        technicianId: techId, status:"pending", assignedByAdmin:true,
+        rejectedTechs:[], assignedAt:firebase.firestore.FieldValue.serverTimestamp()
+      });
     }
-  } catch(e){ console.error("autoReactivate:", e?.message); }
+    await db.collection("technicians").doc(techId).update({ active: false });
+    showToast("✅ تم تعيين الفني");
+    document.getElementById("assign-modal").classList.remove("open");
+    if(assignIsWaiting) loadWaiting(); else loadOrders();
+    // Notify via WhatsApp
+    try {
+      await fetch("https://whatsapp-bot-production-1471.up.railway.app/admin/assign", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({orderId:assignOrderDocId,techId})
+      });
+    } catch(e){ console.warn("WhatsApp notify failed:",e.message); }
+  } catch(e) { showToast(e.message,"error"); }
 }
-setInterval(autoReactivateTechs, 5*60*1000);
-setTimeout(autoReactivateTechs, 8000);
 
+// ── Modal ─────────────────────────────────────────────────────────────────────
+function openModal(id){
+  if(id==="part-modal")loadParts().then(()=>{});
+  if(id==="tech-modal")loadRegions().then(()=>{});
+  document.getElementById(id).classList.add("open");
+}
+function closeModal(id){document.getElementById(id).classList.remove("open");}
+document.querySelectorAll(".modal-overlay").forEach(m=>{m.addEventListener("click",e=>{if(e.target===m)m.classList.remove("open");});});
+</script>
+<!-- Assign Tech Modal -->
+<div class="modal-overlay" id="assign-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="assign-modal-title">تعيين فني للطلب</h3>
+      <button class="modal-close" onclick="closeModal('assign-modal')">×</button>
+    </div>
+    <div style="padding:20px">
+      <div id="assign-order-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:.85rem;"></div>
+      <div class="form-group">
+        <label>اختر الفني</label>
+        <select id="assign-tech-select" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-family:inherit;width:100%">
+          <option value="">اختر فني...</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="assignTechToOrder()">✅ تعيين الفني</button>
+      <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('assign-modal')">إلغاء</button>
+    </div>
+  </div>
+</div>
 
-// ── Admin: Suspend technician ─────────────────────────────────────────────────
-app.post("/admin/suspend-tech", async(req,res)=>{
-  try {
-    const { techId, reason } = req.body;
-    if(!techId||!reason) return res.status(400).json({error:"techId and reason required"});
-    const snap = await db.collection("technicians").doc(techId).get();
-    if(!snap.exists) return res.status(404).json({error:"Tech not found"});
-    const tech = snap.data();
-    const tl   = tech.lang || "ar";
-    const TL   = LANGS[tl] || LANGS.ar;
-    const msg  = TL.suspended
-      ? TL.suspended(reason)
-      : `⛔ تم إيقاف حسابك.\n\nالسبب: ${reason}`;
-    await sendMessage(normalize(tech.phone), msg);
-    res.json({success:true});
-  } catch(e){ console.error("suspend-tech:", e?.message); res.status(500).json({error:e.message}); }
-});
-
-// ── Admin: Reactivate technician ──────────────────────────────────────────────
-app.post("/admin/reactivate-tech", async(req,res)=>{
-  try {
-    const { techId } = req.body;
-    if(!techId) return res.status(400).json({error:"techId required"});
-    const snap = await db.collection("technicians").doc(techId).get();
-    if(!snap.exists) return res.status(404).json({error:"Tech not found"});
-    const tech = snap.data();
-    const tl   = tech.lang || "ar";
-    const TL   = LANGS[tl] || LANGS.ar;
-    const msg  = TL.reactivated || "✅ تم تفعيل حسابك! أهلاً بك مجدداً.";
-    await sendMessage(normalize(tech.phone), msg);
-    res.json({success:true});
-  } catch(e){ console.error("reactivate-tech:", e?.message); res.status(500).json({error:e.message}); }
-});
-
-app.listen(process.env.PORT||3000,()=>console.log("✅ TAQA Bot running"));
+</body>
+</html>
