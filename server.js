@@ -429,6 +429,7 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 
 async function detectRegion(lat, lng) {
   try {
+    console.log(`[REGION] customer lat=${lat} lng=${lng}`);
     const snap = await db.collection("regions").get();
     let matched = [];
     snap.docs.forEach(doc => {
@@ -440,7 +441,7 @@ async function detectRegion(lat, lng) {
       if(r.lat && r.lng) {
         const dist   = haversineKm(lat, lng, parseFloat(r.lat), parseFloat(r.lng));
         const radius = parseFloat(r.radiusKm) || 25; // default 25km if not set
-        console.log(`[REGION] "${rName}" dist=${dist.toFixed(2)}km radius=${radius}km → ${dist<=radius?"✅ MATCH":"❌"}`);
+        console.log(`[REGION] "${rName}" center=(${r.lat},${r.lng}) dist=${dist.toFixed(2)}km radius=${radius}km → ${dist<=radius?"✅ MATCH":"❌"}`);
         if(dist <= radius) matched.push({name:rName, active:rActive, id:doc.id, dist});
       }
       // Method 2: bounding box
