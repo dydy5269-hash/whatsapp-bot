@@ -218,7 +218,8 @@ async function setSession(p, state, data) {
   await db.collection("sessions").doc(p).set(clean);
 }
 async function clearSession(p) { await db.collection("sessions").doc(p).delete(); }
-const MIN_TECH_BALANCE = 2.0; // OMR minimum balance
+const MIN_TECH_BALANCE = 2.0;
+global.MIN_TECH_BALANCE = MIN_TECH_BALANCE; // OMR minimum balance
 
 function generateOrderId() { return "ORD-" + uuidv4().split("-")[0].toUpperCase(); }
 
@@ -347,31 +348,58 @@ function techMatchesRegion(t, regionName, regionId) {
 }
 
 async function getAvailableTechs(serviceId, regionName, excludeIds=[], regionId="") {
+  if(!serviceId) return [];
+
+  console.log(`[AVAIL] serviceId="${serviceId}" regionName="${regionName}" regionId="${regionId}"`);
+
   const snap = await db.collection("technicians")
-    .where("active","==",true).where("services","array-contains",serviceId).get();
-  let techs = snap.docs.map(d=>({id:d.id,...d.data()})).filter(t=>!excludeIds.includes(t.id));
+    .where("active","==",true)
+    .where("services","array-contains",serviceId).get();
 
-  const norm = s => (s||"").toLowerCase().replace(/\s+/g,"").replace(/ة/g,"ه").replace(/ى/g,"ي").replace(/أ|إ|آ/g,"ا");
+  console.log(`[AVAIL] active techs with service: ${snap.size}`);
 
-  if(regionName){
-    const rn = norm(regionName);
-    // Try strict same-region match first
-    const sameRegion = techs.filter(t => {
-      const tn = norm(t.region||"");
-      return tn && (tn.includes(rn) || rn.includes(tn));
+  const normR = s => (String(s||"")).toLowerCase()
+    .replace(/\s+/g,"").replace(/ة/g,"ه").replace(/ى/g,"ي").replace(/أ|إ|آ/g,"ا");
+
+  let techs = snap.docs.map(d=>({id:d.id,...d.data()}))
+    .filter(t => !excludeIds.includes(t.id))
+    .filter(t => {
+      const bal = parseFloat(t.balance||0);
+      if(bal < (global.MIN_TECH_BALANCE||2)){
+        console.log(`[AVAIL] ${t.name} excluded: balance=${bal}`);
+        return false;
+      }
+      return true;
     });
-    if(sameRegion.length){
-      // Found techs in same region — use ONLY them
-      sameRegion.sort((a,b)=>(b.rating||0)-(a.rating||0));
-      return sameRegion;
-    }
-    // No tech in this region → return empty (will go to waiting queue)
-    return [];
+
+  console.log(`[AVAIL] after balance filter: ${techs.length}`);
+
+  if(!regionName && !regionId){
+    techs.sort((a,b)=>(b.rating||0)-(a.rating||0));
+    return techs;
   }
 
-  // No region info → return all available sorted by rating
-  techs.sort((a,b)=>(b.rating||0)-(a.rating||0));
-  return techs;
+  const rn  = normR(regionName||"");
+  const rid = normR(regionId||"");
+
+  const matched = techs.filter(t => {
+    // Support ALL possible field names
+    const tRegionName = String(t.regionName || t.region || "");
+    const tRegionId   = String(t.regionId   || t.region_id || "");
+    const tn  = normR(tRegionName);
+    const tid = normR(tRegionId);
+    const match =
+      (rn  && tn  && (tn.includes(rn)  || rn.includes(tn)))  ||
+      (rid && tid && tid === rid)                              ||
+      (rid && tn  && tn.includes(rid))                        ||
+      (rn  && tid && tid.includes(rn));
+    console.log(`[AVAIL] ${t.name}: regionName="${tRegionName}" regionId="${tRegionId}" → rn="${rn}" rid="${rid}" → ${match?"✅ MATCH":"❌"}`);
+    return match;
+  });
+
+  console.log(`[AVAIL] region matched: ${matched.length}/${techs.length}`);
+  matched.sort((a,b)=>(b.rating||0)-(a.rating||0));
+  return matched;
 }
 async function getActiveOrder(phone) {
   const snap = await db.collection("orders").where("customer","==",phone).where("status","in",["pending","accepted"]).limit(1).get();
