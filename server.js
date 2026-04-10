@@ -402,9 +402,17 @@ async function getAvailableTechs(serviceId, regionName, excludeIds=[], regionId=
   return matched;
 }
 async function getActiveOrder(phone) {
-  const snap = await db.collection("orders").where("customer","==",phone).where("status","in",["pending","accepted"]).limit(1).get();
-  if(snap.empty) return null;
-  return {id:snap.docs[0].id,...snap.docs[0].data()};
+  // Check orders collection
+  const snap = await db.collection("orders")
+    .where("customer","==",phone)
+    .where("status","in",["pending","accepted"]).limit(1).get();
+  if(!snap.empty) return {id:snap.docs[0].id,...snap.docs[0].data()};
+  // Also check waiting_orders
+  const wSnap = await db.collection("waiting_orders")
+    .where("customer","==",phone)
+    .where("status","==","waiting").limit(1).get();
+  if(!wSnap.empty) return {id:wSnap.docs[0].id,...wSnap.docs[0].data(), isWaiting:true};
+  return null;
 }
 async function getPartsByService(serviceId) {
   const snap = await db.collection("parts").where("serviceId","==",serviceId).get();
@@ -628,7 +636,16 @@ app.post("/webhook", async(req,res)=>{
       const lang     = newLang||getLang(session)||"ar";
       const Lx       = LANGS[lang];
       const active   = await getActiveOrder(from);
-      if(active){ await sendMessage(from, Lx.activeOrder(active.orderId,active.serviceName,active.status)); return; }
+      if(active){
+        const lang0 = newLang||getLang(session)||"ar";
+        const cancelCmd = lang0==="ar"
+          ? `\n\nلإلغاء الطلب أرسل:\n*إلغاء_${active.orderId}*`
+          : lang0==="ur"
+          ? `\n\nآرڈر منسوخ کرنے کے لیے:\n*cancel_${active.orderId}*`
+          : `\n\nTo cancel: *cancel_${active.orderId}*`;
+        await sendMessage(from, (LANGS[lang0]||LANGS.ar).activeOrder(active.orderId,active.serviceName,active.status||"waiting") + cancelCmd);
+        return;
+      }
       await clearSession(from);
       const services = await getServices();
       // Services as LIST
@@ -1346,10 +1363,14 @@ app.post("/admin/assign", async(req,res)=>{
     const { orderId, techId } = req.body;
     if(!orderId||!techId) return res.status(400).json({error:"orderId and techId required"});
 
-    const [orderSnap, techSnap] = await Promise.all([
-      db.collection("orders").doc(orderId).get(),
-      db.collection("technicians").doc(techId).get()
-    ]);
+    // Try orders collection first, then waiting_orders
+    let orderSnap = await db.collection("orders").doc(orderId).get();
+    let isWaiting = false;
+    if(!orderSnap.exists){
+      orderSnap = await db.collection("waiting_orders").doc(orderId).get();
+      isWaiting = true;
+    }
+    const techSnap = await db.collection("technicians").doc(techId).get();
     if(!orderSnap.exists) return res.status(404).json({error:"Order not found"});
     if(!techSnap.exists)  return res.status(404).json({error:"Tech not found"});
 
@@ -1357,16 +1378,36 @@ app.post("/admin/assign", async(req,res)=>{
     const tech  = techSnap.data();
     const techPhone = normalize(tech.phone);
     const partsText = buildPartsText(order.parts||[]);
+    const tl = tech.lang||"ar";
+    const TL = LANGS[tl]||LANGS.ar;
 
-    // Send WhatsApp buttons to tech with order details
+    // If from waiting_orders → move to orders
+    if(isWaiting){
+      await db.collection("orders").doc(orderId).set({
+        ...order, technicianId:techId, status:"pending",
+        rejectedTechs:[], movedFromWaiting:true,
+        updatedAt:admin.firestore.FieldValue.serverTimestamp()
+      });
+      await orderSnap.ref.update({status:"assigned", technicianId:techId});
+    } else {
+      // Update existing order
+      await db.collection("orders").doc(orderId).update({
+        technicianId:techId, status:"pending",
+        updatedAt:admin.firestore.FieldValue.serverTimestamp()
+      });
+    }
+
+    // DO NOT set tech active=false yet — only after tech ACCEPTS
+    // Send WhatsApp buttons to tech in their language
     await sendButtons(techPhone,
-      LANGS.ar.newOrder(order.orderId, order.serviceName, order.type||"", partsText, order.totalPrice||0),
-      [{id:"accept_"+orderId, title:LANGS.ar.acceptBtn}, {id:"reject_"+orderId, title:LANGS.ar.rejectBtn}]
+      TL.newOrder(order.orderId||orderId, order.serviceName, order.type||"", partsText, order.totalPrice||0),
+      [{id:"accept_"+orderId, title:TL.acceptBtn}, {id:"reject_"+orderId, title:TL.rejectBtn}]
     );
-    // Send location preview so tech knows where the job is
-    if(order.location?.latitude){
-      await sendLocation(techPhone, order.location.latitude, order.location.longitude);
-      const mapsLink = `https://www.google.com/maps?q=${order.location.latitude},${order.location.longitude}`;
+    // Send location
+    const loc = order.location || {};
+    if(loc.latitude){
+      await sendLocation(techPhone, loc.latitude, loc.longitude);
+      const mapsLink = `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`;
       await sendMessage(techPhone, `📍 موقع الطلب: ${order.region||"-"}\n🗺️ ${mapsLink}`);
     }
 
