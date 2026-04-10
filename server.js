@@ -38,7 +38,9 @@ const LANGS = {
     couponUsed:     "❌ هذا الكوبون استُخدم مسبقاً.\nأرسل *0* للمتابعة.",
     confirmTitle:   (sName, tName, partsTxt, svcPrice, partsTotal, disc, total) => {
       const fmt = n => (parseFloat(n)||0).toFixed(3);
-      return `📋 *ملخص الطلب*\n🔧 الخدمة: ${sName} — ${fmt(svcPrice)} OMR\n📌 النوع: ${tName}${partsTxt!=='-'?`\n\n🔩 القطع:\n${partsTxt}\n💡 إجمالي القطع: ${fmt(partsTotal)} OMR`:''}${disc?`\n\n🎟 الخصم: -${fmt(disc)} OMR`:''}\n\n💰 *الإجمالي: ${fmt(total)} OMR*`;
+      const partsLine = partsTxt!=='-' ? `\n🔩 ${partsTxt}\n💡 ${fmt(partsTotal)} OMR` : '';
+      const discLine  = disc ? `\n🎟 خصم: -${fmt(disc)} OMR` : '';
+      return `📋 *ملخص الطلب*\n🔧 ${sName}\n📌 ${tName}\n💵 ${fmt(svcPrice)} OMR${partsLine}${discLine}\n\n💰 *الإجمالي: ${fmt(total)} OMR*`;
     },
     confirmYes:     "✅ تأكيد الطلب",
     confirmNo:      "❌ إلغاء",
@@ -108,7 +110,9 @@ const LANGS = {
     couponUsed:     "❌ Coupon already used.\nSend *0* to continue.",
     confirmTitle:   (sName, tName, partsTxt, svcPrice, partsTotal, disc, total) => {
       const fmt = n => (parseFloat(n)||0).toFixed(3);
-      return `📋 *Order Summary*\n🔧 Service: ${sName} — ${fmt(svcPrice)} OMR\n📌 Type: ${tName}${partsTxt!=='-'?`\n\n🔩 Parts:\n${partsTxt}\n💡 Parts total: ${fmt(partsTotal)} OMR`:''}${disc?`\n\n🎟 Discount: -${fmt(disc)} OMR`:''}\n\n💰 *Grand Total: ${fmt(total)} OMR*`;
+      const partsLine = partsTxt!=='-' ? `\n🔩 ${partsTxt}\n💡 ${fmt(partsTotal)} OMR` : '';
+      const discLine  = disc ? `\n🎟 Discount: -${fmt(disc)} OMR` : '';
+      return `📋 *Order Summary*\n🔧 ${sName}\n📌 ${tName}\n💵 ${fmt(svcPrice)} OMR${partsLine}${discLine}\n\n💰 *Total: ${fmt(total)} OMR*`;
     },
     confirmYes:     "✅ Confirm Order",
     confirmNo:      "❌ Cancel",
@@ -603,7 +607,7 @@ app.post("/webhook", async(req,res)=>{
       // Services as LIST
       await sendList(from, Lx.welcome, Lx.servicesBtn, [{
         title: Lx.chooseService,
-        rows: services.map((s,i)=>({id:"svc_"+i, title:s.name.substring(0,24)}))
+        rows: services.map((s,i)=>({id:"svc_"+i, title:s.name.substring(0,24), description:s.name.length>24?s.name:""}))
       }]);
       await setSession(from, "service", {lang, services});
       return;
@@ -622,7 +626,7 @@ app.post("/webhook", async(req,res)=>{
       // Types as LIST
       await sendList(from, Lx.chooseType(service.name), Lx.typesBtn, [{
         title: Lx.typesBtn,
-        rows: [...service.types.map((t,i)=>({id:"typ_"+i, title:t.name.substring(0,24), description:`${t.price} OMR`})), backRow(getLang(session))]
+        rows: [...service.types.map((t,i)=>({id:"typ_"+i, title:t.name.substring(0,24), description:(t.name.length>24?t.name.substring(24)+"  ":"")+`${t.price} OMR`})), backRow(getLang(session))]
       }]);
       // Store minimal service data - RESET discount
       await setSession(from,"type",{
@@ -676,7 +680,7 @@ app.post("/webhook", async(req,res)=>{
         const partsRows = parts.slice(0,10).map((p,i) => ({
           id: "part_" + i,
           title: p.name.substring(0,24),
-          description: `${(parseFloat(p.price)||0).toFixed(3)} OMR${p.stock!==undefined?" · متوفر: "+p.stock:""}`
+          description: `${p.name.length>24?p.name.substring(0,70)+" — ":""}${(parseFloat(p.price)||0).toFixed(3)} OMR${p.stock!==undefined?" · متوفر: "+p.stock:""}`
         }));
         partsRows.push({ id:"part_skip", title: lang2==="ar"?"0 — بدون قطع":"0 — No parts" });
         partsRows.push(backRow(lang2));
@@ -710,7 +714,7 @@ app.post("/webhook", async(req,res)=>{
           await setSession(from,"parts",{...session.data,pendingPartIdx:null,pendingMaxQty:null});
           const lang3b = getLang(session);
           const fp = await getPartsByService(serviceIdForParts);
-          const rb = fp.slice(0,10).map((p,i)=>({id:"part_"+i,title:p.name.substring(0,24),description:`${(parseFloat(p.price)||0).toFixed(3)} OMR${p.stock!==undefined?" · "+p.stock:""}`}));
+          const rb = fp.slice(0,10).map((p,i)=>({id:"part_"+i,title:p.name.substring(0,24),description:`${p.name.length>24?p.name.substring(0,70)+" — ":""}${(parseFloat(p.price)||0).toFixed(3)} OMR${p.stock!==undefined?" · "+p.stock:""}`}));
           rb.push({id:"part_skip",title:lang3b==="ar"?"0 — بدون قطع":"0 — No parts"});
           rb.push(backRow(lang3b));
           await sendList(from,lang3b==="ar"?"🔩 اختر قطعة:":"🔩 Choose part:",lang3b==="ar"?"القطع":"Parts",[{title:lang3b==="ar"?"القطع المتاحة":"Available Parts",rows:rb}]);
@@ -968,7 +972,7 @@ async function handleBack(from, session) {
     const services = await getServices();
     await sendList(from, Lx.welcome, Lx.servicesBtn, [{
       title: Lx.chooseService,
-      rows: services.map((s,i)=>({id:"svc_"+i, title:s.name.substring(0,24)}))
+      rows: services.map((s,i)=>({id:"svc_"+i, title:s.name.length>24?s.name.substring(0,22)+"..":s.name}))
     }]);
     await setSession(from,"service",{lang, services});
     return true;
@@ -987,7 +991,7 @@ async function handleBack(from, session) {
     if(types.length){
       await sendList(from, Lx.chooseType ? Lx.chooseType(svcName) : `🔧 ${svcName}`, Lx.typesBtn||"الأنواع", [{
         title: Lx.typesBtn||"الأنواع",
-        rows: [...types.map((t,i)=>({id:"typ_"+i, title:t.name.substring(0,24), description:`${t.price} OMR`})), backRow(lang)]
+        rows: [...types.map((t,i)=>({id:"typ_"+i, title:t.name.substring(0,24), description:(t.name.length>24?t.name.substring(24)+"  ":"")+`${t.price} OMR`})), backRow(lang)]
       }]);
       await setSession(from,"type",{lang, service:{id:svcId,name:svcName,types}, discount:0, couponId:null, couponCode:null});
     }
