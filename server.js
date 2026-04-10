@@ -346,7 +346,7 @@ function techMatchesRegion(t, regionName, regionId) {
   return (rn&&tn&&(tn.includes(rn)||rn.includes(tn)))||(rid&&tidn&&tidn===rid)||(rid&&tn&&tn.includes(rid));
 }
 
-async function getAvailableTechs(serviceId, regionName, excludeIds=[]) {
+async function getAvailableTechs(serviceId, regionName, excludeIds=[], regionId="") {
   const snap = await db.collection("technicians")
     .where("active","==",true).where("services","array-contains",serviceId).get();
   let techs = snap.docs.map(d=>({id:d.id,...d.data()})).filter(t=>!excludeIds.includes(t.id));
@@ -405,40 +405,35 @@ async function detectRegion(lat, lng) {
     let matched = [];
     snap.docs.forEach(doc => {
       const r = doc.data();
+      // Support both field names: regionName or name
+      const rName   = String(r.regionName || r.name || doc.id || "");
+      const rActive = r.active !== false;
       // Method 1: center point + radius
       if(r.lat && r.lng) {
         const dist   = haversineKm(lat, lng, parseFloat(r.lat), parseFloat(r.lng));
         const radius = parseFloat(r.radiusKm) || 10;
-        if(dist <= radius) matched.push({name:r.name,active:r.active!==false,id:doc.id,dist});
+        console.log(`[REGION] "${rName}" dist=${dist.toFixed(2)}km radius=${radius}km → ${dist<=radius?"✅ MATCH":"❌"}`);
+        if(dist <= radius) matched.push({name:rName, active:rActive, id:doc.id, dist});
       }
       // Method 2: bounding box
       else if(r.maxLat && r.minLat && r.maxLng && r.minLng) {
         const inBox = lat<=parseFloat(r.maxLat) && lat>=parseFloat(r.minLat) &&
                       lng<=parseFloat(r.maxLng) && lng>=parseFloat(r.minLng);
-        if(inBox) matched.push({name:r.name,active:r.active!==false,id:doc.id,dist:0});
+        console.log(`[REGION] "${rName}" bbox → ${inBox?"✅ MATCH":"❌"}`);
+        if(inBox) matched.push({name:rName, active:rActive, id:doc.id, dist:0});
       }
     });
 
+    console.log(`[REGION] matched: ${matched.length} — ${JSON.stringify(matched.map(m=>m.name))}`);
     if(matched.length) {
       matched.sort((a,b)=>a.dist-b.dist);
-      return matched[0];
+      return matched[0]; // has .id → confirmed Firebase region
     }
-
-    // Fallback: OpenStreetMap reverse geocoding
-    try {
-      const res = await axios.get(
-        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ar`,
-        {headers:{"User-Agent":"TAQA-Bot/1.0"},timeout:5000}
-      );
-      const a = res.data.address||{};
-      const osmName = a.county||a.state_district||a.suburb||a.city||a.state||null;
-      if(osmName) return {name:osmName, active:true}; // assume active if from OSM
-    } catch(e2){ console.error("OSM fallback:", e2?.message); }
-
-    return { name: null, active: true }; // unknown region but allow
+    // No match in Firebase → NOT served (no OSM fallback)
+    return { name: null, active: false, id: null };
   } catch(e) {
     console.error("detectRegion:", e?.message);
-    return { name: null, active: true };
+    return { name: null, active: false, id: null };
   }
 }
 
@@ -864,47 +859,70 @@ app.post("/webhook", async(req,res)=>{
       const userLang=getLang(session);
       if(!service||!selectedType){ await sendMessage(from,Lx.sessionExpired); await clearSession(from); return; }
 
-      // detectRegion returns {name, active} object
-      const regionObj  = await detectRegion(msg.location.latitude, msg.location.longitude);
-      const regionName = regionObj?.name || null;  // extract string name
+      // ── Step 1: كشف المنطقة من Firebase فقط ────────────────────────────────
+      const regionObj    = await detectRegion(msg.location.latitude, msg.location.longitude);
+      const regionFound  = !!regionObj?.id;            // true = found in Firebase
+      const regionName   = regionFound && regionObj.name ? String(regionObj.name) : null;
       const regionActive = regionObj?.active !== false;
 
-      if(regionName) await sendMessage(from, Lx.regionDetected(regionName));
-
-      // Block if region is inactive (not served)
-      if(regionName && !regionActive){
-        await sendMessage(from, getLang(session)==="ar"
-          ? `⚠️ عذراً، منطقة *${regionName}* غير مخدومة حالياً.`
-          : `⚠️ Sorry, region *${regionName}* is not currently served.`);
+      // ── Step 2: منطقة غير موجودة في Firebase → غير مخدومة ───────────────
+      if(!regionFound){
+        await sendMessage(from, userLang==="ar"
+          ? "📍 منطقتك ليست ضمن نطاق خدمتنا حالياً.\nسنقوم بتوسيع خدماتنا قريباً. شكراً! 🙏"
+          : userLang==="ur"?"📍 آپ کا علاقہ ابھی ہماری سروس میں شامل نہیں۔ جلد توسیع ہوگی۔ 🙏"
+          : "📍 Your area is not within our service coverage yet. We'll expand soon. Thank you! 🙏");
         await clearSession(from); return;
       }
 
+      // ── Step 3: المنطقة موجودة لكن معطلة ───────────────────────────────────
+      if(!regionActive){
+        await sendMessage(from, userLang==="ar"
+          ? `⚠️ عذراً، منطقة *${regionName}* غير مخدومة حالياً.`
+          : `⚠️ Sorry, *${regionName}* is not currently served.`);
+        await clearSession(from); return;
+      }
+
+      // ── Step 4: أخبر العميل بمنطقته ──────────────────────────────────────
+      if(regionName) await sendMessage(from, Lx.regionDetected(regionName));
+
+      // ── Step 5: احسب الإجمالي ────────────────────────────────────────────
       const parts      = session.data.parts||[];
       const rawTotal   = calcTotal(session.data.servicePrice||selectedType.price, parts);
       const discount   = session.data.discount||0;
       const totalPrice = Math.max(0, Math.round((rawTotal-discount)*1000)/1000);
       const partsText  = buildPartsText(parts);
-
-      const techs = await getAvailableTechs(service.id, regionName||"", []);
-      if(!techs.length){
-        // Region not served — just notify, no waiting queue
-        await sendMessage(from, regionName ? Lx.noTechRegion(regionName) : Lx.noTech);
-        await clearSession(from); return;
-      }
-
-      const chosenTech = techs[0];
       const orderId    = generateOrderId();
 
-      await db.collection("orders").doc(orderId).set({
+      const baseOrder = {
         orderId, customer:from,
-        serviceName:service.name, serviceId:service.id,
+        serviceName:service.name, serviceId:String(service.id||""),
         type:selectedType.name, servicePrice:session.data.servicePrice||selectedType.price,
         parts, totalPrice, discount,
         couponCode:session.data.couponCode||null,
-        technicianId:chosenTech.id, rejectedTechs:[],
-        status:"pending", lang:userLang, region:regionName||null,
-        location:{latitude:msg.location.latitude,longitude:msg.location.longitude},
+        lang:userLang,
+        region:regionName, regionId:regionObj.id,
+        location:{latitude:msg.location.latitude, longitude:msg.location.longitude},
         createdAt:admin.firestore.FieldValue.serverTimestamp()
+      };
+
+      // ── Step 6: ابحث عن فني متاح ─────────────────────────────────────────
+      const techs = await getAvailableTechs(service.id, regionName||"", [], regionObj.id||"");
+
+      if(!techs.length){
+        // ── لا فني → قائمة الانتظار ─────────────────────────────────────
+        await db.collection("waiting_orders").doc(orderId).set({
+          ...baseOrder, status:"waiting", technicianId:null, rejectedTechs:[]
+        });
+        if(session.data.couponId) await applyCoupon(session.data.couponId,from);
+        await sendMessage(from, Lx.noTechAny);
+        await sendMessage(from, Lx.waitingQueue ? Lx.waitingQueue(orderId) : `⏳ رقم طلبك: ${orderId}`);
+        await clearSession(from); return;
+      }
+
+      // ── Step 7: يوجد فني → أنشئ الطلب ───────────────────────────────────
+      const chosenTech = techs[0];
+      await db.collection("orders").doc(orderId).set({
+        ...baseOrder, technicianId:chosenTech.id, rejectedTechs:[], status:"pending"
       });
 
       if(session.data.couponId) await applyCoupon(session.data.couponId,from);
