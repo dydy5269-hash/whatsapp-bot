@@ -1384,7 +1384,7 @@ async function handleDone(orderId, techPhone, tech) {
   await ref.update({status:"done",completedAt:admin.firestore.FieldValue.serverTimestamp()});
   const techRef=db.collection("technicians").doc(order.technicianId);
   const techData=(await techRef.get()).data();
-  const fee=Math.round((order.totalPrice||0)*0.2*1000)/1000;
+  const fee=Math.round((order.totalPrice||0)*0.12*1000)/1000; // 12% commission
   const newBal=Math.max(0,Math.round(((techData?.balance||0)-fee)*1000)/1000);
   await techRef.update({balance:newBal,active:true});
   // Deduct parts stock
