@@ -565,15 +565,21 @@ app.post("/webhook", async(req,res)=>{
       const session=await getSession(from);
       const lang=getLang(session);
       const orderId=(cancelAr?.[1]||cancelEn?.[1]).trim().toUpperCase();
-      const oSnap=await db.collection("orders").doc(orderId).get();
+      // Search in orders first, then waiting_orders
+      let oSnap = await db.collection("orders").doc(orderId).get();
+      let isWaiting = false;
+      if(!oSnap.exists){
+        oSnap = await db.collection("waiting_orders").doc(orderId).get();
+        isWaiting = true;
+      }
       if(!oSnap.exists){ await sendMessage(from,LANGS[lang].trackNotFound); return; }
       const order=oSnap.data();
       if(order.customer!==from){ await sendMessage(from,LANGS[lang].trackNotFound); return; }
-      if(["done","rejected","cancelled"].includes(order.status)){
-        await sendMessage(from, LANGS[lang].trackResult(order)); return;
+      if(["done","rejected","cancelled","assigned"].includes(order.status)){
+        await sendMessage(from, LANGS[lang].trackResult ? LANGS[lang].trackResult(order) : LANGS[lang].trackNotFound); return;
       }
-      // Ask for cancel reason
-      await setSession(from,"cancel_reason",{lang,orderId,order});
+      // Save docId (= orderId since that's the document ID) + isWaiting flag
+      await setSession(from,"cancel_reason",{lang, orderId, orderDocId:orderId, isWaiting});
       await sendMessage(from, LANGS[lang].cancelPrompt(orderId));
       return;
     }
@@ -603,32 +609,57 @@ app.post("/webhook", async(req,res)=>{
 
     // ── STATE: cancel_reason ────────────────────────────────────────────────
     if(session.state==="cancel_reason"){
-      const lang     = session.data.lang||"ar";
-      const Lc       = LANGS[lang];
-      const orderId  = session.data.orderId;
-      const docId    = session.data.orderDocId;
-      const isWaiting= session.data.isWaiting||false;
+      const lang      = session.data.lang||"ar";
+      const Lc        = LANGS[lang]||LANGS.ar;
+      const orderId   = session.data.orderId;
+      // docId fallback to orderId (since Firestore doc ID = orderId)
+      const docId     = session.data.orderDocId || orderId;
+      const isWaiting = session.data.isWaiting||false;
+
+      if(!docId){
+        await clearSession(from);
+        await sendMessage(from, Lc.cancelNo||"تعذر الإلغاء. أرسل مرحبا للبدء.");
+        return;
+      }
 
       if(text.toLowerCase()==="لا"||text.toLowerCase()==="no"){
         await clearSession(from);
         await sendMessage(from, Lc.cancelNo);
         return;
       }
+
       const reason = text;
-      const cancelData = { status:"cancelled", cancelledAt:admin.firestore.FieldValue.serverTimestamp(), cancelReason:reason, cancelledBy:"customer" };
-      if(isWaiting){
-        await db.collection("waiting_orders").doc(docId).update(cancelData);
-      } else {
-        await db.collection("orders").doc(docId).update(cancelData);
-        // Free up tech if accepted
-        const oSnap = await db.collection("orders").doc(docId).get();
-        const oData = oSnap.data();
-        if(oData?.technicianId && oData?.status==="accepted"){
-          await db.collection("technicians").doc(oData.technicianId).update({active:true});
+      const cancelData = {
+        status:"cancelled",
+        cancelledAt:admin.firestore.FieldValue.serverTimestamp(),
+        cancelReason:reason,
+        cancelledBy:"customer"
+      };
+
+      try {
+        if(isWaiting){
+          await db.collection("waiting_orders").doc(docId).update(cancelData);
+        } else {
+          // Get current order to check tech status
+          const oSnap = await db.collection("orders").doc(docId).get();
+          if(oSnap.exists){
+            const oData = oSnap.data();
+            await db.collection("orders").doc(docId).update(cancelData);
+            // Free tech if they had accepted
+            if(oData?.technicianId && oData?.status==="accepted"){
+              await db.collection("technicians").doc(oData.technicianId).update({active:true});
+            }
+          }
         }
+      } catch(e){
+        console.error("cancel update error:", e?.message);
       }
+
       await clearSession(from);
-      await sendMessage(from, Lc.cancelDone(orderId, reason));
+      const doneMsg = Lc.cancelDone
+        ? (typeof Lc.cancelDone === "function" ? Lc.cancelDone(orderId, reason) : Lc.cancelDone)
+        : `✅ تم إلغاء الطلب ${orderId}.`;
+      await sendMessage(from, doneMsg);
       return;
     }
 
