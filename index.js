@@ -706,10 +706,13 @@ app.post("/webhook", async(req,res)=>{
       // Store minimal service data - RESET discount
       await setSession(from,"type",{
         lang: session.data.lang||"ar",
-        service: {id:service.id, name:service.name, types:service.types},
-        discount: 0,
-        couponId: null,
-        couponCode: null
+        service: {
+          id:service.id, name:service.name,
+          nameEn:service.nameEn||null, nameUr:service.nameUr||null,
+          nameBn:service.nameBn||null, nameHi:service.nameHi||null,
+          types:service.types
+        },
+        discount: 0, couponId: null, couponCode: null
       });
       return;
     }
@@ -730,12 +733,11 @@ app.post("/webhook", async(req,res)=>{
           lang: getLang(session)||"ar",
           serviceId: service.id||null,
           serviceName: service.name||null,
-          selectedType: {name:type.name||"", price:type.price||0},
+          serviceObj: {name:service.name||"", nameEn:service.nameEn||null, nameUr:service.nameUr||null, nameBn:service.nameBn||null, nameHi:service.nameHi||null},
+          selectedType: {name:type.name||"", price:type.price||0, nameEn:type.nameEn||null, nameUr:type.nameUr||null, nameBn:type.nameBn||null, nameHi:type.nameHi||null},
+          typeObj: {name:type.name||"", nameEn:type.nameEn||null, nameUr:type.nameUr||null, nameBn:type.nameBn||null, nameHi:type.nameHi||null},
           servicePrice: type.price||0,
-          parts: [],
-          couponId: null,
-          couponCode: null,
-          discount: 0
+          parts: [], couponId: null, couponCode: null, discount: 0
         },Lx);
       } else {
         // Ask if customer wants parts
@@ -744,12 +746,12 @@ app.post("/webhook", async(req,res)=>{
           lang: getLang(session)||"ar",
           serviceId: service.id||null,
           serviceName: service.name||null,
-          selectedType: {name: type.name||"", price: type.price||0},
+          serviceObj: {name:service.name||"", nameEn:service.nameEn||null, nameUr:service.nameUr||null, nameBn:service.nameBn||null, nameHi:service.nameHi||null},
+          selectedType: {name:type.name||"", price:type.price||0, nameEn:type.nameEn||null, nameUr:type.nameUr||null, nameBn:type.nameBn||null, nameHi:type.nameHi||null},
+          typeObj: {name:type.name||"", nameEn:type.nameEn||null, nameUr:type.nameUr||null, nameBn:type.nameBn||null, nameHi:type.nameHi||null},
           servicePrice: type.price||0,
-          parts: [],
-          couponId: null,
-          couponCode: null,
-          discount: 0
+          parts: [], pendingPartIdx:null, pendingMaxQty:null,
+          couponId: null, couponCode: null, discount: 0
         });
         const lang2 = getLang(session);
         const partsRows = parts.slice(0,10).map((p,i) => ({
@@ -979,10 +981,9 @@ app.post("/webhook", async(req,res)=>{
       const baseOrder = {
         orderId, customer:from,
         serviceName:service.name, serviceId:String(service.id||""),
-        // Store full service/type objects for localization
-        serviceObj: {name:service.name, nameEn:service.nameEn||null, nameUr:service.nameUr||null, nameBn:service.nameBn||null, nameHi:service.nameHi||null},
+        serviceObj: session.data.serviceObj || {name:service.name, nameEn:service.nameEn||null, nameUr:service.nameUr||null, nameBn:service.nameBn||null, nameHi:service.nameHi||null},
         type:selectedType.name, servicePrice:session.data.servicePrice||selectedType.price,
-        typeObj: {name:selectedType.name, nameEn:selectedType.nameEn||null, nameUr:selectedType.nameUr||null, nameBn:selectedType.nameBn||null, nameHi:selectedType.nameHi||null},
+        typeObj: session.data.typeObj || {name:selectedType.name, nameEn:selectedType.nameEn||null, nameUr:selectedType.nameUr||null, nameBn:selectedType.nameBn||null, nameHi:selectedType.nameHi||null},
         parts, totalPrice, discount,
         couponCode:session.data.couponCode||null,
         lang:userLang,
