@@ -462,7 +462,12 @@ app.post("/webhook", async (req, res) => {
     // ── فني ───────────────────────────────────────────────────────────────────
     const tech = await getTechByPhone(from);
     if (tech) {
-      // اختيار اللغة
+      // أوامر الطلبات — تعمل دائماً
+      if (text.startsWith("accept_")) { await handleAccept(text, from, tech); return; }
+      if (text.startsWith("reject_")) { await handleReject(text, from, tech); return; }
+      if (text.startsWith("done_"))   { await handleDone(text, from, tech);   return; }
+
+      // اختيار اللغة من القائمة
       if (text.startsWith("techlang_")) {
         const chosenLang = text.replace("techlang_", "");
         if (TECH_LANGS[chosenLang]) {
@@ -473,23 +478,19 @@ app.post("/webhook", async (req, res) => {
         return;
       }
 
-      if (text.startsWith("accept_")) { await handleAccept(text, from, tech); return; }
-      if (text.startsWith("reject_")) { await handleReject(text, from, tech); return; }
-      if (text.startsWith("done_"))   { await handleDone(text, from, tech);   return; }
-
-      // أول رسالة من فني بدون لغة — اطلب منه يختار
-      if (!tech.lang) {
-        await sendList(from, TECH_LANGS.ar.chooseLang, TECH_LANGS.ar.langBtn, [{
-          title: TECH_LANGS.ar.langTitle, rows: LANG_ROWS
-        }]);
-        return;
-      }
-
-      // info
+      // info بأي لغة
       if (["info","معلومات","जानकारी","তথ্য"].includes(text)) {
         const TL2 = TECH_LANGS[getTLang(tech)] || TECH_LANGS.ar;
         await sendMessage(from, TL2.info(tech.name, tech.phone, tech.rating, tech.balance||0, tech.active));
+        return;
       }
+
+      // أي رسالة أخرى من الفني → دائماً يعرض قائمة اللغات الأربع
+      await sendList(from,
+        "مرحباً! / Hello! / नमस्ते! / হ্যালো!\n\nاختر لغتك / Choose your language",
+        "Language",
+        [{ title: "Choose / اختر", rows: LANG_ROWS }]
+      );
       return;
     }
 
@@ -524,20 +525,13 @@ app.post("/webhook", async (req, res) => {
       return;
     }
 
-    // ── جلسة العميل ──────────────────────────────────────────────────────────
-    const isStartAr = ["مرحبا","هلا","ابدأ","مرحبً"].includes(text);
-    const isStartEn = ["mrhba","hello","hi","start"].includes(text);
-    const isStart   = isStartAr || isStartEn;
-    const newLang   = isStartAr ? "ar" : isStartEn ? "en" : null;
-
-    let session = await getSession(from);
-
-    if (!session.state || isStart) {
-      const lang   = newLang || getCLang(session);
-      const L2     = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
-      const active = await getActiveOrder(from);
-      if (active && !isStart) { await sendMessage(from, L2.activeOrder(active.orderId, active.status)); return; }
+    // ── اختيار لغة العميل من القائمة ─────────────────────────────────────────
+    if (text === "custlang_ar" || text === "custlang_en") {
+      const lang = text.replace("custlang_", "");
       await clearSession(from);
+      const L2     = CUSTOMER_LANGS[lang];
+      const active = await getActiveOrder(from);
+      if (active) { await sendMessage(from, L2.activeOrder(active.orderId, active.status)); return; }
       const services = await getServices();
       await sendList(from, L2.welcome, L2.servicesBtn, [{
         title: L2.servicesTitle,
@@ -546,6 +540,23 @@ app.post("/webhook", async (req, res) => {
       await setSession(from, "main", { lang });
       return;
     }
+
+    // ── جلسة العميل ──────────────────────────────────────────────────────────
+    let session = await getSession(from);
+
+    // أي رسالة بدون جلسة → ترحيب + اختيار اللغة (عربي / إنجليزي)
+    if (!session.state) {
+      await sendList(from,
+        "مرحباً بك! 👋\nWelcome!\n\nاختر لغتك\nChoose your language",
+        "Language / اللغة",
+        [{ title: "اختر / Choose", rows: [
+          { id: "custlang_ar", title: "🇸🇦 العربية"  },
+          { id: "custlang_en", title: "🇬🇧 English"   }
+        ]}]
+      );
+      return;
+    }
+
 
     const lang = getCLang(session);
     const L2   = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
