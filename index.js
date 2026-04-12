@@ -567,9 +567,25 @@ async function handleDone(text, techPhone, tech) {
 
   const techRef  = db.collection("technicians").doc(order.technicianId);
   const techData = (await techRef.get()).data();
-  const fee      = Math.round((order.total || 0) * 0.2 * 100) / 100;
+  const fee      = Math.round((order.total || 0) * 0.12 * 100) / 100; // 12% commission
   const newBal   = Math.max(0, ((techData && techData.balance) || 0) - fee);
-  await techRef.update({ balance: newBal, active: true });
+  const canBeActive = newBal >= 2.0;
+  await techRef.update({ balance: newBal, active: canBeActive });
+
+  // Notify tech if balance dropped below minimum
+  if (newBal < 2.0) {
+    const tl = (techData && techData.lang) || "ar";
+    const lowMsg = tl==="en"
+      ? `⚠️ *Low Balance!*\nCurrent: ${newBal.toFixed(3)} OMR\nMinimum required: *2.000 OMR*\nYou cannot receive new orders until you recharge.\n📞 Contact admin to recharge.`
+      : tl==="ur"
+      ? `⚠️ *کم بیلنس!*\nموجودہ: ${newBal.toFixed(3)} OMR\nکم از کم: *2.000 OMR*\nآرڈر لینے کے لیے ری چارج کریں۔\n📞 ایڈمن سے رابطہ کریں۔`
+      : tl==="bn"
+      ? `⚠️ *কম ব্যালেন্স!*\nবর্তমান: ${newBal.toFixed(3)} OMR\nন্যূনতম: *2.000 OMR*\nঅর্ডার নিতে রিচার্জ করুন।\n📞 অ্যাডমিনের সাথে যোগাযোগ করুন।`
+      : tl==="hi"
+      ? `⚠️ *कम बैलेंस!*\nवर्तमान: ${newBal.toFixed(3)} OMR\nन्यूनतम: *2.000 OMR*\nऑर्डर लेने के लिए रिचार्ज करें।\n📞 एडमिन से संपर्क करें।`
+      : `⚠️ *رصيدك منخفض!*\nالرصيد الحالي: ${newBal.toFixed(3)} OMR\nالحد الأدنى: *2.000 OMR*\nلن تتمكن من استلام طلبات جديدة حتى تعبئة الرصيد.\n📞 تواصل مع الإدارة لإعادة التعبئة.`;
+    await sendMessage(techPhone, lowMsg);
+  }
 
   const custPhone = normalize(order.customer);
   const lang      = order.lang || "ar";
@@ -580,4 +596,45 @@ async function handleDone(text, techPhone, tech) {
   await sendRatingPrompt(custPhone, orderId, lang);
 }
 
-app.listen(process.env.PORT || 3000, () => console.log("Server running"));
+
+// ─── Low Balance Checker — runs every hour ───────────────────────────────────
+async function checkLowBalanceTechs() {
+  try {
+    const snap = await db.collection("technicians").get();
+    for (const doc of snap.docs) {
+      const t   = doc.data();
+      const bal = parseFloat(t.balance || 0);
+      if (bal >= 2.0) continue;
+
+      const tl = t.lang || "ar";
+      const phone = normalize(t.phone || "");
+      if (!phone) continue;
+
+      const lowMsg = tl==="en"
+        ? `⚠️ *Low Balance Reminder!*\nBalance: ${bal.toFixed(3)} OMR\nMinimum: *2.000 OMR*\nRecharge to receive orders.\n📞 Contact admin.`
+        : tl==="ur"
+        ? `⚠️ *کم بیلنس یاددہانی!*\nبیلنس: ${bal.toFixed(3)} OMR\nکم از کم: *2.000 OMR*\nری چارج کریں۔\n📞 ایڈمن سے رابطہ کریں۔`
+        : tl==="bn"
+        ? `⚠️ *কম ব্যালেন্স স্মারক!*\nব্যালেন্স: ${bal.toFixed(3)} OMR\nন্যূনতম: *2.000 OMR*\nরিচার্জ করুন।\n📞 অ্যাডমিন।`
+        : tl==="hi"
+        ? `⚠️ *कम बैलेंस अनुस्मारक!*\nबैलेंस: ${bal.toFixed(3)} OMR\nन्यूनतम: *2.000 OMR*\nरिचार्ज करें।\n📞 एडमिन से संपर्क करें।`
+        : `⚠️ *تذكير: رصيدك منخفض!*\nالرصيد: ${bal.toFixed(3)} OMR\nالحد الأدنى: *2.000 OMR*\nيرجى إعادة التعبئة لاستقبال الطلبات.\n📞 تواصل مع الإدارة.`;
+
+      await sendMessage(phone, lowMsg);
+      console.log(`[BALANCE] notified low balance: ${t.name} = ${bal}`);
+
+      // Deactivate if still active
+      if (t.active) {
+        await doc.ref.update({ active: false });
+        console.log(`[BALANCE] deactivated: ${t.name}`);
+      }
+    }
+  } catch(e) { console.error("checkLowBalanceTechs:", e?.message); }
+}
+
+// Run every hour + once on startup after 15 seconds
+setInterval(checkLowBalanceTechs, 60 * 60 * 1000);
+setTimeout(checkLowBalanceTechs, 15000);
+
+// ─── Admin endpoint to trigger balance check manually ─────────────────────────
+app.listen(process.env.PORT || 3000, () => console.log("✅ TAQA Bot running"));
