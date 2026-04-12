@@ -16,126 +16,198 @@ const db = admin.firestore();
 const VERIFY_TOKEN    = process.env.VERIFY_TOKEN;
 const WHATSAPP_TOKEN  = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+const BASE_URL        = process.env.BASE_URL || "https://your-app.railway.app";
 
-const normalize = (p) => String(p).replace(/\+/g, "");
+const normalize     = (p) => String(p).replace(/\+/g, "");
+const MIN_BALANCE   = 2;
+const COMMISSION    = 0.10;
+const RETRY_MINUTES = 30;
 
-// ─── Messages ─────────────────────────────────────────────────────────────────
-const MSG = {
+// ─── Customer Languages (AR / EN) ─────────────────────────────────────────────
+const CUSTOMER_LANGS = {
   ar: {
     welcome:       "مرحباً! اختر الخدمة المطلوبة 👇",
     servicesBtn:   "الخدمات",
     servicesTitle: "الخدمات المتاحة",
-    choosePart:    (svc) => `اختر قطعة من خدمة "${svc}" 🔧`,
+    chooseType:    "اختر نوع الخدمة",
+    typesBtn:      "الأنواع",
+    chooseParts:   (s) => `اختر القطع لـ "${s}" 🔧`,
     partsBtn:      "القطع",
     partsTitle:    "القطع المتاحة",
-    addedPart:     (name, qty, price) => `✅ تمت الإضافة: ${name} x${qty} = ${price} ريال`,
-    chooseQty:     (name, price) => `كم قطعة من "${name}"؟\n(${price} ريال للقطعة)`,
+    chooseQty:     (n, p) => `كم قطعة من "${n}"؟\n💰 ${p} ريال/قطعة`,
     qtyBtn:        "الكمية",
     qtyTitle:      "اختر الكمية",
+    addedPart:     (n, q, t) => `✅ ${n} x${q} = ${t} ريال`,
     addMore:       "هل تريد إضافة قطعة أخرى؟",
     addMoreBtn:    "اختر",
-    yesMore:       "نعم، أضف قطعة",
-    noMore:        "لا، انتهيت",
-    summary:       (lines, total) => `📋 ملخص طلبك:\n\n${lines}\n💰 الإجمالي: ${total} ريال`,
+    yesMore:       "➕ إضافة قطعة أخرى",
+    noMore:        "✅ انتهيت",
+    noParts:       "⚠️ لا توجد قطع. أضفها من لوحة التحكم.",
+    summary:       (l, lb, pt, t) => `📋 *ملخص طلبك*\n\n🔧 *القطع:*\n${l}\n\n💼 أجرة: ${lb} ريال\n🔩 قطع: ${pt} ريال\n💰 *الإجمالي: ${t} ريال*`,
     confirmBtn:    "تأكيد",
     confirmRow:    "✅ تأكيد الطلب",
     cancelRow:     "❌ إلغاء",
-    cancelled:     "تم الإلغاء. أرسل *مرحبا* للبدء من جديد.",
+    cancelled:     "تم الإلغاء. أرسل *مرحبا* للبدء.",
     sendLocation:  "📍 أرسل موقعك لإتمام الطلب.",
     locationOnly:  "يرجى إرسال موقعك عبر واتساب.",
-    sessionExp:    "انتهت الجلسة. أرسل *مرحبا* للبدء.",
-    noTech:        "⚠️ لا يوجد فني متاح الآن. حاول لاحقاً.",
-    noParts:       "لا توجد قطع لهذه الخدمة.",
-    orderSent:     (id) => `✅ تم إرسال طلبك!\n🆔 رقم الطلب: ${id}\nسيتم إشعارك عند قبول الفني.`,
+    sessionExp:    "انتهت الجلسة. أرسل *مرحبا*.",
+    noTech:        "⚠️ لا يوجد فني متاح. سنبحث 30 دقيقة وسيتم إشعارك.",
+    noTechFinal:   (id) => `⚠️ لم نجد فنياً خلال 30 دقيقة.\n🆔 ${id}`,
+    noTechOptions: "اختر:",
+    waitMore:      "⏳ انتظار أكثر",
+    retryNow:      "🔄 طلب جديد",
+    orderSent:     (id) => `✅ تم إرسال طلبك!\n🆔 *${id}*\nسيتم إشعارك عند القبول.`,
     activeOrder:   (id, st) => `لديك طلب نشط:\n🆔 ${id}\nالحالة: ${st}`,
-    defaultMsg:    "أرسل *مرحبا* للبدء.",
-    techNewOrder:  (id, svc, lines, total) => `🔔 طلب جديد!\n🆔 ${id}\n🔧 ${svc}\n\n${lines}\n💰 الإجمالي: ${total} ريال`,
-    acceptBtn:     "اختر",
-    acceptRow:     "✅ قبول الطلب",
-    rejectRow:     "❌ رفض الطلب",
-    accepted:      (name, phone) => `✅ تم قبول طلبك!\n👨‍🔧 الفني: ${name}\n📞 ${phone}\nفي الطريق إليك.`,
-    rejected:      (id) => `❌ رفض الفني طلبك.\n🆔 ${id}\nأرسل *مرحبا* للمحاولة مجدداً.`,
-    techRejected:  "تم رفض الطلب.",
-    completed:     (id, lines, total) => `✅ اكتمل طلبك!\n🆔 ${id}\n\n${lines}\n💰 الإجمالي: ${total} ريال\nشكراً لثقتك بنا! 🙏`,
-    techDone:      (id, fee, bal) => `✅ الطلب ${id} مكتمل.\n💸 العمولة: ${fee} ريال\n💰 رصيدك: ${bal} ريال`,
-    ratePrompt:    "⭐ كيف تقيّم خدمة الفني؟",
+    accepted:      (n, p) => `✅ تم قبول طلبك!\n👨‍🔧 ${n}\n📞 ${p}\nفي الطريق!`,
+    rejected:      (id) => `❌ رفض الفني. نبحث عن آخر...\n🆔 ${id}`,
+    completed:     (id) => `✅ اكتمل طلبك!\n🆔 ${id}\nشكراً! 🙏`,
+    invoiceMsg:    (id, url) => `🧾 *فاتورتك:*\n🆔 ${id}\n📄 ${url}`,
+    ratePrompt:    "⭐ كيف تقيّم الخدمة؟",
     rateBtn:       "التقييم",
-    ratingDone:    (s) => `شكراً على تقييمك! منحت الفني ${s} ⭐`,
-    orderNotFound: "الطلب غير موجود.",
-    alreadyDone:   "الطلب مكتمل مسبقاً.",
-    alreadyProc:   "الطلب تمت معالجته.",
-    custPhone:     (p) => `📞 هاتف العميل: ${p}`,
-    doneBtn:       "إنهاء",
-    doneRow:       "✅ إنهاء الطلب",
-    doneLabel:     (id) => `${id} — اضغط عند الإنهاء`,
-    techInfo:      (name, phone, rating, count, balance, active) =>
-      `👤 ${name}\n📞 ${phone}\n⭐ ${rating ? rating.toFixed(1) + " (" + count + ")" : "لا يوجد"}\n💰 ${balance || 0} ريال\n🟢 ${active ? "متاح" : "مشغول"}`,
-    statusLabels:  { pending:"قيد الانتظار", accepted:"مقبول", done:"مكتمل", rejected:"مرفوض" }
+    ratingDone:    (s) => `شكراً! أعطيت ${s} ⭐`,
+    defaultMsg:    "أرسل *مرحبا* للبدء."
   },
   en: {
     welcome:       "Welcome! Choose a service 👇",
     servicesBtn:   "Services",
     servicesTitle: "Available Services",
-    choosePart:    (svc) => `Choose a part for "${svc}" 🔧`,
+    chooseType:    "Choose service type",
+    typesBtn:      "Types",
+    chooseParts:   (s) => `Choose parts for "${s}" 🔧`,
     partsBtn:      "Parts",
     partsTitle:    "Available Parts",
-    addedPart:     (name, qty, price) => `✅ Added: ${name} x${qty} = ${price} SAR`,
-    chooseQty:     (name, price) => `How many "${name}"?\n(${price} SAR each)`,
-    qtyBtn:        "Qty",
+    chooseQty:     (n, p) => `How many "${n}"?\n💰 ${p} SAR each`,
+    qtyBtn:        "Quantity",
     qtyTitle:      "Choose Quantity",
+    addedPart:     (n, q, t) => `✅ ${n} x${q} = ${t} SAR`,
     addMore:       "Add another part?",
     addMoreBtn:    "Choose",
-    yesMore:       "Yes, add part",
-    noMore:        "No, done",
-    summary:       (lines, total) => `📋 Order Summary:\n\n${lines}\n💰 Total: ${total} SAR`,
+    yesMore:       "➕ Add another part",
+    noMore:        "✅ Done",
+    noParts:       "⚠️ No parts found. Add from dashboard.",
+    summary:       (l, lb, pt, t) => `📋 *Order Summary*\n\n🔧 *Parts:*\n${l}\n\n💼 Labor: ${lb} SAR\n🔩 Parts: ${pt} SAR\n💰 *Total: ${t} SAR*`,
     confirmBtn:    "Confirm",
     confirmRow:    "✅ Confirm Order",
     cancelRow:     "❌ Cancel",
-    cancelled:     "Cancelled. Send *mrhba* to start again.",
+    cancelled:     "Cancelled. Send *mrhba* to start.",
     sendLocation:  "📍 Send your location to complete the order.",
     locationOnly:  "Please send your location via WhatsApp.",
-    sessionExp:    "Session expired. Send *mrhba* to start.",
-    noTech:        "⚠️ No technician available. Try later.",
-    noParts:       "No parts available for this service.",
-    orderSent:     (id) => `✅ Order sent!\n🆔 Order ID: ${id}\nYou will be notified when accepted.`,
+    sessionExp:    "Session expired. Send *mrhba*.",
+    noTech:        "⚠️ No technician available. Searching for 30 min.",
+    noTechFinal:   (id) => `⚠️ No tech found in 30 min.\n🆔 ${id}`,
+    noTechOptions: "Choose:",
+    waitMore:      "⏳ Keep waiting",
+    retryNow:      "🔄 New request",
+    orderSent:     (id) => `✅ Order sent!\n🆔 *${id}*\nYou'll be notified.`,
     activeOrder:   (id, st) => `Active order:\n🆔 ${id}\nStatus: ${st}`,
-    defaultMsg:    "Send *mrhba* to start.",
-    techNewOrder:  (id, svc, lines, total) => `🔔 New Order!\n🆔 ${id}\n🔧 ${svc}\n\n${lines}\n💰 Total: ${total} SAR`,
-    acceptBtn:     "Choose",
-    acceptRow:     "✅ Accept Order",
-    rejectRow:     "❌ Reject Order",
-    accepted:      (name, phone) => `✅ Order accepted!\n👨‍🔧 Tech: ${name}\n📞 ${phone}\nOn the way!`,
-    rejected:      (id) => `❌ Technician rejected your order.\n🆔 ${id}\nSend *mrhba* to retry.`,
-    techRejected:  "Order rejected.",
-    completed:     (id, lines, total) => `✅ Order completed!\n🆔 ${id}\n\n${lines}\n💰 Total: ${total} SAR\nThank you! 🙏`,
-    techDone:      (id, fee, bal) => `✅ Order ${id} done.\n💸 Fee: ${fee} SAR\n💰 Balance: ${bal} SAR`,
-    ratePrompt:    "⭐ Rate the technician's service:",
+    accepted:      (n, p) => `✅ Accepted!\n👨‍🔧 ${n}\n📞 ${p}\nOn the way!`,
+    rejected:      (id) => `❌ Tech rejected. Searching...\n🆔 ${id}`,
+    completed:     (id) => `✅ Done!\n🆔 ${id}\nThank you! 🙏`,
+    invoiceMsg:    (id, url) => `🧾 *Invoice:*\n🆔 ${id}\n📄 ${url}`,
+    ratePrompt:    "⭐ Rate the service?",
     rateBtn:       "Rate",
-    ratingDone:    (s) => `Thanks for rating! You gave ${s} ⭐`,
-    orderNotFound: "Order not found.",
-    alreadyDone:   "Order already completed.",
-    alreadyProc:   "Order already processed.",
-    custPhone:     (p) => `📞 Customer phone: ${p}`,
-    doneBtn:       "Finish",
-    doneRow:       "✅ Mark as Done",
-    doneLabel:     (id) => `${id} — Mark when finished`,
-    techInfo:      (name, phone, rating, count, balance, active) =>
-      `👤 ${name}\n📞 ${phone}\n⭐ ${rating ? rating.toFixed(1) + " (" + count + ")" : "N/A"}\n💰 ${balance || 0} SAR\n🟢 ${active ? "Available" : "Busy"}`,
-    statusLabels:  { pending:"Pending", accepted:"Accepted", done:"Done", rejected:"Rejected" }
+    ratingDone:    (s) => `Thanks! You gave ${s} ⭐`,
+    defaultMsg:    "Send *mrhba* to start."
   }
 };
 
-function m(session, key, ...args) {
-  const lang = (session && session.data && session.data.lang) || "ar";
-  const fn   = MSG[lang][key];
-  return typeof fn === "function" ? fn(...args) : fn;
-}
+// ─── Technician Languages (AR / EN / HI / BN) ────────────────────────────────
+const TECH_LANGS = {
+  ar: {
+    chooseLang:    "مرحباً! اختر لغتك 👇",
+    langBtn:       "اللغة",
+    langTitle:     "اختر لغتك",
+    newOrder:      (id, svc, type, parts, labor, total) =>
+      `🔔 *طلب جديد!*\n🆔 ${id}\n🔧 ${svc} - ${type}\n\n*القطع:*\n${parts}\n\n💼 أجرة: ${labor} ريال\n💰 *الإجمالي: ${total} ريال*`,
+    acceptBtn:     "اختر",
+    acceptRow:     "✅ قبول",
+    rejectRow:     "❌ رفض",
+    customerPhone: (p) => `📞 هاتف العميل: ${p}`,
+    doneBtn:       "إنهاء",
+    doneRow:       "✅ إنهاء الطلب",
+    doneLabel:     (id) => `${id} - اضغط عند الإنهاء`,
+    techDone:      (id, c, b) => `✅ ${id} مكتمل.\n💸 عمولة: ${c} ريال\n💰 رصيدك: ${b} ريال`,
+    lowBalance:    (b, m) => `⚠️ *رصيد منخفض!*\nرصيدك: ${b} ريال\nالحد الأدنى: *${m} ريال*\nيرجى الشحن.\n📞 تواصل مع الإدارة.`,
+    techRejected:  "تم رفض الطلب.",
+    orderNotFound: "الطلب غير موجود.",
+    alreadyProc:   "تمت معالجة الطلب مسبقاً.",
+    alreadyDone:   "الطلب مكتمل مسبقاً.",
+    info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "لا يوجد"}\n💰 ${b} ريال\n🟢 ${a ? "متاح" : "مشغول"}`
+  },
+  en: {
+    chooseLang:    "Hello! Choose your language 👇",
+    langBtn:       "Language",
+    langTitle:     "Choose Language",
+    newOrder:      (id, svc, type, parts, labor, total) =>
+      `🔔 *New Order!*\n🆔 ${id}\n🔧 ${svc} - ${type}\n\n*Parts:*\n${parts}\n\n💼 Labor: ${labor} SAR\n💰 *Total: ${total} SAR*`,
+    acceptBtn:     "Choose",
+    acceptRow:     "✅ Accept",
+    rejectRow:     "❌ Reject",
+    customerPhone: (p) => `📞 Customer: ${p}`,
+    doneBtn:       "Finish",
+    doneRow:       "✅ Mark Done",
+    doneLabel:     (id) => `${id} - Mark when done`,
+    techDone:      (id, c, b) => `✅ ${id} done.\n💸 Commission: ${c} SAR\n💰 Balance: ${b} SAR`,
+    lowBalance:    (b, m) => `⚠️ *Low Balance!*\nBalance: ${b} SAR\nMinimum: *${m} SAR*\nPlease recharge.\n📞 Contact admin.`,
+    techRejected:  "Order rejected.",
+    orderNotFound: "Order not found.",
+    alreadyProc:   "Order already processed.",
+    alreadyDone:   "Order already completed.",
+    info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "N/A"}\n💰 ${b} SAR\n🟢 ${a ? "Available" : "Busy"}`
+  },
+  hi: {
+    chooseLang:    "नमस्ते! अपनी भाषा चुनें 👇",
+    langBtn:       "भाषा",
+    langTitle:     "भाषा चुनें",
+    newOrder:      (id, svc, type, parts, labor, total) =>
+      `🔔 *नया ऑर्डर!*\n🆔 ${id}\n🔧 ${svc} - ${type}\n\n*पार्ट्स:*\n${parts}\n\n💼 मजदूरी: ${labor} SAR\n💰 *कुल: ${total} SAR*`,
+    acceptBtn:     "चुनें",
+    acceptRow:     "✅ स्वीकार करें",
+    rejectRow:     "❌ अस्वीकार",
+    customerPhone: (p) => `📞 ग्राहक: ${p}`,
+    doneBtn:       "समाप्त",
+    doneRow:       "✅ काम पूरा",
+    doneLabel:     (id) => `${id} - पूरा होने पर दबाएं`,
+    techDone:      (id, c, b) => `✅ ${id} पूरा हुआ।\n💸 कमीशन: ${c} SAR\n💰 बैलेंस: ${b} SAR`,
+    lowBalance:    (b, m) => `⚠️ *कम बैलेंस!*\nबैलेंस: ${b} SAR\nन्यूनतम: *${m} SAR*\nरिचार्ज करें।\n📞 एडमिन से संपर्क करें।`,
+    techRejected:  "ऑर्डर अस्वीकार।",
+    orderNotFound: "ऑर्डर नहीं मिला।",
+    alreadyProc:   "ऑर्डर पहले ही प्रोसेस हो गया।",
+    alreadyDone:   "ऑर्डर पहले ही पूरा हो गया।",
+    info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "N/A"}\n💰 ${b} SAR\n🟢 ${a ? "उपलब्ध" : "व्यस्त"}`
+  },
+  bn: {
+    chooseLang:    "হ্যালো! আপনার ভাষা বেছে নিন 👇",
+    langBtn:       "ভাষা",
+    langTitle:     "ভাষা বেছে নিন",
+    newOrder:      (id, svc, type, parts, labor, total) =>
+      `🔔 *নতুন অর্ডার!*\n🆔 ${id}\n🔧 ${svc} - ${type}\n\n*পার্টস:*\n${parts}\n\n💼 শ্রম: ${labor} SAR\n💰 *মোট: ${total} SAR*`,
+    acceptBtn:     "বেছে নিন",
+    acceptRow:     "✅ গ্রহণ করুন",
+    rejectRow:     "❌ প্রত্যাখ্যান",
+    customerPhone: (p) => `📞 গ্রাহক: ${p}`,
+    doneBtn:       "শেষ করুন",
+    doneRow:       "✅ কাজ সম্পন্ন",
+    doneLabel:     (id) => `${id} - শেষ হলে চাপুন`,
+    techDone:      (id, c, b) => `✅ ${id} সম্পন্ন।\n💸 কমিশন: ${c} SAR\n💰 ব্যালেন্স: ${b} SAR`,
+    lowBalance:    (b, m) => `⚠️ *কম ব্যালেন্স!*\nব্যালেন্স: ${b} SAR\nন্যূনতম: *${m} SAR*\nরিচার্জ করুন।\n📞 অ্যাডমিন যোগাযোগ করুন।`,
+    techRejected:  "অর্ডার প্রত্যাখ্যাত।",
+    orderNotFound: "অর্ডার পাওয়া যায়নি।",
+    alreadyProc:   "অর্ডার ইতিমধ্যে প্রক্রিয়া করা হয়েছে।",
+    alreadyDone:   "অর্ডার ইতিমধ্যে সম্পন্ন।",
+    info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "N/A"}\n💰 ${b} SAR\n🟢 ${a ? "উপলব্ধ" : "ব্যস্ত"}`
+  }
+};
 
-function sl(status, lang) {
-  return (MSG[lang] && MSG[lang].statusLabels && MSG[lang].statusLabels[status]) || status;
-}
+// ─── Lang Selector Rows ───────────────────────────────────────────────────────
+const LANG_ROWS = [
+  { id: "techlang_ar", title: "🇸🇦 العربية" },
+  { id: "techlang_en", title: "🇬🇧 English"  },
+  { id: "techlang_hi", title: "🇮🇳 हिन्दी"   },
+  { id: "techlang_bn", title: "🇧🇩 বাংলা"    }
+];
 
-// ─── Session ──────────────────────────────────────────────────────────────────
+// ─── Session Helpers ──────────────────────────────────────────────────────────
 async function getSession(phone) {
   const doc = await db.collection("sessions").doc(phone).get();
   return doc.exists ? doc.data() : { state: null, data: {} };
@@ -149,6 +221,14 @@ async function clearSession(phone) {
 function generateOrderId() {
   return "ORD-" + uuidv4().split("-")[0].toUpperCase();
 }
+function getCLang(session) {
+  return (session && session.data && session.data.lang) || "ar";
+}
+function getTLang(tech) {
+  return tech.lang || "ar";
+}
+function CL(session) { return CUSTOMER_LANGS[getCLang(session)]; }
+function TL(tech)    { return TECH_LANGS[getTLang(tech)]; }
 
 // ─── WhatsApp Senders ─────────────────────────────────────────────────────────
 async function sendMessage(to, text) {
@@ -158,20 +238,18 @@ async function sendMessage(to, text) {
       { messaging_product: "whatsapp", to, text: { body: text } },
       { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
     );
-  } catch(e) { console.error("sendMessage:", e && e.message); }
+  } catch(e) { console.error("sendMessage:", e.message); }
 }
 
 async function sendList(to, body, button, sections) {
   try {
     await axios.post(
       `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-      {
-        messaging_product: "whatsapp", to, type: "interactive",
-        interactive: { type: "list", body: { text: body }, action: { button, sections } }
-      },
+      { messaging_product: "whatsapp", to, type: "interactive",
+        interactive: { type: "list", body: { text: body }, action: { button, sections } } },
       { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
     );
-  } catch(e) { console.error("sendList:", e && e.message); }
+  } catch(e) { console.error("sendList:", e.message); }
 }
 
 async function sendLocation(to, lat, lng) {
@@ -181,10 +259,10 @@ async function sendLocation(to, lat, lng) {
       { messaging_product: "whatsapp", to, type: "location", location: { latitude: lat, longitude: lng } },
       { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
     );
-  } catch(e) { console.error("sendLocation:", e && e.message); }
+  } catch(e) { console.error("sendLocation:", e.message); }
 }
 
-// ─── DB Helpers ───────────────────────────────────────────────────────────────
+// ─── Firestore Queries ────────────────────────────────────────────────────────
 async function getServices() {
   const snap = await db.collection("services").get();
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -198,32 +276,59 @@ async function getTechByPhone(phone) {
   if (snap.empty) return null;
   return { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
-async function getAvailableTech(serviceId) {
+async function getAvailableTech(serviceId, excludeIds = []) {
   const snap = await db.collection("technicians")
     .where("active", "==", true)
     .where("services", "array-contains", serviceId).get();
-  if (snap.empty) return null;
-  return { id: snap.docs[0].id, ...snap.docs[0].data() };
+  const techs = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(t => !excludeIds.includes(t.id) && (t.balance || 0) >= MIN_BALANCE);
+  return techs.length > 0 ? techs[0] : null;
 }
 async function getActiveOrder(phone) {
   const snap = await db.collection("orders")
     .where("customer", "==", phone)
-    .where("status", "in", ["pending", "accepted"]).limit(1).get();
+    .where("status", "in", ["pending","accepted","searching"])
+    .limit(1).get();
   if (snap.empty) return null;
   return { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
 
-// ─── Summary Builder ──────────────────────────────────────────────────────────
-function buildSummary(parts, lang) {
-  const isar = lang === "ar";
-  let total = 0;
-  const lines = parts.map(p => {
-    const sub = p.price * p.qty;
-    total += sub;
-    return `▪️ ${p.name} x${p.qty} = ${sub} ${isar ? "ريال" : "SAR"}`;
-  });
-  return { text: lines.join("\n"), total };
-}
+// ─── Invoice Page ─────────────────────────────────────────────────────────────
+app.get("/invoice/:orderId", async (req, res) => {
+  try {
+    const snap = await db.collection("orders").doc(req.params.orderId).get();
+    if (!snap.exists) return res.status(404).send("Not found");
+    const o = snap.data();
+    const rows = (o.parts || []).map(p =>
+      `<tr><td>${p.name}</td><td>${p.qty}</td><td>${p.unitPrice}</td><td>${p.total}</td></tr>`
+    ).join("");
+    res.send(`<!DOCTYPE html><html dir="rtl" lang="ar">
+<head><meta charset="UTF-8"><title>فاتورة ${o.orderId}</title>
+<style>body{font-family:Arial;padding:32px;max-width:680px;margin:auto}
+h1{color:#f59e0b}table{width:100%;border-collapse:collapse;margin:18px 0}
+th{background:#f59e0b;padding:10px;text-align:right}td{padding:10px;border-bottom:1px solid #eee;text-align:right}
+.box{background:#f9f9f9;padding:14px;border-radius:8px;margin-bottom:20px}
+.total{font-size:1.3rem;font-weight:bold;color:#f59e0b;margin-top:14px}
+.footer{color:#888;font-size:.82rem;text-align:center;margin-top:32px}</style></head>
+<body>
+<h1>TAQA 🔧</h1>
+<div class="box">
+  <p><strong>رقم الطلب:</strong> ${o.orderId}</p>
+  <p><strong>الخدمة:</strong> ${o.serviceName} — ${o.type||""}</p>
+  <p><strong>العميل:</strong> ${o.customer}</p>
+  <p><strong>التاريخ:</strong> ${o.createdAt?new Date(o.createdAt.seconds*1000).toLocaleDateString("ar-SA"):"-"}</p>
+</div>
+<table><thead><tr><th>القطعة</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead>
+<tbody>${rows}</tbody></table>
+<p>💼 أجرة العمل: <strong>${o.laborPrice||0} ريال</strong></p>
+<p>🔩 إجمالي القطع: <strong>${o.partsTotal||0} ريال</strong></p>
+<div class="total">💰 الإجمالي الكلي: ${o.totalPrice||0} ريال</div>
+<br><button onclick="window.print()" style="padding:10px 22px;background:#f59e0b;border:none;border-radius:8px;font-size:1rem;cursor:pointer">🖨️ طباعة / PDF</button>
+<div class="footer">TAQA © ${new Date().getFullYear()}</div>
+</body></html>`);
+  } catch(e) { res.status(500).send("Error"); }
+});
 
 // ─── Rating ───────────────────────────────────────────────────────────────────
 async function updateTechRating(techId, stars) {
@@ -233,70 +338,101 @@ async function updateTechRating(techId, stars) {
     if (!snap.exists) return;
     const d = snap.data();
     const count  = (d.ratingCount || 0) + 1;
-    const newAvg = (((d.rating || 0) * (d.ratingCount || 0)) + stars) / count;
+    const newAvg = (((d.rating || 0) * (count - 1)) + stars) / count;
     tx.update(ref, { rating: Math.round(newAvg * 10) / 10, ratingCount: count });
   });
 }
 
 async function sendRatingPrompt(to, orderId, lang) {
-  const L = MSG[lang];
+  const L2   = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
   const rows = [1,2,3,4,5].map(s => ({
-    id:    `rate_${orderId}_${s}`,
+    id: `rate_${orderId}_${s}`,
     title: "⭐".repeat(s),
     description: ["ضعيف","مقبول","جيد","جيد جداً","ممتاز"][s-1]
   }));
-  await sendList(to, L.ratePrompt, L.rateBtn, [{ title: "⭐", rows }]);
+  await sendList(to, L2.ratePrompt, L2.rateBtn, [{ title: "التقييم", rows }]);
 }
 
-// ─── Parts Flow Helper ────────────────────────────────────────────────────────
-async function sendPartsMenu(to, session, serviceId, serviceName) {
-  const parts = await getPartsByService(serviceId);
-  const lang  = session.data.lang || "ar";
-  const L     = MSG[lang];
-  if (!parts.length) { await sendMessage(to, L.noParts); return false; }
+// ─── Dispatch Tech ────────────────────────────────────────────────────────────
+async function dispatchToTech(orderId, order) {
+  const lang   = order.lang || "ar";
+  const CL2    = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
+  const tech   = await getAvailableTech(order.serviceId, order.rejectedTechs || []);
 
-  // max 10 rows per section in WhatsApp list
-  const rows = parts.slice(0, 10).map(p => ({
-    id:          `part_${p.id}`,
-    title:       p.name.substring(0, 24),
-    description: `${p.price} ${lang === "ar" ? "ريال" : "SAR"}`
+  if (!tech) {
+    const ref          = db.collection("orders").doc(orderId);
+    const searchStart  = order.searchStartedAt;
+    if (!searchStart) {
+      await ref.update({ status: "searching", searchStartedAt: admin.firestore.FieldValue.serverTimestamp() });
+      await sendMessage(normalize(order.customer), CL2.noTech);
+      return;
+    }
+    const elapsed = (Date.now() - searchStart.toDate().getTime()) / 60000;
+    if (elapsed >= RETRY_MINUTES) {
+      await ref.update({ status: "no_tech" });
+      await sendMessage(normalize(order.customer), CL2.noTechFinal(order.orderId));
+      await sendList(normalize(order.customer), CL2.noTechOptions, CL2.addMoreBtn, [{
+        title: lang === "ar" ? "خيارات" : "Options",
+        rows: [
+          { id: `wait_${orderId}`, title: CL2.waitMore },
+          { id: "mrhba",           title: CL2.retryNow }
+        ]
+      }]);
+    }
+    return;
+  }
+
+  // وُجد فني
+  const TL2       = TECH_LANGS[getTLang(tech)] || TECH_LANGS.ar;
+  const partsText = (order.parts || []).map(p => `• ${p.name} x${p.qty} = ${p.total} SAR`).join("\n");
+  const techPhone = normalize(tech.phone);
+
+  await sendMessage(techPhone,
+    TL2.newOrder(order.orderId, order.serviceName, order.type || "", partsText, order.laborPrice || 0, order.totalPrice || 0)
+  );
+  await sendList(techPhone,
+    getTLang(tech) === "ar" ? "هل تقبل هذا الطلب؟" : "Accept this order?",
+    TL2.acceptBtn,
+    [{ title: "Order", rows: [
+      { id: `accept_${orderId}`, title: TL2.acceptRow },
+      { id: `reject_${orderId}`, title: TL2.rejectRow }
+    ]}]
+  );
+  await db.collection("orders").doc(orderId).update({
+    technicianId: tech.id, techPhone, status: "pending"
+  });
+}
+
+// ─── Parts Menu ───────────────────────────────────────────────────────────────
+async function sendPartsMenu(phone, service, selectedParts, lang) {
+  const L2    = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
+  const parts = await getPartsByService(service.id);
+  if (!parts.length) { await sendMessage(phone, L2.noParts); return; }
+  const selIds = (selectedParts || []).map(p => p.id);
+  const rows   = parts.map(p => ({
+    id: "part_" + p.id,
+    title: p.name.substring(0, 24),
+    description: `${p.price} ريال` + (selIds.includes(p.id) ? " ✅" : "")
   }));
-  await sendList(to, L.choosePart(serviceName), L.partsBtn, [{ title: L.partsTitle, rows }]);
-  return true;
+  if (selectedParts && selectedParts.length > 0) rows.push({ id: "nomore", title: L2.noMore });
+  await sendList(phone, L2.chooseParts(service.name), L2.partsBtn,
+    [{ title: L2.partsTitle, rows: rows.slice(0, 10) }]
+  );
 }
 
-async function sendQtyMenu(to, partName, partPrice, lang) {
-  const L    = MSG[lang];
-  const rows = [1,2,3,4,5].map(q => ({
-    id:    `qty_${q}`,
-    title: String(q),
-    description: `${q * partPrice} ${lang === "ar" ? "ريال" : "SAR"}`
-  }));
-  await sendList(to, L.chooseQty(partName, partPrice), L.qtyBtn, [{ title: L.qtyTitle, rows }]);
-}
-
-async function sendAddMoreMenu(to, lang) {
-  const L = MSG[lang];
-  await sendList(to, L.addMore, L.addMoreBtn, [{
-    title: "؟",
-    rows: [
-      { id: "more_yes", title: L.yesMore },
-      { id: "more_no",  title: L.noMore  }
-    ]
-  }]);
-}
-
-async function sendSummaryConfirm(to, session) {
-  const lang   = session.data.lang || "ar";
-  const L      = MSG[lang];
-  const parts  = session.data.parts || [];
-  const { text, total } = buildSummary(parts, lang);
-  await sendList(to, L.summary(text, total), L.confirmBtn, [{
-    title: "؟",
-    rows: [
-      { id: "confirm_yes", title: L.confirmRow },
-      { id: "confirm_no",  title: L.cancelRow  }
-    ]
+// ─── Summary ──────────────────────────────────────────────────────────────────
+async function showSummary(phone, session, lang) {
+  const L2         = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
+  const { service, selectedType, parts } = session.data;
+  const partsTotal = (parts || []).reduce((s, p) => s + p.total, 0);
+  const laborPrice = selectedType ? selectedType.price : 0;
+  const totalPrice = Math.round((partsTotal + laborPrice) * 100) / 100;
+  const lines      = (parts || []).map(p => `• ${p.name} x${p.qty} = ${p.total} ريال`).join("\n");
+  await sendMessage(phone, L2.summary(lines, laborPrice, Math.round(partsTotal*100)/100, totalPrice));
+  await setSession(phone, "confirm", session.data);
+  await sendList(phone, lang === "ar" ? "هل تؤكد الطلب؟" : "Confirm order?", L2.confirmBtn, [{
+    title: lang === "ar" ? "تأكيد" : "Confirm",
+    rows: [{ id: "confirm", title: L2.confirmRow }, { id: "cancel", title: L2.cancelRow }]
   }]);
 }
 
@@ -311,206 +447,209 @@ app.post("/webhook", async (req, res) => {
   try {
     const entry = req.body.entry;
     if (!entry || !entry[0]) return;
-    const changes = entry[0].changes;
-    if (!changes || !changes[0]) return;
-    const val = changes[0].value;
-    if (!val || !val.messages || !val.messages[0]) return;
+    const val = entry[0].changes?.[0]?.value;
+    if (!val || !val.messages?.[0]) return;
 
     const msg  = val.messages[0];
     const from = normalize(msg.from);
     let text = "";
     if (msg.type === "text") text = msg.text.body.trim();
     else if (msg.type === "interactive") {
-      text = (msg.interactive.list_reply   && msg.interactive.list_reply.id)   ||
-             (msg.interactive.button_reply && msg.interactive.button_reply.id) || "";
+      text = msg.interactive.list_reply?.id || msg.interactive.button_reply?.id || "";
     }
     console.log("FROM:", from, "TEXT:", text);
 
-    // ── Technician ────────────────────────────────────────────────────────────
+    // ── فني ───────────────────────────────────────────────────────────────────
     const tech = await getTechByPhone(from);
     if (tech) {
+      // اختيار اللغة
+      if (text.startsWith("techlang_")) {
+        const chosenLang = text.replace("techlang_", "");
+        if (TECH_LANGS[chosenLang]) {
+          await db.collection("technicians").doc(tech.id).update({ lang: chosenLang });
+          const TL2 = TECH_LANGS[chosenLang];
+          await sendMessage(from, TL2.info(tech.name, tech.phone, tech.rating, tech.balance||0, tech.active));
+        }
+        return;
+      }
+
       if (text.startsWith("accept_")) { await handleAccept(text, from, tech); return; }
-      if (text.startsWith("reject_")) { await handleReject(text, from);       return; }
+      if (text.startsWith("reject_")) { await handleReject(text, from, tech); return; }
       if (text.startsWith("done_"))   { await handleDone(text, from, tech);   return; }
-      await sendMessage(from, MSG.ar.techInfo(tech.name, tech.phone, tech.rating, tech.ratingCount, tech.balance, tech.active));
+
+      // أول رسالة من فني بدون لغة — اطلب منه يختار
+      if (!tech.lang) {
+        await sendList(from, TECH_LANGS.ar.chooseLang, TECH_LANGS.ar.langBtn, [{
+          title: TECH_LANGS.ar.langTitle, rows: LANG_ROWS
+        }]);
+        return;
+      }
+
+      // info
+      if (["info","معلومات","जानकारी","তথ্য"].includes(text)) {
+        const TL2 = TECH_LANGS[getTLang(tech)] || TECH_LANGS.ar;
+        await sendMessage(from, TL2.info(tech.name, tech.phone, tech.rating, tech.balance||0, tech.active));
+      }
       return;
     }
 
-    // ── Rating ────────────────────────────────────────────────────────────────
+    // ── تقييم ─────────────────────────────────────────────────────────────────
     if (text.startsWith("rate_")) {
       const parts   = text.split("_");
       const stars   = parseInt(parts[parts.length - 1]);
       const orderId = parts.slice(1, -1).join("_");
-      if (!isNaN(stars) && stars >= 1 && stars <= 5 && orderId) {
-        const snap = await db.collection("orders").doc(orderId).get();
-        if (snap.exists) {
-          await updateTechRating(snap.data().technicianId, stars);
+      if (!isNaN(stars) && stars >= 1 && stars <= 5) {
+        const oSnap = await db.collection("orders").doc(orderId).get();
+        if (oSnap.exists) {
+          await updateTechRating(oSnap.data().technicianId, stars);
           await db.collection("orders").doc(orderId).update({ rating: stars });
+          const session = await getSession(from);
+          const L2 = CUSTOMER_LANGS[getCLang(session)] || CUSTOMER_LANGS.ar;
+          await sendMessage(from, L2.ratingDone(stars));
         }
-        const session = await getSession(from);
-        const lang    = (session.data && session.data.lang) || "ar";
-        await sendMessage(from, MSG[lang].ratingDone(stars));
       }
       return;
     }
 
-    // ── Customer Session ──────────────────────────────────────────────────────
-    const isStartAr = ["مرحبا","مرحبً","هلا","اهلا"].includes(text);
-    const isStartEn = ["mrhba","hello","hi"].includes(text.toLowerCase());
+    // ── انتظار أكثر ───────────────────────────────────────────────────────────
+    if (text.startsWith("wait_")) {
+      const orderId = text.replace("wait_", "");
+      await db.collection("orders").doc(orderId).update({
+        status: "searching",
+        searchStartedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      const session = await getSession(from);
+      const L2 = CUSTOMER_LANGS[getCLang(session)] || CUSTOMER_LANGS.ar;
+      await sendMessage(from, L2.noTech);
+      return;
+    }
+
+    // ── جلسة العميل ──────────────────────────────────────────────────────────
+    const isStartAr = ["مرحبا","هلا","ابدأ","مرحبً"].includes(text);
+    const isStartEn = ["mrhba","hello","hi","start"].includes(text);
     const isStart   = isStartAr || isStartEn;
     const newLang   = isStartAr ? "ar" : isStartEn ? "en" : null;
 
     let session = await getSession(from);
-    const lang  = (session.data && session.data.lang) || newLang || "ar";
-    const L     = MSG[lang];
 
-    // ── Start ─────────────────────────────────────────────────────────────────
     if (!session.state || isStart) {
-      const activeOrder = await getActiveOrder(from);
-      if (activeOrder) {
-        await sendMessage(from, L.activeOrder(activeOrder.orderId, sl(activeOrder.status, lang)));
-        return;
-      }
+      const lang   = newLang || getCLang(session);
+      const L2     = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
+      const active = await getActiveOrder(from);
+      if (active && !isStart) { await sendMessage(from, L2.activeOrder(active.orderId, active.status)); return; }
       await clearSession(from);
       const services = await getServices();
-      await sendList(from, L.welcome, L.servicesBtn, [{
-        title: L.servicesTitle,
-        rows:  services.map(s => ({ id: `svc_${s.id}`, title: s.name.substring(0, 24) }))
+      await sendList(from, L2.welcome, L2.servicesBtn, [{
+        title: L2.servicesTitle,
+        rows: services.map(s => ({ id: "service_" + s.id, title: s.name.substring(0, 24) }))
       }]);
-      await setSession(from, "choose_service", { lang: newLang || lang });
+      await setSession(from, "main", { lang });
       return;
     }
 
-    // ── Step 1: Choose Service ─────────────────────────────────────────────────
-    if (session.state === "choose_service" && text.startsWith("svc_")) {
-      const serviceId = text.replace("svc_", "");
+    const lang = getCLang(session);
+    const L2   = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
+
+    // ── main: اختيار الخدمة ───────────────────────────────────────────────────
+    if (session.state === "main" && text.startsWith("service_")) {
       const services  = await getServices();
+      const serviceId = text.replace("service_", "");
       const service   = services.find(s => s.id === serviceId);
-      if (!service) { await sendMessage(from, L.defaultMsg); return; }
-
-      await setSession(from, "choose_part", {
-        lang,
-        serviceId:   service.id,
-        serviceName: service.name,
-        parts:       [],
-        pendingPart: null
-      });
-      await sendPartsMenu(from, { data: { lang } }, service.id, service.name);
-      return;
-    }
-
-    // ── Step 2: Choose Part ────────────────────────────────────────────────────
-    if (session.state === "choose_part" && text.startsWith("part_")) {
-      const partId = text.replace("part_", "");
-      const parts  = await getPartsByService(session.data.serviceId);
-      const part   = parts.find(p => p.id === partId);
-      if (!part) { await sendMessage(from, L.defaultMsg); return; }
-
-      await setSession(from, "choose_qty", {
-        ...session.data,
-        pendingPart: { id: part.id, name: part.name, price: part.price }
-      });
-      await sendQtyMenu(from, part.name, part.price, lang);
-      return;
-    }
-
-    // ── Step 3: Choose Quantity ────────────────────────────────────────────────
-    if (session.state === "choose_qty" && text.startsWith("qty_")) {
-      const qty  = parseInt(text.replace("qty_", ""));
-      const part = session.data.pendingPart;
-      if (!part || isNaN(qty)) { await sendMessage(from, L.defaultMsg); return; }
-
-      const updatedParts = [...(session.data.parts || [])];
-      const existing     = updatedParts.findIndex(p => p.id === part.id);
-      if (existing >= 0) {
-        updatedParts[existing].qty += qty;
+      if (!service) { await sendMessage(from, L2.defaultMsg); return; }
+      if (service.types && service.types.length > 0) {
+        await setSession(from, "type", { ...session.data, service });
+        await sendList(from, service.name, L2.typesBtn, [{
+          title: L2.chooseType,
+          rows: service.types.map((t, i) => ({ id: "type_" + i, title: t.name.substring(0, 24), description: t.price + " ريال" }))
+        }]);
       } else {
-        updatedParts.push({ id: part.id, name: part.name, price: part.price, qty });
+        await setSession(from, "parts", { ...session.data, service, selectedType: { name: service.name, price: 0 }, parts: [] });
+        await sendPartsMenu(from, service, [], lang);
       }
-
-      await sendMessage(from, L.addedPart(part.name, qty, part.price * qty));
-      await setSession(from, "add_more", { ...session.data, parts: updatedParts, pendingPart: null });
-      await sendAddMoreMenu(from, lang);
       return;
     }
 
-    // ── Step 4: Add More or Done ───────────────────────────────────────────────
-    if (session.state === "add_more") {
-      if (text === "more_yes") {
-        await setSession(from, "choose_part", session.data);
-        await sendPartsMenu(from, { data: { lang } }, session.data.serviceId, session.data.serviceName);
-        return;
-      }
-      if (text === "more_no") {
-        if (!session.data.parts || !session.data.parts.length) {
-          await sendMessage(from, L.noParts);
-          await setSession(from, "choose_part", session.data);
-          await sendPartsMenu(from, { data: { lang } }, session.data.serviceId, session.data.serviceName);
-          return;
-        }
-        await setSession(from, "confirm", session.data);
-        await sendSummaryConfirm(from, { data: session.data });
-        return;
-      }
+    // ── type: اختيار النوع ────────────────────────────────────────────────────
+    if (session.state === "type" && text.startsWith("type_")) {
+      const index   = parseInt(text.replace("type_", ""));
+      const service = session.data.service;
+      if (!service || isNaN(index) || !service.types[index]) { await sendMessage(from, L2.defaultMsg); return; }
+      const selectedType = service.types[index];
+      await setSession(from, "parts", { ...session.data, selectedType, parts: [] });
+      await sendPartsMenu(from, service, [], lang);
+      return;
     }
 
-    // ── Step 5: Confirm ────────────────────────────────────────────────────────
-    if (session.state === "confirm") {
-      if (text === "confirm_no") {
-        await clearSession(from);
-        await sendMessage(from, L.cancelled);
+    // ── parts: اختيار القطع ───────────────────────────────────────────────────
+    if (session.state === "parts") {
+      if (text === "nomore") { await showSummary(from, session, lang); return; }
+      if (text.startsWith("part_")) {
+        const partId   = text.replace("part_", "");
+        const allParts = await getPartsByService(session.data.service.id);
+        const part     = allParts.find(p => p.id === partId);
+        if (!part) { await sendMessage(from, L2.defaultMsg); return; }
+        await setSession(from, "qty", { ...session.data, pendingPart: part });
+        await sendList(from, L2.chooseQty(part.name, part.price), L2.qtyBtn, [{
+          title: L2.qtyTitle,
+          rows: [1,2,3,4,5].map(n => ({ id: "qty_" + n, title: n + (lang==="ar"?" قطع":" pcs") }))
+        }]);
         return;
       }
-      if (text === "confirm_yes") {
-        await setSession(from, "location", session.data);
-        await sendMessage(from, L.sendLocation);
-        return;
-      }
+      if (text === "addmore") { await sendPartsMenu(from, session.data.service, session.data.parts||[], lang); return; }
     }
 
-    // ── Step 6: Location ──────────────────────────────────────────────────────
-    if (session.state === "location") {
-      if (msg.type !== "location") { await sendMessage(from, L.locationOnly); return; }
-
-      const { serviceId, serviceName, parts } = session.data;
-      if (!serviceId || !parts || !parts.length) {
-        await sendMessage(from, L.sessionExp);
-        await clearSession(from);
-        return;
-      }
-
-      const tech = await getAvailableTech(serviceId);
-      if (!tech) { await sendMessage(from, L.noTech); await clearSession(from); return; }
-
-      const { text: summaryText, total } = buildSummary(parts, lang);
-      const orderId = generateOrderId();
-
-      await db.collection("orders").doc(orderId).set({
-        orderId, customer: from, lang,
-        serviceId, serviceName,
-        parts, total,
-        technicianId: tech.id,
-        status:       "pending",
-        location:     { latitude: msg.location.latitude, longitude: msg.location.longitude },
-        createdAt:    admin.firestore.FieldValue.serverTimestamp()
-      });
-
-      const techPhone = normalize(tech.phone);
-      await sendMessage(techPhone, MSG.ar.techNewOrder(orderId, serviceName, summaryText, total));
-      await sendList(techPhone, `طلب جديد — ${orderId}`, MSG.ar.acceptBtn, [{
-        title: "الطلب",
-        rows: [
-          { id: `accept_${orderId}`, title: MSG.ar.acceptRow },
-          { id: `reject_${orderId}`, title: MSG.ar.rejectRow }
-        ]
+    // ── qty: اختيار الكمية ────────────────────────────────────────────────────
+    if (session.state === "qty" && text.startsWith("qty_")) {
+      const qty      = parseInt(text.replace("qty_", ""));
+      const part     = session.data.pendingPart;
+      const parts    = session.data.parts || [];
+      const total    = Math.round(part.price * qty * 100) / 100;
+      const idx      = parts.findIndex(p => p.id === part.id);
+      if (idx >= 0) { parts[idx].qty += qty; parts[idx].total += total; }
+      else parts.push({ id: part.id, name: part.name, qty, unitPrice: part.price, total });
+      await sendMessage(from, L2.addedPart(part.name, qty, total));
+      await setSession(from, "parts", { ...session.data, parts, pendingPart: null });
+      await sendList(from, L2.addMore, L2.addMoreBtn, [{
+        title: lang === "ar" ? "الخيارات" : "Options",
+        rows: [{ id: "addmore", title: L2.yesMore }, { id: "nomore", title: L2.noMore }]
       }]);
-
-      await sendMessage(from, L.orderSent(orderId));
-      await clearSession(from);
       return;
     }
 
-    await sendMessage(from, L.defaultMsg);
+    // ── confirm ───────────────────────────────────────────────────────────────
+    if (session.state === "confirm") {
+      if (text === "cancel")  { await clearSession(from); await sendMessage(from, L2.cancelled); return; }
+      if (text === "confirm") { await setSession(from, "location", session.data); await sendMessage(from, L2.sendLocation); return; }
+    }
+
+    // ── location ──────────────────────────────────────────────────────────────
+    if (session.state === "location") {
+      if (msg.type !== "location") { await sendMessage(from, L2.locationOnly); return; }
+      const { service, selectedType, parts } = session.data;
+      if (!service) { await sendMessage(from, L2.sessionExp); await clearSession(from); return; }
+      const partsTotal = (parts||[]).reduce((s,p) => s+p.total, 0);
+      const laborPrice = selectedType ? selectedType.price : 0;
+      const totalPrice = Math.round((partsTotal + laborPrice)*100)/100;
+      const orderId    = generateOrderId();
+      const orderData  = {
+        orderId, customer: from,
+        serviceName: service.name, serviceId: service.id,
+        type: selectedType ? selectedType.name : "",
+        laborPrice, partsTotal: Math.round(partsTotal*100)/100, totalPrice,
+        parts: parts || [], status: "searching", lang,
+        rejectedTechs: [],
+        location: { latitude: msg.location.latitude, longitude: msg.location.longitude },
+        createdAt:        admin.firestore.FieldValue.serverTimestamp(),
+        searchStartedAt:  admin.firestore.FieldValue.serverTimestamp()
+      };
+      await db.collection("orders").doc(orderId).set(orderData);
+      await sendMessage(from, L2.orderSent(orderId));
+      await clearSession(from);
+      await dispatchToTech(orderId, orderData);
+      return;
+    }
+
+    await sendMessage(from, L2.defaultMsg);
   } catch(err) { console.error("WEBHOOK ERROR:", err); }
 });
 
@@ -519,122 +658,83 @@ async function handleAccept(text, techPhone, tech) {
   const orderId = text.replace("accept_", "");
   const ref     = db.collection("orders").doc(orderId);
   const snap    = await ref.get();
-  if (!snap.exists) { await sendMessage(techPhone, MSG.ar.orderNotFound); return; }
+  const TL2     = TECH_LANGS[getTLang(tech)] || TECH_LANGS.ar;
+  if (!snap.exists) { await sendMessage(techPhone, TL2.orderNotFound); return; }
   const order = snap.data();
-  if (order.status !== "pending") { await sendMessage(techPhone, MSG.ar.alreadyProc); return; }
+  if (!["pending","searching"].includes(order.status)) { await sendMessage(techPhone, TL2.alreadyProc); return; }
+  if ((tech.balance||0) < MIN_BALANCE) { await sendMessage(techPhone, TL2.lowBalance(tech.balance||0, MIN_BALANCE)); return; }
 
-  await ref.update({ status: "accepted" });
-  await db.collection("technicians").doc(order.technicianId).update({ active: false });
+  await ref.update({ status: "accepted", technicianId: tech.id, techPhone: normalize(tech.phone) });
+  await db.collection("technicians").doc(tech.id).update({ active: false });
 
-  const custPhone = normalize(order.customer);
-  const lang      = order.lang || "ar";
+  const customerPhone = normalize(order.customer);
+  const CL2 = CUSTOMER_LANGS[order.lang||"ar"] || CUSTOMER_LANGS.ar;
 
-  await sendMessage(techPhone, MSG.ar.custPhone(custPhone));
-  if (order.location && order.location.latitude) {
-    await sendLocation(techPhone, order.location.latitude, order.location.longitude);
-  }
-  await sendList(techPhone, MSG.ar.doneLabel(orderId), MSG.ar.doneBtn, [{
-    title: "الطلب",
-    rows:  [{ id: `done_${orderId}`, title: MSG.ar.doneRow }]
+  await sendMessage(techPhone, TL2.customerPhone(customerPhone));
+  if (order.location) await sendLocation(techPhone, order.location.latitude, order.location.longitude);
+  await sendList(techPhone, TL2.doneLabel(orderId), TL2.doneBtn, [{
+    title: "Order", rows: [{ id: "done_" + orderId, title: TL2.doneRow }]
   }]);
-
-  await sendMessage(custPhone, MSG[lang].accepted(tech.name, tech.phone));
+  await sendMessage(customerPhone, CL2.accepted(tech.name, tech.phone));
 }
 
-async function handleReject(text, techPhone) {
+async function handleReject(text, techPhone, tech) {
   const orderId = text.replace("reject_", "");
   const ref     = db.collection("orders").doc(orderId);
   const snap    = await ref.get();
-  if (!snap.exists) { await sendMessage(techPhone, MSG.ar.orderNotFound); return; }
+  const TL2     = TECH_LANGS[getTLang(tech)] || TECH_LANGS.ar;
+  if (!snap.exists) { await sendMessage(techPhone, TL2.orderNotFound); return; }
   const order = snap.data();
-  if (order.status !== "pending") { await sendMessage(techPhone, MSG.ar.alreadyProc); return; }
+  if (!["pending","searching"].includes(order.status)) { await sendMessage(techPhone, TL2.alreadyProc); return; }
 
-  await ref.update({ status: "rejected" });
-  await sendMessage(techPhone, MSG.ar.techRejected);
-  const lang = order.lang || "ar";
-  await sendMessage(normalize(order.customer), MSG[lang].rejected(orderId));
+  const rejectedTechs = [...(order.rejectedTechs||[]), tech.id];
+  await ref.update({ status: "searching", rejectedTechs, technicianId: null });
+  await sendMessage(techPhone, TL2.techRejected);
+
+  const CL2 = CUSTOMER_LANGS[order.lang||"ar"] || CUSTOMER_LANGS.ar;
+  await sendMessage(normalize(order.customer), CL2.rejected(order.orderId));
+  await dispatchToTech(orderId, { ...order, rejectedTechs, status: "searching" });
 }
 
 async function handleDone(text, techPhone, tech) {
   const orderId = text.replace("done_", "");
   const ref     = db.collection("orders").doc(orderId);
   const snap    = await ref.get();
-  if (!snap.exists) { await sendMessage(techPhone, MSG.ar.orderNotFound); return; }
+  const TL2     = TECH_LANGS[getTLang(tech)] || TECH_LANGS.ar;
+  if (!snap.exists) { await sendMessage(techPhone, TL2.orderNotFound); return; }
   const order = snap.data();
-  if (order.status === "done") { await sendMessage(techPhone, MSG.ar.alreadyDone); return; }
+  if (order.status === "done") { await sendMessage(techPhone, TL2.alreadyDone); return; }
 
   await ref.update({ status: "done", completedAt: admin.firestore.FieldValue.serverTimestamp() });
+  const techRef    = db.collection("technicians").doc(order.technicianId || tech.id);
+  const techData   = (await techRef.get()).data();
+  const commission = Math.round(order.totalPrice * COMMISSION * 100) / 100;
+  const newBalance = Math.max(0, Math.round(((techData.balance||0) - commission)*100)/100);
+  await techRef.update({ balance: newBalance, active: true });
 
-  const techRef  = db.collection("technicians").doc(order.technicianId);
-  const techData = (await techRef.get()).data();
-  const fee      = Math.round((order.total || 0) * 0.12 * 100) / 100; // 12% commission
-  const newBal   = Math.max(0, ((techData && techData.balance) || 0) - fee);
-  const canBeActive = newBal >= 2.0;
-  await techRef.update({ balance: newBal, active: canBeActive });
+  const CL2           = CUSTOMER_LANGS[order.lang||"ar"] || CUSTOMER_LANGS.ar;
+  const customerPhone = normalize(order.customer);
+  const invoiceUrl    = `${BASE_URL}/invoice/${orderId}`;
 
-  // Notify tech if balance dropped below minimum
-  if (newBal < 2.0) {
-    const tl = (techData && techData.lang) || "ar";
-    const lowMsg = tl==="en"
-      ? `⚠️ *Low Balance!*\nCurrent: ${newBal.toFixed(3)} OMR\nMinimum required: *2.000 OMR*\nYou cannot receive new orders until you recharge.\n📞 Contact admin to recharge.`
-      : tl==="ur"
-      ? `⚠️ *کم بیلنس!*\nموجودہ: ${newBal.toFixed(3)} OMR\nکم از کم: *2.000 OMR*\nآرڈر لینے کے لیے ری چارج کریں۔\n📞 ایڈمن سے رابطہ کریں۔`
-      : tl==="bn"
-      ? `⚠️ *কম ব্যালেন্স!*\nবর্তমান: ${newBal.toFixed(3)} OMR\nন্যূনতম: *2.000 OMR*\nঅর্ডার নিতে রিচার্জ করুন।\n📞 অ্যাডমিনের সাথে যোগাযোগ করুন।`
-      : tl==="hi"
-      ? `⚠️ *कम बैलेंस!*\nवर्तमान: ${newBal.toFixed(3)} OMR\nन्यूनतम: *2.000 OMR*\nऑर्डर लेने के लिए रिचार्ज करें।\n📞 एडमिन से संपर्क करें।`
-      : `⚠️ *رصيدك منخفض!*\nالرصيد الحالي: ${newBal.toFixed(3)} OMR\nالحد الأدنى: *2.000 OMR*\nلن تتمكن من استلام طلبات جديدة حتى تعبئة الرصيد.\n📞 تواصل مع الإدارة لإعادة التعبئة.`;
-    await sendMessage(techPhone, lowMsg);
-  }
+  await sendMessage(customerPhone, CL2.completed(order.orderId));
+  await sendMessage(customerPhone, CL2.invoiceMsg(order.orderId, invoiceUrl));
+  await sendMessage(techPhone, TL2.techDone(order.orderId, commission, newBalance));
 
-  const custPhone = normalize(order.customer);
-  const lang      = order.lang || "ar";
-  const { text: summaryText } = buildSummary(order.parts || [], lang);
-
-  await sendMessage(techPhone, MSG.ar.techDone(orderId, fee, newBal));
-  await sendMessage(custPhone, MSG[lang].completed(orderId, summaryText, order.total || 0));
-  await sendRatingPrompt(custPhone, orderId, lang);
+  if (newBalance < MIN_BALANCE) await sendMessage(techPhone, TL2.lowBalance(newBalance, MIN_BALANCE));
+  await sendRatingPrompt(customerPhone, orderId, order.lang || "ar");
 }
 
-
-// ─── Low Balance Checker — runs every hour ───────────────────────────────────
-async function checkLowBalanceTechs() {
+// ─── Background: إعادة البحث عن فني كل 5 دقائق ───────────────────────────────
+setInterval(async () => {
   try {
-    const snap = await db.collection("technicians").get();
+    const snap = await db.collection("orders").where("status","==","searching").get();
     for (const doc of snap.docs) {
-      const t   = doc.data();
-      const bal = parseFloat(t.balance || 0);
-      if (bal >= 2.0) continue;
-
-      const tl = t.lang || "ar";
-      const phone = normalize(t.phone || "");
-      if (!phone) continue;
-
-      const lowMsg = tl==="en"
-        ? `⚠️ *Low Balance Reminder!*\nBalance: ${bal.toFixed(3)} OMR\nMinimum: *2.000 OMR*\nRecharge to receive orders.\n📞 Contact admin.`
-        : tl==="ur"
-        ? `⚠️ *کم بیلنس یاددہانی!*\nبیلنس: ${bal.toFixed(3)} OMR\nکم از کم: *2.000 OMR*\nری چارج کریں۔\n📞 ایڈمن سے رابطہ کریں۔`
-        : tl==="bn"
-        ? `⚠️ *কম ব্যালেন্স স্মারক!*\nব্যালেন্স: ${bal.toFixed(3)} OMR\nন্যূনতম: *2.000 OMR*\nরিচার্জ করুন।\n📞 অ্যাডমিন।`
-        : tl==="hi"
-        ? `⚠️ *कम बैलेंस अनुस्मारक!*\nबैलेंस: ${bal.toFixed(3)} OMR\nन्यूनतम: *2.000 OMR*\nरिचार्ज करें।\n📞 एडमिन से संपर्क करें।`
-        : `⚠️ *تذكير: رصيدك منخفض!*\nالرصيد: ${bal.toFixed(3)} OMR\nالحد الأدنى: *2.000 OMR*\nيرجى إعادة التعبئة لاستقبال الطلبات.\n📞 تواصل مع الإدارة.`;
-
-      await sendMessage(phone, lowMsg);
-      console.log(`[BALANCE] notified low balance: ${t.name} = ${bal}`);
-
-      // Deactivate if still active
-      if (t.active) {
-        await doc.ref.update({ active: false });
-        console.log(`[BALANCE] deactivated: ${t.name}`);
-      }
+      const order = { id: doc.id, ...doc.data() };
+      if (!order.searchStartedAt) continue;
+      const elapsed = (Date.now() - order.searchStartedAt.toDate().getTime()) / 60000;
+      if (elapsed < RETRY_MINUTES) await dispatchToTech(order.id, order);
     }
-  } catch(e) { console.error("checkLowBalanceTechs:", e?.message); }
-}
+  } catch(e) { console.error("Background:", e.message); }
+}, 5 * 60 * 1000);
 
-// Run every hour + once on startup after 15 seconds
-setInterval(checkLowBalanceTechs, 60 * 60 * 1000);
-setTimeout(checkLowBalanceTechs, 15000);
-
-// ─── Admin endpoint to trigger balance check manually ─────────────────────────
-app.listen(process.env.PORT || 3000, () => console.log("✅ TAQA Bot running"));
+app.listen(process.env.PORT || 3000, () => console.log("✅ TAQA Server running"));
