@@ -243,13 +243,26 @@ async function sendMessage(to, text) {
 
 async function sendList(to, body, button, sections) {
   try {
+    const safeBody    = String(body   || "").substring(0, 1024);
+    const safeButton  = String(button || "اختر").substring(0, 20);
+    const safeSections = sections.map(sec => ({
+      title: String(sec.title || "").substring(0, 24),
+      rows: (sec.rows || []).slice(0, 10).map(r => ({
+        id:          String(r.id    || "").substring(0, 200),
+        title:       String(r.title || "").substring(0, 24),
+        description: r.description ? String(r.description).substring(0, 72) : undefined
+      }))
+    }));
     await axios.post(
       `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
       { messaging_product: "whatsapp", to, type: "interactive",
-        interactive: { type: "list", body: { text: body }, action: { button, sections } } },
+        interactive: { type: "list", body: { text: safeBody }, action: { button: safeButton, sections: safeSections } } },
       { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
     );
-  } catch(e) { console.error("sendList:", e.message); }
+  } catch(e) {
+    console.error("sendList ERROR:", e.message);
+    if (e.response) console.error("sendList DETAILS:", JSON.stringify(e.response.data));
+  }
 }
 
 async function sendLocation(to, lat, lng) {
