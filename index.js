@@ -267,6 +267,25 @@ async function getServices() {
   const snap = await db.collection("services").get();
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
+
+// ─── اسم الخدمة حسب اللغة ────────────────────────────────────────────────────
+function getServiceName(service, lang) {
+  if (lang === "ar") return service.nameAr || service.name || service.id;
+  if (lang === "en") return service.nameEn || service.nameAr || service.name || service.id;
+  if (lang === "hi") return service.nameHi || service.nameEn || service.nameAr || service.name || service.id;
+  if (lang === "bn") return service.nameBn || service.nameEn || service.nameAr || service.name || service.id;
+  return service.nameAr || service.name || service.id;
+}
+
+function getTypeNameL(type, lang) {
+  if (!type) return "";
+  if (typeof type === "string") return type;
+  if (lang === "ar") return type.nameAr || type.name || "";
+  if (lang === "en") return type.nameEn || type.nameAr || type.name || "";
+  if (lang === "hi") return type.nameHi || type.nameEn || type.nameAr || type.name || "";
+  if (lang === "bn") return type.nameBn || type.nameEn || type.nameAr || type.name || "";
+  return type.nameAr || type.name || "";
+}
 async function getPartsByService(serviceId) {
   const snap = await db.collection("parts").where("serviceId", "==", serviceId).get();
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -411,11 +430,11 @@ async function sendPartsMenu(phone, service, selectedParts, lang) {
   const selIds = (selectedParts || []).map(p => p.id);
   const rows   = parts.map(p => ({
     id: "part_" + p.id,
-    title: p.name.substring(0, 24),
+    title: String(p.name || "قطعة").substring(0, 24),
     description: `${p.price} ريال` + (selIds.includes(p.id) ? " ✅" : "")
   }));
   if (selectedParts && selectedParts.length > 0) rows.push({ id: "nomore", title: L2.noMore });
-  await sendList(phone, L2.chooseParts(service.name), L2.partsBtn,
+  await sendList(phone, L2.chooseParts(getServiceName(service, lang)), L2.partsBtn,
     [{ title: L2.partsTitle, rows: rows.slice(0, 10) }]
   );
 }
@@ -535,7 +554,7 @@ app.post("/webhook", async (req, res) => {
       const services = await getServices();
       await sendList(from, L2.welcome, L2.servicesBtn, [{
         title: L2.servicesTitle,
-        rows: services.map(s => ({ id: "service_" + s.id, title: s.name.substring(0, 24) }))
+        rows: services.map(s => ({ id: "service_" + s.id, title: String(getServiceName(s, lang)).substring(0, 24) }))
       }]);
       await setSession(from, "main", { lang });
       return;
@@ -569,12 +588,12 @@ app.post("/webhook", async (req, res) => {
       if (!service) { await sendMessage(from, L2.defaultMsg); return; }
       if (service.types && service.types.length > 0) {
         await setSession(from, "type", { ...session.data, service });
-        await sendList(from, service.name, L2.typesBtn, [{
+        await sendList(from, getServiceName(service, lang), L2.typesBtn, [{
           title: L2.chooseType,
-          rows: service.types.map((t, i) => ({ id: "type_" + i, title: t.name.substring(0, 24), description: t.price + " ريال" }))
+          rows: service.types.map((t, i) => ({ id: "type_" + i, title: String(getTypeNameL(t, lang) || "نوع").substring(0, 24), description: t.price + " ريال" }))
         }]);
       } else {
-        await setSession(from, "parts", { ...session.data, service, selectedType: { name: service.name, price: 0 }, parts: [] });
+        await setSession(from, "parts", { ...session.data, service, selectedType: { name: getServiceName(service, lang), price: 0 }, parts: [] });
         await sendPartsMenu(from, service, [], lang);
       }
       return;
@@ -644,8 +663,8 @@ app.post("/webhook", async (req, res) => {
       const orderId    = generateOrderId();
       const orderData  = {
         orderId, customer: from,
-        serviceName: service.name, serviceId: service.id,
-        type: selectedType ? selectedType.name : "",
+        serviceName: getServiceName(service, lang), serviceId: service.id,
+        type: selectedType ? (getTypeNameL(selectedType, lang) || selectedType.name || "") : "",
         laborPrice, partsTotal: Math.round(partsTotal*100)/100, totalPrice,
         parts: parts || [], status: "searching", lang,
         rejectedTechs: [],
