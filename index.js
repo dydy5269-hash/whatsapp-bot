@@ -352,6 +352,15 @@ async function getServices() {
 }
 
 function getServiceName(service, lang) {
+  // هيكل جديد: name.ar / name.en / name.hi / name.bn
+  if (service.name && typeof service.name === "object") {
+    if (lang === "ar") return service.name.ar || service.name.en || service.id;
+    if (lang === "en") return service.name.en || service.name.ar || service.id;
+    if (lang === "hi") return service.name.hi || service.name.en || service.name.ar || service.id;
+    if (lang === "bn") return service.name.bn || service.name.en || service.name.ar || service.id;
+    return service.name.ar || service.id;
+  }
+  // هيكل قديم: nameAr / nameEn / nameHi / nameBn
   if (lang === "ar") return service.nameAr || service.name || service.id;
   if (lang === "en") return service.nameEn || service.nameAr || service.name || service.id;
   if (lang === "hi") return service.nameHi || service.nameEn || service.nameAr || service.name || service.id;
@@ -361,6 +370,15 @@ function getServiceName(service, lang) {
 
 function getTypeNameL(type, lang) {
   if (!type) return "";
+  // هيكل جديد: name.ar / name.en / name.hi / name.bn
+  if (type.name && typeof type.name === "object") {
+    if (lang === "ar") return type.name.ar || type.name.en || "";
+    if (lang === "en") return type.name.en || type.name.ar || "";
+    if (lang === "hi") return type.name.hi || type.name.en || type.name.ar || "";
+    if (lang === "bn") return type.name.bn || type.name.en || type.name.ar || "";
+    return type.name.ar || "";
+  }
+  // هيكل قديم: string أو nameAr/nameEn/nameHi/nameBn
   if (typeof type === "string") return type;
   if (lang === "ar") return type.nameAr || type.name || "";
   if (lang === "en") return type.nameEn || type.nameAr || type.name || "";
