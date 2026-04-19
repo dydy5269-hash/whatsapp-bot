@@ -63,6 +63,12 @@ const CUSTOMER_LANGS = {
     retryNow:      "🔄 طلب جديد",
     orderSent:     (id) => `✅ تم إرسال طلبك!\n🆔 *${id}*\nسيتم إشعارك عند القبول.`,
     activeOrder:   (id, st) => `لديك طلب نشط:\n🆔 ${id}\nالحالة: ${st}`,
+    activeSearching: (id) => `🔍 طلبك قيد البحث عن فني:\n🆔 *${id}*\nماذا تريد؟`,
+    cancelOrder:   "❌ إلغاء الطلب",
+    keepWaiting:   "⏳ انتظار",
+    orderCancelled:(id) => `تم إلغاء طلبك 🆔 ${id}`,
+    needRating:    "⭐ يرجى تقييم طلبك السابق أولاً قبل طلب خدمة جديدة.",
+    privacyNote:   "🔒 نستخدم بياناتك فقط لتنفيذ الطلب وتحسين الخدمة.",
     accepted:      (n, p) => `✅ تم قبول طلبك!\n👨‍🔧 ${n}\n📞 ${p}\nفي الطريق!`,
     rejected:      (id) => `❌ رفض الفني. نبحث عن آخر...\n🆔 ${id}`,
     completed:     (id) => `✅ اكتمل طلبك!\n🆔 ${id}\nشكراً! 🙏`,
@@ -109,6 +115,12 @@ const CUSTOMER_LANGS = {
     retryNow:      "🔄 New request",
     orderSent:     (id) => `✅ Order sent!\n🆔 *${id}*\nYou'll be notified.`,
     activeOrder:   (id, st) => `Active order:\n🆔 ${id}\nStatus: ${st}`,
+    activeSearching: (id) => `🔍 Searching for a technician:\n🆔 *${id}*\nWhat would you like?`,
+    cancelOrder:   "❌ Cancel Order",
+    keepWaiting:   "⏳ Keep Waiting",
+    orderCancelled:(id) => `Order cancelled 🆔 ${id}`,
+    needRating:    "⭐ Please rate your previous order first before requesting a new service.",
+    privacyNote:   "🔒 We use your data only to fulfill the order and improve our service.",
     accepted:      (n, p) => `✅ Accepted!\n👨‍🔧 ${n}\n📞 ${p}\nOn the way!`,
     rejected:      (id) => `❌ Tech rejected. Searching...\n🆔 ${id}`,
     completed:     (id) => `✅ Done!\n🆔 ${id}\nThank you! 🙏`,
@@ -607,7 +619,60 @@ function getPartName(part, lang) {
   return part.name || "قطعة";
 }
 
-// ─── Parts Menu ───────────────────────────────────────────────────────────────
+// ─── التحقق من وجود تقييم معلق ──────────────────────────────────────────────
+async function getPendingRatingOrder(phone) {
+  const snap = await db.collection("orders")
+    .where("customer", "==", phone)
+    .where("status", "==", "done")
+    .where("rating", "==", null)
+    .limit(1).get();
+  if (!snap.empty) return { id: snap.docs[0].id, ...snap.docs[0].data() };
+  // أيضاً نتحقق من الطلبات التي ليس فيها حقل rating
+  const snap2 = await db.collection("orders")
+    .where("customer", "==", phone)
+    .where("status", "==", "done")
+    .orderBy("completedAt", "desc")
+    .limit(5).get();
+  for (const doc of snap2.docs) {
+    const d = doc.data();
+    if (!d.rating) return { id: doc.id, ...d };
+  }
+  return null;
+}
+
+// ─── تحديث بيانات العميل في Firestore ────────────────────────────────────────
+async function updateCustomerData(phone, location = null) {
+  try {
+    const ref = db.collection("customers").doc(phone);
+    const snap = await ref.get();
+    const now  = admin.firestore.FieldValue.serverTimestamp();
+    if (!snap.exists) {
+      const data = { phone, firstSeen: now, lastSeen: now, totalOrders: 0 };
+      if (location) data.lastLocation = location;
+      await ref.set(data);
+    } else {
+      const update = { lastSeen: now };
+      if (location) update.lastLocation = location;
+      await ref.update(update);
+    }
+  } catch(e) { console.error("updateCustomerData:", e.message); }
+}
+
+// ─── زيادة عداد الطلبات للعميل ───────────────────────────────────────────────
+async function incrementCustomerOrders(phone) {
+  try {
+    await db.collection("customers").doc(phone).update({
+      totalOrders: admin.firestore.FieldValue.increment(1)
+    });
+  } catch(e) {
+    // إذا ما وُجد العميل أنشئه
+    await updateCustomerData(phone);
+    await db.collection("customers").doc(phone).update({
+      totalOrders: admin.firestore.FieldValue.increment(1)
+    });
+  }
+}
+
 async function sendPartsMenu(phone, service, selectedParts, lang) {
   const L2    = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
   const parts = await getPartsByService(service.id);
@@ -719,6 +784,34 @@ app.post("/webhook", async (req, res) => {
       return;
     }
 
+    // ── إلغاء الطلب من قِبل العميل ───────────────────────────────────────────
+    if (text.startsWith("cancel_order_")) {
+      const orderId = text.replace("cancel_order_", "");
+      const session = await getSession(from);
+      const L2 = CUSTOMER_LANGS[getCLang(session)] || CUSTOMER_LANGS.ar;
+      try {
+        const oSnap = await db.collection("orders").doc(orderId).get();
+        if (oSnap.exists && oSnap.data().customer === from) {
+          await db.collection("orders").doc(orderId).update({
+            status: "cancelled",
+            cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+            cancelledBy: "customer"
+          });
+          await clearSession(from);
+          await sendMessage(from, L2.orderCancelled(oSnap.data().orderId || orderId));
+        }
+      } catch(e) { console.error("cancel_order:", e.message); }
+      return;
+    }
+
+    // ── الانتظار (keep) ───────────────────────────────────────────────────────
+    if (text.startsWith("keep_")) {
+      const session = await getSession(from);
+      const L2 = CUSTOMER_LANGS[getCLang(session)] || CUSTOMER_LANGS.ar;
+      await sendMessage(from, L2.noTech);
+      return;
+    }
+
     // ── انتظار أكثر ───────────────────────────────────────────────────────────
     if (text.startsWith("wait_")) {
       const orderId = text.replace("wait_", "");
@@ -735,6 +828,8 @@ app.post("/webhook", async (req, res) => {
     // ── ✅ التعديل: تعرف على كلمات الترحيب في أي وقت ─────────────────────────
     if (msg.type === "text" && isGreeting(text)) {
       await clearSession(from);
+      // تسجيل العميل
+      await updateCustomerData(from);
       await sendLanguageMenu(from);
       return;
     }
@@ -743,9 +838,38 @@ app.post("/webhook", async (req, res) => {
     if (text === "custlang_ar" || text === "custlang_en") {
       const lang = text.replace("custlang_", "");
       await clearSession(from);
-      const L2     = CUSTOMER_LANGS[lang];
+      const L2 = CUSTOMER_LANGS[lang];
+
+      // ── 4: تسجيل بيانات العميل ──────────────────────────────────────────────
+      await updateCustomerData(from);
+
+      // ── 1: طلب قيد البحث → خيار الانتظار أو الإلغاء ─────────────────────────
       const active = await getActiveOrder(from);
-      if (active) { await sendMessage(from, L2.activeOrder(active.orderId, active.status)); return; }
+      if (active) {
+        if (active.status === "searching") {
+          await sendButtons(from, L2.activeSearching(active.orderId), [
+            { id: `keep_${active.id}`,   title: L2.keepWaiting },
+            { id: `cancel_order_${active.id}`, title: L2.cancelOrder }
+          ]);
+          await setSession(from, "main", { lang });
+          return;
+        }
+        await sendMessage(from, L2.activeOrder(active.orderId, active.status));
+        return;
+      }
+
+      // ── 2: تقييم معلق → لا يمكن الطلب قبل التقييم ──────────────────────────
+      const pendingRating = await getPendingRatingOrder(from);
+      if (pendingRating) {
+        await sendMessage(from, L2.needRating);
+        await sendRatingPrompt(from, pendingRating.id, lang);
+        await setSession(from, "main", { lang });
+        return;
+      }
+
+      // ── 4: رسالة الخصوصية ────────────────────────────────────────────────────
+      await sendMessage(from, L2.privacyNote);
+
       const services = await getServices();
       await sendList(from, L2.welcome, L2.servicesBtn, [{
         title: L2.servicesTitle,
@@ -931,6 +1055,11 @@ app.post("/webhook", async (req, res) => {
       await db.collection("orders").doc(orderId).set(orderData);
       await sendMessage(from, L2.orderSent(orderId));
       await clearSession(from);
+
+      // ── 3: تحديث بيانات العميل ───────────────────────────────────────────────
+      await updateCustomerData(from, { latitude: userLat, longitude: userLng });
+      await incrementCustomerOrders(from);
+
       await dispatchToTech(orderId, orderData);
       return;
     }
