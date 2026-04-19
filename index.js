@@ -517,10 +517,11 @@ async function dispatchToTech(orderId, order) {
   const serviceData = serviceSnap.exists ? serviceSnap.data() : null;
   const svcName = serviceData ? getServiceName({ ...serviceData, id: order.serviceId }, techLang) : order.serviceName;
 
-  // النوع بلغة الفني — نبحث عنه في أنواع الخدمة
+  // النوع بلغة الفني — نبحث بالـ id أولاً ثم بالنص
   let typeName = order.type || "";
-  if (serviceData && serviceData.types && order.type) {
+  if (serviceData && serviceData.types) {
     const matchedType = serviceData.types.find(t =>
+      (order.typeId && (t.id === order.typeId || t.name === order.typeId)) ||
       t.nameAr === order.type || t.nameEn === order.type ||
       t.nameHi === order.type || t.nameBn === order.type || t.name === order.type
     );
@@ -869,7 +870,8 @@ app.post("/webhook", async (req, res) => {
       const orderData  = {
         orderId, customer: from,
         serviceName: getServiceName(service, lang), serviceId: service.id,
-        type: selectedType ? (getTypeNameL(selectedType, lang) || selectedType.name || "") : "",
+        type:   selectedType ? (getTypeNameL(selectedType, lang) || selectedType.name || "") : "",
+        typeId: selectedType ? (selectedType.id || selectedType.name || "") : "",
         laborPrice, partsTotal: Math.round(partsTotal*100)/100, totalPrice,
         parts: parts || [], status: "searching", lang,
         rejectedTechs: [],
