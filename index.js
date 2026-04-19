@@ -508,8 +508,24 @@ async function dispatchToTech(orderId, order) {
   }
 
   const TL2       = TECH_LANGS[getTLang(tech)] || TECH_LANGS.ar;
+  const techLang  = getTLang(tech);
   const partsText = (order.parts || []).map(p => `• ${p.name} x${p.qty} = ${p.total} SAR`).join("\n");
   const techPhone = normalize(tech.phone);
+
+  // اسم الخدمة والنوع بلغة الفني
+  const serviceSnap = await db.collection("services").doc(order.serviceId).get();
+  const serviceData = serviceSnap.exists ? serviceSnap.data() : null;
+  const svcName = serviceData ? getServiceName({ ...serviceData, id: order.serviceId }, techLang) : order.serviceName;
+
+  // النوع بلغة الفني — نبحث عنه في أنواع الخدمة
+  let typeName = order.type || "";
+  if (serviceData && serviceData.types && order.type) {
+    const matchedType = serviceData.types.find(t =>
+      t.nameAr === order.type || t.nameEn === order.type ||
+      t.nameHi === order.type || t.nameBn === order.type || t.name === order.type
+    );
+    if (matchedType) typeName = getTypeNameL(matchedType, techLang) || order.type;
+  }
 
   // حساب المسافة بين الفني والعميل
   let distanceText = "";
@@ -521,7 +537,7 @@ async function dispatchToTech(orderId, order) {
   }
 
   await sendMessage(techPhone,
-    TL2.newOrder(order.orderId, order.serviceName, order.type || "", partsText, order.laborPrice || 0, order.totalPrice || 0) + distanceText
+    TL2.newOrder(order.orderId, svcName, typeName, partsText, order.laborPrice || 0, order.totalPrice || 0) + distanceText
   );
 
   // إرسال موقع العميل للفني
