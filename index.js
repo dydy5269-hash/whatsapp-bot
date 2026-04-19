@@ -17,6 +17,7 @@ const VERIFY_TOKEN    = process.env.VERIFY_TOKEN;
 const WHATSAPP_TOKEN  = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const BASE_URL        = process.env.BASE_URL || "https://your-app.railway.app";
+const ADMIN_KEY       = process.env.ADMIN_KEY || "admin-secret-key";
 
 const normalize     = (p) => String(p).replace(/\+/g, "");
 const MIN_BALANCE   = 2;
@@ -34,10 +35,10 @@ const CUSTOMER_LANGS = {
     chooseParts:   (s) => `اختر القطع لـ "${s}" 🔧`,
     partsBtn:      "القطع",
     partsTitle:    "القطع المتاحة",
-    chooseQty:     (n, p) => `كم قطعة من "${n}"؟\n💰 ${p} ريال/قطعة`,
+    chooseQty:     (n, p) => `كم قطعة من "${n}"؟\n💰 ${p} ر.ع/قطعة`,
     qtyBtn:        "الكمية",
     qtyTitle:      "اختر الكمية",
-    addedPart:     (n, q, t) => `✅ ${n} x${q} = ${t} ريال`,
+    addedPart:     (n, q, t) => `✅ ${n} x${q} = ${t} ر.ع`,
     addMore:       "هل تريد إضافة قطعة أخرى؟",
     addMoreBtn:    "اختر",
     yesMore:       "➕ إضافة قطعة أخرى",
@@ -47,7 +48,7 @@ const CUSTOMER_LANGS = {
     backToParts:   "🔙 الرجوع للقطع",
     backToSummary: "🔙 الرجوع للملخص",
     noParts:       "⚠️ لا توجد قطع. أضفها من لوحة التحكم.",
-    summary:       (l, lb, pt, t) => `📋 *ملخص طلبك*\n\n🔧 *القطع:*\n${l}\n\n💼 أجرة: ${lb} ريال\n🔩 قطع: ${pt} ريال\n💰 *الإجمالي: ${t} ريال*`,
+    summary:       (l, lb, pt, t) => `📋 *ملخص طلبك*\n\n🔧 *القطع:*\n${l}\n\n💼 أجرة: ${lb} ر.ع\n🔩 قطع: ${pt} ر.ع\n💰 *الإجمالي: ${t} ر.ع*`,
     confirmBtn:    "تأكيد",
     confirmRow:    "✅ تأكيد الطلب",
     cancelRow:     "❌ إلغاء",
@@ -80,10 +81,10 @@ const CUSTOMER_LANGS = {
     chooseParts:   (s) => `Choose parts for "${s}" 🔧`,
     partsBtn:      "Parts",
     partsTitle:    "Available Parts",
-    chooseQty:     (n, p) => `How many "${n}"?\n💰 ${p} SAR each`,
+    chooseQty:     (n, p) => `How many "${n}"?\n💰 ${p} OMR each`,
     qtyBtn:        "Quantity",
     qtyTitle:      "Choose Quantity",
-    addedPart:     (n, q, t) => `✅ ${n} x${q} = ${t} SAR`,
+    addedPart:     (n, q, t) => `✅ ${n} x${q} = ${t} OMR`,
     addMore:       "Add another part?",
     addMoreBtn:    "Choose",
     yesMore:       "➕ Add another part",
@@ -93,7 +94,7 @@ const CUSTOMER_LANGS = {
     backToParts:   "🔙 Back to Parts",
     backToSummary: "🔙 Back to Summary",
     noParts:       "⚠️ No parts found. Add from dashboard.",
-    summary:       (l, lb, pt, t) => `📋 *Order Summary*\n\n🔧 *Parts:*\n${l}\n\n💼 Labor: ${lb} SAR\n🔩 Parts: ${pt} SAR\n💰 *Total: ${t} SAR*`,
+    summary:       (l, lb, pt, t) => `📋 *Order Summary*\n\n🔧 *Parts:*\n${l}\n\n💼 Labor: ${lb} OMR\n🔩 Parts: ${pt} OMR\n💰 *Total: ${t} OMR*`,
     confirmBtn:    "Confirm",
     confirmRow:    "✅ Confirm Order",
     cancelRow:     "❌ Cancel",
@@ -126,7 +127,7 @@ const TECH_LANGS = {
     langBtn:       "اللغة",
     langTitle:     "اختر لغتك",
     newOrder:      (id, svc, type, parts, labor, total) =>
-      `🔔 *طلب جديد!*\n🆔 ${id}\n🔧 ${svc} - ${type}\n\n*القطع:*\n${parts}\n\n💼 أجرة: ${labor} ريال\n💰 *الإجمالي: ${total} ريال*`,
+      `🔔 *طلب جديد!*\n🆔 ${id}\n🔧 ${svc} - ${type}\n\n*القطع:*\n${parts}\n\n💼 أجرة: ${labor} ر.ع\n💰 *الإجمالي: ${total} ر.ع*`,
     acceptBtn:     "اختر",
     acceptRow:     "✅ قبول",
     rejectRow:     "❌ رفض",
@@ -134,20 +135,20 @@ const TECH_LANGS = {
     doneBtn:       "إنهاء",
     doneRow:       "✅ إنهاء الطلب",
     doneLabel:     (id) => `${id} - اضغط عند الإنهاء`,
-    techDone:      (id, c, b) => `✅ ${id} مكتمل.\n💸 عمولة: ${c} ريال\n💰 رصيدك: ${b} ريال`,
-    lowBalance:    (b, m) => `⚠️ *رصيد منخفض!*\nرصيدك: ${b} ريال\nالحد الأدنى: *${m} ريال*\nيرجى الشحن.\n📞 تواصل مع الإدارة.`,
+    techDone:      (id, c, b) => `✅ ${id} مكتمل.\n💸 عمولة: ${c} ر.ع\n💰 رصيدك: ${b} ر.ع`,
+    lowBalance:    (b, m) => `⚠️ *رصيد منخفض!*\nرصيدك: ${b} ر.ع\nالحد الأدنى: *${m} ر.ع*\nيرجى الشحن.\n📞 تواصل مع الإدارة.`,
     techRejected:  "تم رفض الطلب.",
     orderNotFound: "الطلب غير موجود.",
     alreadyProc:   "تمت معالجة الطلب مسبقاً.",
     alreadyDone:   "الطلب مكتمل مسبقاً.",
-    info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "لا يوجد"}\n💰 ${b} ريال\n🟢 ${a ? "متاح" : "مشغول"}`
+    info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "لا يوجد"}\n💰 ${b} ر.ع\n🟢 ${a ? "متاح" : "مشغول"}`
   },
   en: {
     chooseLang:    "Hello! Choose your language 👇",
     langBtn:       "Language",
     langTitle:     "Choose Language",
     newOrder:      (id, svc, type, parts, labor, total) =>
-      `🔔 *New Order!*\n🆔 ${id}\n🔧 ${svc} - ${type}\n\n*Parts:*\n${parts}\n\n💼 Labor: ${labor} SAR\n💰 *Total: ${total} SAR*`,
+      `🔔 *New Order!*\n🆔 ${id}\n🔧 ${svc} - ${type}\n\n*Parts:*\n${parts}\n\n💼 Labor: ${labor} OMR\n💰 *Total: ${total} OMR*`,
     acceptBtn:     "Choose",
     acceptRow:     "✅ Accept",
     rejectRow:     "❌ Reject",
@@ -155,20 +156,20 @@ const TECH_LANGS = {
     doneBtn:       "Finish",
     doneRow:       "✅ Mark Done",
     doneLabel:     (id) => `${id} - Mark when done`,
-    techDone:      (id, c, b) => `✅ ${id} done.\n💸 Commission: ${c} SAR\n💰 Balance: ${b} SAR`,
-    lowBalance:    (b, m) => `⚠️ *Low Balance!*\nBalance: ${b} SAR\nMinimum: *${m} SAR*\nPlease recharge.\n📞 Contact admin.`,
+    techDone:      (id, c, b) => `✅ ${id} done.\n💸 Commission: ${c} OMR\n💰 Balance: ${b} OMR`,
+    lowBalance:    (b, m) => `⚠️ *Low Balance!*\nBalance: ${b} OMR\nMinimum: *${m} OMR*\nPlease recharge.\n📞 Contact admin.`,
     techRejected:  "Order rejected.",
     orderNotFound: "Order not found.",
     alreadyProc:   "Order already processed.",
     alreadyDone:   "Order already completed.",
-    info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "N/A"}\n💰 ${b} SAR\n🟢 ${a ? "Available" : "Busy"}`
+    info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "N/A"}\n💰 ${b} OMR\n🟢 ${a ? "Available" : "Busy"}`
   },
   hi: {
     chooseLang:    "नमस्ते! अपनी भाषा चुनें 👇",
     langBtn:       "भाषा",
     langTitle:     "भाषा चुनें",
     newOrder:      (id, svc, type, parts, labor, total) =>
-      `🔔 *नया ऑर्डर!*\n🆔 ${id}\n🔧 ${svc} - ${type}\n\n*पार्ट्स:*\n${parts}\n\n💼 मजदूरी: ${labor} SAR\n💰 *कुल: ${total} SAR*`,
+      `🔔 *नया ऑर्डर!*\n🆔 ${id}\n🔧 ${svc} - ${type}\n\n*पार्ट्स:*\n${parts}\n\n💼 मजदूरी: ${labor} OMR\n💰 *कुल: ${total} OMR*`,
     acceptBtn:     "चुनें",
     acceptRow:     "✅ स्वीकार करें",
     rejectRow:     "❌ अस्वीकार",
@@ -176,20 +177,20 @@ const TECH_LANGS = {
     doneBtn:       "समाप्त",
     doneRow:       "✅ काम पूरा",
     doneLabel:     (id) => `${id} - पूरा होने पर दबाएं`,
-    techDone:      (id, c, b) => `✅ ${id} पूरा हुआ।\n💸 कमीशन: ${c} SAR\n💰 बैलेंस: ${b} SAR`,
-    lowBalance:    (b, m) => `⚠️ *कम बैलेंस!*\nबैलेंस: ${b} SAR\nन्यूनतम: *${m} SAR*\nरिचार्ज करें।\n📞 एडमिन से संपर्क करें।`,
+    techDone:      (id, c, b) => `✅ ${id} पूरा हुआ।\n💸 कमीशन: ${c} OMR\n💰 बैलेंस: ${b} OMR`,
+    lowBalance:    (b, m) => `⚠️ *कम बैलेंस!*\nबैलेंस: ${b} OMR\nन्यूनतम: *${m} OMR*\nरिचार्ज करें।\n📞 एडमिन से संपर्क करें।`,
     techRejected:  "ऑर्डर अस्वीकार।",
     orderNotFound: "ऑर्डर नहीं मिला।",
     alreadyProc:   "ऑर्डर पहले ही प्रोसेस हो गया।",
     alreadyDone:   "ऑर्डर पहले ही पूरा हो गया।",
-    info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "N/A"}\n💰 ${b} SAR\n🟢 ${a ? "उपलब्ध" : "व्यस्त"}`
+    info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "N/A"}\n💰 ${b} OMR\n🟢 ${a ? "उपलब्ध" : "व्यस्त"}`
   },
   bn: {
     chooseLang:    "হ্যালো! আপনার ভাষা বেছে নিন 👇",
     langBtn:       "ভাষা",
     langTitle:     "ভাষা বেছে নিন",
     newOrder:      (id, svc, type, parts, labor, total) =>
-      `🔔 *নতুন অর্ডার!*\n🆔 ${id}\n🔧 ${svc} - ${type}\n\n*পার্টস:*\n${parts}\n\n💼 শ্রম: ${labor} SAR\n💰 *মোট: ${total} SAR*`,
+      `🔔 *নতুন অর্ডার!*\n🆔 ${id}\n🔧 ${svc} - ${type}\n\n*পার্টস:*\n${parts}\n\n💼 শ্রম: ${labor} OMR\n💰 *মোট: ${total} OMR*`,
     acceptBtn:     "বেছে নিন",
     acceptRow:     "✅ গ্রহণ করুন",
     rejectRow:     "❌ প্রত্যাখ্যান",
@@ -197,13 +198,13 @@ const TECH_LANGS = {
     doneBtn:       "শেষ করুন",
     doneRow:       "✅ কাজ সম্পন্ন",
     doneLabel:     (id) => `${id} - শেষ হলে চাপুন`,
-    techDone:      (id, c, b) => `✅ ${id} সম্পন্ন।\n💸 কমিশন: ${c} SAR\n💰 ব্যালেন্স: ${b} SAR`,
-    lowBalance:    (b, m) => `⚠️ *কম ব্যালেন্স!*\nব্যালেন্স: ${b} SAR\nন্যূনতম: *${m} SAR*\nরিচার্জ করুন।\n📞 অ্যাডমিন যোগাযোগ করুন।`,
+    techDone:      (id, c, b) => `✅ ${id} সম্পন্ন।\n💸 কমিশন: ${c} OMR\n💰 ব্যালেন্স: ${b} OMR`,
+    lowBalance:    (b, m) => `⚠️ *কম ব্যালেন্স!*\nব্যালেন্স: ${b} OMR\nন্যূনতম: *${m} OMR*\nরিচার্জ করুন।\n📞 অ্যাডমিন যোগাযোগ করুন।`,
     techRejected:  "অর্ডার প্রত্যাখ্যাত।",
     orderNotFound: "অর্ডার পাওয়া যায়নি।",
     alreadyProc:   "অর্ডার ইতিমধ্যে প্রক্রিয়া করা হয়েছে।",
     alreadyDone:   "অর্ডার ইতিমধ্যে সম্পন্ন।",
-    info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "N/A"}\n💰 ${b} SAR\n🟢 ${a ? "উপলব্ধ" : "ব্যস্ত"}`
+    info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "N/A"}\n💰 ${b} OMR\n🟢 ${a ? "উপলব্ধ" : "ব্যস্ত"}`
   }
 };
 
@@ -568,10 +569,10 @@ async function sendPartsMenu(phone, service, selectedParts, lang) {
   const rows   = parts.map(p => ({
     id: "part_" + p.id,
     title: String(p.name || "قطعة").substring(0, 24),
-    description: `${p.price} ريال` + (selIds.includes(p.id) ? " ✅" : "")
+    description: `${p.price} ر.ع` + (selIds.includes(p.id) ? " ✅" : "")
   }));
   if (selectedParts && selectedParts.length > 0) rows.push({ id: "nomore", title: L2.noMore });
-  // زر الرجوع — إذا الخدمة فيها أنواع ارجع للأنواع، وإلا ارجع للخدمات
+  // زر الرجوع
   const hasTypes = service.types && service.types.length > 0;
   rows.push({ id: hasTypes ? "back_types" : "back_services", title: hasTypes ? L2.backToTypes : L2.backToServices });
   await sendList(phone, L2.chooseParts(getServiceName(service, lang)), L2.partsBtn,
@@ -946,11 +947,26 @@ async function handleDone(text, techPhone, tech) {
   if (order.status === "done") { await sendMessage(techPhone, TL2.alreadyDone); return; }
 
   await ref.update({ status: "done", completedAt: admin.firestore.FieldValue.serverTimestamp() });
-  const techRef    = db.collection("technicians").doc(order.technicianId || tech.id);
-  const techData   = (await techRef.get()).data();
+  const techRef  = db.collection("technicians").doc(order.technicianId || tech.id);
+  const techSnap = await techRef.get();
+  const techData = techSnap.data();
+
   const commission = Math.round(order.totalPrice * COMMISSION * 100) / 100;
   const newBalance = Math.max(0, Math.round(((techData.balance||0) - commission)*100)/100);
-  await techRef.update({ balance: newBalance, active: true });
+
+  // ── 4: تحديث إحصائيات الفني ─────────────────────────────────────────────
+  const prevStats     = techData.stats || {};
+  const totalOrders   = (prevStats.totalOrders   || 0) + 1;
+  const totalEarnings = Math.round(((prevStats.totalEarnings || 0) + order.totalPrice) * 100) / 100;
+  const totalCommission = Math.round(((prevStats.totalCommission || 0) + commission) * 100) / 100;
+  const lastOrderAt   = admin.firestore.FieldValue.serverTimestamp();
+
+  await techRef.update({
+    balance: newBalance,
+    active:  true,
+    stats: { totalOrders, totalEarnings, totalCommission, lastOrderAt }
+  });
+  // ─────────────────────────────────────────────────────────────────────────
 
   const CL2           = CUSTOMER_LANGS[order.lang||"ar"] || CUSTOMER_LANGS.ar;
   const customerPhone = normalize(order.customer);
@@ -961,6 +977,104 @@ async function handleDone(text, techPhone, tech) {
   if (newBalance < MIN_BALANCE) await sendMessage(techPhone, TL2.lowBalance(newBalance, MIN_BALANCE));
   await sendRatingPrompt(customerPhone, orderId, order.lang || "ar");
 }
+
+// ─── 3: Admin API — تعيين فني يدوياً من لوحة التحكم ─────────────────────────
+app.post("/admin/assign", async (req, res) => {
+  try {
+    const { orderId, techId, adminKey } = req.body;
+    if (adminKey !== process.env.ADMIN_KEY) return res.status(403).json({ error: "Unauthorized" });
+    if (!orderId || !techId) return res.status(400).json({ error: "orderId and techId required" });
+
+    const orderRef  = db.collection("orders").doc(orderId);
+    const orderSnap = await orderRef.get();
+    if (!orderSnap.exists) return res.status(404).json({ error: "Order not found" });
+    const order = orderSnap.data();
+
+    const techRef  = db.collection("technicians").doc(techId);
+    const techSnap = await techRef.get();
+    if (!techSnap.exists) return res.status(404).json({ error: "Tech not found" });
+    const tech = techSnap.data();
+
+    // تحديث الطلب
+    const techPhone = normalize(tech.phone);
+    await orderRef.update({ status: "pending", technicianId: techId, techPhone, assignedByAdmin: true });
+    await techRef.update({ active: false });
+
+    // إرسال الطلب للفني بلغته
+    const TL2 = TECH_LANGS[tech.lang || "ar"] || TECH_LANGS.ar;
+    const partsText = (order.parts||[]).map(p => `• ${p.name} x${p.qty} = ${p.total} OMR`).join("\n");
+    await sendMessage(techPhone, TL2.newOrder(order.orderId, order.serviceName, order.type||"", partsText, order.laborPrice||0, order.totalPrice||0));
+    if (order.location) await sendLocation(techPhone, order.location.latitude, order.location.longitude);
+    await sendButtons(techPhone,
+      tech.lang === "ar" ? "هل تقبل هذا الطلب؟ (تعيين من الإدارة)" : "Accept this order? (Admin assigned)",
+      [
+        { id: `accept_${orderId}`, title: TL2.acceptRow },
+        { id: `reject_${orderId}`, title: TL2.rejectRow }
+      ]
+    );
+
+    // إشعار العميل
+    const CL2 = CUSTOMER_LANGS[order.lang||"ar"] || CUSTOMER_LANGS.ar;
+    await sendMessage(normalize(order.customer), CL2.noTech.replace("30 دقيقة", "قريباً").replace("30 min", "soon"));
+
+    res.json({ success: true, message: `Order ${orderId} assigned to tech ${techId}` });
+  } catch(e) {
+    console.error("Admin assign error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── Admin API — عرض إحصائيات فني ───────────────────────────────────────────
+app.get("/admin/tech-stats/:techId", async (req, res) => {
+  try {
+    const { adminKey } = req.query;
+    if (adminKey !== process.env.ADMIN_KEY) return res.status(403).json({ error: "Unauthorized" });
+    const snap = await db.collection("technicians").doc(req.params.techId).get();
+    if (!snap.exists) return res.status(404).json({ error: "Not found" });
+    const d = snap.data();
+    res.json({
+      name:            d.name,
+      phone:           d.phone,
+      balance:         d.balance || 0,
+      active:          d.active,
+      rating:          d.rating || 0,
+      ratingCount:     d.ratingCount || 0,
+      stats: {
+        totalOrders:      d.stats?.totalOrders      || 0,
+        totalEarnings:    d.stats?.totalEarnings     || 0,
+        totalCommission:  d.stats?.totalCommission   || 0,
+        lastOrderAt:      d.stats?.lastOrderAt       || null
+      }
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Admin API — عرض إحصائيات جميع الفنيين ──────────────────────────────────
+app.get("/admin/all-stats", async (req, res) => {
+  try {
+    const { adminKey } = req.query;
+    if (adminKey !== process.env.ADMIN_KEY) return res.status(403).json({ error: "Unauthorized" });
+    const snap = await db.collection("technicians").get();
+    const result = snap.docs.map(doc => {
+      const d = doc.data();
+      return {
+        id:              doc.id,
+        name:            d.name,
+        phone:           d.phone,
+        balance:         d.balance || 0,
+        active:          d.active,
+        rating:          d.rating || 0,
+        ratingCount:     d.ratingCount || 0,
+        totalOrders:     d.stats?.totalOrders     || 0,
+        totalEarnings:   d.stats?.totalEarnings   || 0,
+        totalCommission: d.stats?.totalCommission || 0,
+      };
+    });
+    // ترتيب حسب عدد الطلبات
+    result.sort((a, b) => b.totalOrders - a.totalOrders);
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 
 // ─── Background: إعادة البحث عن فني كل 5 دقائق ───────────────────────────────
 setInterval(async () => {
