@@ -528,7 +528,6 @@ async function dispatchToTech(orderId, order) {
 
   const TL2       = TECH_LANGS[getTLang(tech)] || TECH_LANGS.ar;
   const techLang  = getTLang(tech);
-  const partsText = (order.parts || []).map(p => `• ${p.name} x${p.qty} = ${p.total} SAR`).join("\n");
   const techPhone = normalize(tech.phone);
 
   // اسم الخدمة والنوع بلغة الفني
@@ -536,15 +535,31 @@ async function dispatchToTech(orderId, order) {
   const serviceData = serviceSnap.exists ? serviceSnap.data() : null;
   const svcName = serviceData ? getServiceName({ ...serviceData, id: order.serviceId }, techLang) : order.serviceName;
 
-  // النوع بلغة الفني — نبحث بالـ id أولاً ثم بالنص
+  // النوع بلغة الفني — يدعم هيكل name:{ar,en,hi,bn} والهيكل القديم
   let typeName = order.type || "";
   if (serviceData && serviceData.types) {
-    const matchedType = serviceData.types.find(t =>
-      (order.typeId && (t.id === order.typeId || t.name === order.typeId)) ||
-      t.nameAr === order.type || t.nameEn === order.type ||
-      t.nameHi === order.type || t.nameBn === order.type || t.name === order.type
-    );
+    const matchedType = serviceData.types.find(t => {
+      if (order.typeId && (t.id === order.typeId)) return true;
+      // هيكل جديد: name object
+      if (t.name && typeof t.name === "object") {
+        return Object.values(t.name).includes(order.type);
+      }
+      // هيكل قديم
+      return t.nameAr === order.type || t.nameEn === order.type ||
+             t.nameHi === order.type || t.nameBn === order.type || t.name === order.type;
+    });
     if (matchedType) typeName = getTypeNameL(matchedType, techLang) || order.type;
+  }
+
+  // القطع بلغة الفني — نجلب من Firestore لنحول الاسم للغة الفني
+  let partsText = "";
+  if (order.parts && order.parts.length > 0) {
+    const allParts = await getPartsByService(order.serviceId);
+    partsText = order.parts.map(op => {
+      const fullPart = allParts.find(p => p.id === op.id);
+      const pName = fullPart ? getPartName(fullPart, techLang) : op.name;
+      return `• ${pName} x${op.qty} = ${op.total} OMR`;
+    }).join("\n");
   }
 
   // حساب المسافة بين الفني والعميل
@@ -763,7 +778,7 @@ app.post("/webhook", async (req, res) => {
         const typeRows = service.types.map((t, i) => ({
           id: "type_" + i,
           title: String(getTypeNameL(t, lang) || "نوع").substring(0, 24),
-          description: t.price + " ريال"
+          description: t.price + " ر.ع"
         }));
         typeRows.push({ id: "back_services", title: L2.backToServices });
         await sendList(from, getServiceName(service, lang), L2.typesBtn, [{
@@ -808,7 +823,7 @@ app.post("/webhook", async (req, res) => {
         const typeRows = service.types.map((t, i) => ({
           id: "type_" + i,
           title: String(getTypeNameL(t, lang) || "نوع").substring(0, 24),
-          description: t.price + " ريال"
+          description: t.price + " ر.ع"
         }));
         typeRows.push({ id: "back_services", title: L2.backToServices });
         await sendList(from, getServiceName(service, lang), L2.typesBtn, [{ title: L2.chooseType, rows: typeRows }]);
@@ -903,8 +918,8 @@ app.post("/webhook", async (req, res) => {
       const orderData  = {
         orderId, customer: from,
         serviceName: getServiceName(service, lang), serviceId: service.id,
-        type:   selectedType ? (getTypeNameL(selectedType, lang) || selectedType.name || "") : "",
-        typeId: selectedType ? (selectedType.id || selectedType.name || "") : "",
+        type:   selectedType ? (getTypeNameL(selectedType, lang) || "") : "",
+        typeId: selectedType ? (selectedType.id || (selectedType.name && typeof selectedType.name === "object" ? selectedType.name.en || selectedType.name.ar : selectedType.name) || "") : "",
         laborPrice, partsTotal: Math.round(partsTotal*100)/100, totalPrice,
         parts: parts || [], status: "searching", lang,
         rejectedTechs: [],
