@@ -65,6 +65,7 @@ const CUSTOMER_LANGS = {
     ratePrompt:    "⭐ كيف تقيّم الخدمة؟",
     rateBtn:       "التقييم",
     ratingDone:    (s) => `شكراً! أعطيت ${s} ⭐`,
+    outOfZone:     "⚠️ عذراً، موقعك خارج نطاق الخدمة حالياً.\nسنعمل على توسيع خدمتنا قريباً! 🙏",
     defaultMsg:    "أرسل *مرحبا* للبدء."
   },
   en: {
@@ -107,6 +108,7 @@ const CUSTOMER_LANGS = {
     ratePrompt:    "⭐ Rate the service?",
     rateBtn:       "Rate",
     ratingDone:    (s) => `Thanks! You gave ${s} ⭐`,
+    outOfZone:     "⚠️ Sorry, your location is outside our service area.\nWe're expanding soon! 🙏",
     defaultMsg:    "Send *hi* to start."
   }
 };
@@ -350,7 +352,34 @@ async function getActiveOrder(phone) {
   return { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
 
-// ─── Invoice Page ─────────────────────────────────────────────────────────────
+// ─── التحقق من المنطقة المخدومة ──────────────────────────────────────────────
+
+// حساب المسافة بين نقطتين بالكيلومتر (Haversine)
+function calcDistanceKm(lat1, lng1, lat2, lng2) {
+  const R    = 6371; // نصف قطر الأرض بالكيلومتر
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a    =
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng/2) * Math.sin(dLng/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// يرجع المنطقة المخدومة إذا كان الموقع داخلها، أو null إذا خارجها
+async function getRegionForLocation(lat, lng) {
+  const snap = await db.collection("regions").where("active", "==", true).get();
+  for (const doc of snap.docs) {
+    const r        = doc.data();
+    const centerLat = r.centerLat;
+    const centerLng = r.centerLng;
+    const radiusKm  = r.radiusKm || r.radius || 10;
+    const dist      = calcDistanceKm(lat, lng, centerLat, centerLng);
+    if (dist <= radiusKm) return { id: doc.id, ...r };
+  }
+  return null;
+}
+
 app.get("/invoice/:orderId", async (req, res) => {
   try {
     const snap = await db.collection("orders").doc(req.params.orderId).get();
@@ -689,6 +718,17 @@ app.post("/webhook", async (req, res) => {
       if (msg.type !== "location") { await sendMessage(from, L2.locationOnly); return; }
       const { service, selectedType, parts } = session.data;
       if (!service) { await sendMessage(from, L2.sessionExp); await clearSession(from); return; }
+
+      // ── التحقق من المنطقة المخدومة ──────────────────────────────────────────
+      const userLat    = msg.location.latitude;
+      const userLng    = msg.location.longitude;
+      const region     = await getRegionForLocation(userLat, userLng);
+      if (!region) {
+        await sendMessage(from, L2.outOfZone);
+        return; // لا نمسح الجلسة حتى يقدر يرسل موقع آخر
+      }
+      // ────────────────────────────────────────────────────────────────────────
+
       const partsTotal = (parts||[]).reduce((s,p) => s+p.total, 0);
       const laborPrice = selectedType ? selectedType.price : 0;
       const totalPrice = Math.round((partsTotal + laborPrice)*100)/100;
@@ -700,7 +740,8 @@ app.post("/webhook", async (req, res) => {
         laborPrice, partsTotal: Math.round(partsTotal*100)/100, totalPrice,
         parts: parts || [], status: "searching", lang,
         rejectedTechs: [],
-        location: { latitude: msg.location.latitude, longitude: msg.location.longitude },
+        location: { latitude: userLat, longitude: userLng },
+        region:   { id: region.id, name: region.name || "" },
         createdAt:        admin.firestore.FieldValue.serverTimestamp(),
         searchStartedAt:  admin.firestore.FieldValue.serverTimestamp()
       };
