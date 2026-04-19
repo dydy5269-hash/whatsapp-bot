@@ -246,13 +246,12 @@ function TL(tech)    { return TECH_LANGS[getTLang(tech)]; }
 
 // ─── دالة مشتركة لعرض قائمة اختيار اللغة للعميل ─────────────────────────────
 async function sendLanguageMenu(phone) {
-  await sendList(phone,
+  await sendButtons(phone,
     "مرحباً بك! 👋\nWelcome!\n\nاختر لغتك\nChoose your language",
-    "Language / اللغة",
-    [{ title: "اختر / Choose", rows: [
+    [
       { id: "custlang_ar", title: "🇸🇦 العربية" },
       { id: "custlang_en", title: "🇬🇧 English"  }
-    ]}]
+    ]
   );
 }
 
@@ -288,6 +287,44 @@ async function sendList(to, body, button, sections) {
   } catch(e) {
     console.error("sendList ERROR:", e.message);
     if (e.response) console.error("sendList DETAILS:", JSON.stringify(e.response.data));
+  }
+}
+
+// ─── إرسال أزرار (تُستخدم تلقائياً عند أقل من 3 خيارات) ─────────────────────
+async function sendButtons(to, body, buttons) {
+  try {
+    // واتساب يقبل 1-3 أزرار فقط
+    const safeButtons = buttons.slice(0, 3).map(b => ({
+      type: "reply",
+      reply: {
+        id:    String(b.id    || "").substring(0, 256),
+        title: String(b.title || "").substring(0, 20)
+      }
+    }));
+    await axios.post(
+      `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp", to, type: "interactive",
+        interactive: {
+          type: "button",
+          body: { text: String(body || "").substring(0, 1024) },
+          action: { buttons: safeButtons }
+        }
+      },
+      { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
+    );
+  } catch(e) {
+    console.error("sendButtons ERROR:", e.message);
+    if (e.response) console.error("sendButtons DETAILS:", JSON.stringify(e.response.data));
+  }
+}
+
+// ─── دالة ذكية: قائمة إذا 3+ خيارات، أزرار إذا أقل ─────────────────────────
+async function sendMenu(to, body, buttonLabel, rows) {
+  if (rows.length >= 3) {
+    await sendList(to, body, buttonLabel, [{ title: buttonLabel, rows }]);
+  } else {
+    await sendButtons(to, body, rows.map(r => ({ id: r.id, title: r.title })));
   }
 }
 
@@ -456,13 +493,10 @@ async function dispatchToTech(orderId, order) {
     if (elapsed >= RETRY_MINUTES) {
       await ref.update({ status: "no_tech" });
       await sendMessage(normalize(order.customer), CL2.noTechFinal(order.orderId));
-      await sendList(normalize(order.customer), CL2.noTechOptions, CL2.addMoreBtn, [{
-        title: lang === "ar" ? "خيارات" : "Options",
-        rows: [
-          { id: `wait_${orderId}`, title: CL2.waitMore },
-          { id: "mrhba",           title: CL2.retryNow }
-        ]
-      }]);
+      await sendMenu(normalize(order.customer), CL2.noTechOptions, CL2.addMoreBtn, [
+        { id: `wait_${orderId}`, title: CL2.waitMore },
+        { id: "mrhba",           title: CL2.retryNow }
+      ]);
     }
     return;
   }
@@ -474,13 +508,13 @@ async function dispatchToTech(orderId, order) {
   await sendMessage(techPhone,
     TL2.newOrder(order.orderId, order.serviceName, order.type || "", partsText, order.laborPrice || 0, order.totalPrice || 0)
   );
-  await sendList(techPhone,
+  await sendMenu(techPhone,
     getTLang(tech) === "ar" ? "هل تقبل هذا الطلب؟" : "Accept this order?",
     TL2.acceptBtn,
-    [{ title: "Order", rows: [
+    [
       { id: `accept_${orderId}`, title: TL2.acceptRow },
       { id: `reject_${orderId}`, title: TL2.rejectRow }
-    ]}]
+    ]
   );
   await db.collection("orders").doc(orderId).update({
     technicianId: tech.id, techPhone, status: "pending"
@@ -514,10 +548,10 @@ async function showSummary(phone, session, lang) {
   const lines      = (parts || []).map(p => `• ${p.name} x${p.qty} = ${p.total} ريال`).join("\n");
   await sendMessage(phone, L2.summary(lines, laborPrice, Math.round(partsTotal*100)/100, totalPrice));
   await setSession(phone, "confirm", session.data);
-  await sendList(phone, lang === "ar" ? "هل تؤكد الطلب؟" : "Confirm order?", L2.confirmBtn, [{
-    title: lang === "ar" ? "تأكيد" : "Confirm",
-    rows: [{ id: "confirm", title: L2.confirmRow }, { id: "cancel", title: L2.cancelRow }]
-  }]);
+  await sendMenu(phone, lang === "ar" ? "هل تؤكد الطلب؟" : "Confirm order?", L2.confirmBtn, [
+    { id: "confirm", title: L2.confirmRow },
+    { id: "cancel",  title: L2.cancelRow  }
+  ]);
 }
 
 // ─── Webhook ──────────────────────────────────────────────────────────────────
@@ -700,10 +734,10 @@ app.post("/webhook", async (req, res) => {
       else parts.push({ id: part.id, name: part.name, qty, unitPrice: part.price, total });
       await sendMessage(from, L2.addedPart(part.name, qty, total));
       await setSession(from, "parts", { ...session.data, parts, pendingPart: null });
-      await sendList(from, L2.addMore, L2.addMoreBtn, [{
-        title: lang === "ar" ? "الخيارات" : "Options",
-        rows: [{ id: "addmore", title: L2.yesMore }, { id: "nomore", title: L2.noMore }]
-      }]);
+      await sendMenu(from, L2.addMore, L2.addMoreBtn, [
+        { id: "addmore", title: L2.yesMore },
+        { id: "nomore",  title: L2.noMore  }
+      ]);
       return;
     }
 
@@ -777,9 +811,9 @@ async function handleAccept(text, techPhone, tech) {
 
   await sendMessage(techPhone, TL2.customerPhone(customerPhone));
   if (order.location) await sendLocation(techPhone, order.location.latitude, order.location.longitude);
-  await sendList(techPhone, TL2.doneLabel(orderId), TL2.doneBtn, [{
-    title: "Order", rows: [{ id: "done_" + orderId, title: TL2.doneRow }]
-  }]);
+  await sendButtons(techPhone, TL2.doneLabel(orderId), [
+    { id: "done_" + orderId, title: TL2.doneRow }
+  ]);
   await sendMessage(customerPhone, CL2.accepted(tech.name, tech.phone));
 }
 
