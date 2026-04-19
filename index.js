@@ -42,6 +42,10 @@ const CUSTOMER_LANGS = {
     addMoreBtn:    "اختر",
     yesMore:       "➕ إضافة قطعة أخرى",
     noMore:        "✅ انتهيت",
+    backToServices:"🔙 الرجوع للخدمات",
+    backToTypes:   "🔙 الرجوع للأنواع",
+    backToParts:   "🔙 الرجوع للقطع",
+    backToSummary: "🔙 الرجوع للملخص",
     noParts:       "⚠️ لا توجد قطع. أضفها من لوحة التحكم.",
     summary:       (l, lb, pt, t) => `📋 *ملخص طلبك*\n\n🔧 *القطع:*\n${l}\n\n💼 أجرة: ${lb} ريال\n🔩 قطع: ${pt} ريال\n💰 *الإجمالي: ${t} ريال*`,
     confirmBtn:    "تأكيد",
@@ -61,7 +65,6 @@ const CUSTOMER_LANGS = {
     accepted:      (n, p) => `✅ تم قبول طلبك!\n👨‍🔧 ${n}\n📞 ${p}\nفي الطريق!`,
     rejected:      (id) => `❌ رفض الفني. نبحث عن آخر...\n🆔 ${id}`,
     completed:     (id) => `✅ اكتمل طلبك!\n🆔 ${id}\nشكراً! 🙏`,
-    invoiceMsg:    (id, url) => `🧾 *فاتورتك:*\n🆔 ${id}\n📄 ${url}`,
     ratePrompt:    "⭐ كيف تقيّم الخدمة؟",
     rateBtn:       "التقييم",
     ratingDone:    (s) => `شكراً! أعطيت ${s} ⭐`,
@@ -85,6 +88,10 @@ const CUSTOMER_LANGS = {
     addMoreBtn:    "Choose",
     yesMore:       "➕ Add another part",
     noMore:        "✅ Done",
+    backToServices:"🔙 Back to Services",
+    backToTypes:   "🔙 Back to Types",
+    backToParts:   "🔙 Back to Parts",
+    backToSummary: "🔙 Back to Summary",
     noParts:       "⚠️ No parts found. Add from dashboard.",
     summary:       (l, lb, pt, t) => `📋 *Order Summary*\n\n🔧 *Parts:*\n${l}\n\n💼 Labor: ${lb} SAR\n🔩 Parts: ${pt} SAR\n💰 *Total: ${t} SAR*`,
     confirmBtn:    "Confirm",
@@ -104,7 +111,6 @@ const CUSTOMER_LANGS = {
     accepted:      (n, p) => `✅ Accepted!\n👨‍🔧 ${n}\n📞 ${p}\nOn the way!`,
     rejected:      (id) => `❌ Tech rejected. Searching...\n🆔 ${id}`,
     completed:     (id) => `✅ Done!\n🆔 ${id}\nThank you! 🙏`,
-    invoiceMsg:    (id, url) => `🧾 *Invoice:*\n🆔 ${id}\n📄 ${url}`,
     ratePrompt:    "⭐ Rate the service?",
     rateBtn:       "Rate",
     ratingDone:    (s) => `Thanks! You gave ${s} ⭐`,
@@ -505,9 +511,24 @@ async function dispatchToTech(orderId, order) {
   const partsText = (order.parts || []).map(p => `• ${p.name} x${p.qty} = ${p.total} SAR`).join("\n");
   const techPhone = normalize(tech.phone);
 
+  // حساب المسافة بين الفني والعميل
+  let distanceText = "";
+  if (tech.lat && tech.lng && order.location) {
+    const dist = calcDistanceKm(tech.lat, tech.lng, order.location.latitude, order.location.longitude);
+    distanceText = getTLang(tech) === "ar"
+      ? `\n📍 المسافة: ${dist.toFixed(1)} كم`
+      : `\n📍 Distance: ${dist.toFixed(1)} km`;
+  }
+
   await sendMessage(techPhone,
-    TL2.newOrder(order.orderId, order.serviceName, order.type || "", partsText, order.laborPrice || 0, order.totalPrice || 0)
+    TL2.newOrder(order.orderId, order.serviceName, order.type || "", partsText, order.laborPrice || 0, order.totalPrice || 0) + distanceText
   );
+
+  // إرسال موقع العميل للفني
+  if (order.location) {
+    await sendLocation(techPhone, order.location.latitude, order.location.longitude);
+  }
+
   await sendMenu(techPhone,
     getTLang(tech) === "ar" ? "هل تقبل هذا الطلب؟" : "Accept this order?",
     TL2.acceptBtn,
@@ -533,6 +554,9 @@ async function sendPartsMenu(phone, service, selectedParts, lang) {
     description: `${p.price} ريال` + (selIds.includes(p.id) ? " ✅" : "")
   }));
   if (selectedParts && selectedParts.length > 0) rows.push({ id: "nomore", title: L2.noMore });
+  // زر الرجوع — إذا الخدمة فيها أنواع ارجع للأنواع، وإلا ارجع للخدمات
+  const hasTypes = service.types && service.types.length > 0;
+  rows.push({ id: hasTypes ? "back_types" : "back_services", title: hasTypes ? L2.backToTypes : L2.backToServices });
   await sendList(phone, L2.chooseParts(getServiceName(service, lang)), L2.partsBtn,
     [{ title: L2.partsTitle, rows: rows.slice(0, 10) }]
   );
@@ -548,10 +572,14 @@ async function showSummary(phone, session, lang) {
   const lines      = (parts || []).map(p => `• ${p.name} x${p.qty} = ${p.total} ريال`).join("\n");
   await sendMessage(phone, L2.summary(lines, laborPrice, Math.round(partsTotal*100)/100, totalPrice));
   await setSession(phone, "confirm", session.data);
-  await sendMenu(phone, lang === "ar" ? "هل تؤكد الطلب؟" : "Confirm order?", L2.confirmBtn, [
-    { id: "confirm", title: L2.confirmRow },
-    { id: "cancel",  title: L2.cancelRow  }
-  ]);
+  await sendList(phone, lang === "ar" ? "هل تؤكد الطلب؟" : "Confirm order?", L2.confirmBtn, [{
+    title: lang === "ar" ? "الخيارات" : "Options",
+    rows: [
+      { id: "confirm",    title: L2.confirmRow  },
+      { id: "back_parts", title: L2.backToParts },
+      { id: "cancel",     title: L2.cancelRow   }
+    ]
+  }]);
 }
 
 // ─── Webhook ──────────────────────────────────────────────────────────────────
@@ -683,9 +711,14 @@ app.post("/webhook", async (req, res) => {
       if (!service) { await sendMessage(from, L2.defaultMsg); return; }
       if (service.types && service.types.length > 0) {
         await setSession(from, "type", { ...session.data, service });
+        const typeRows = service.types.map((t, i) => ({
+          id: "type_" + i,
+          title: String(getTypeNameL(t, lang) || "نوع").substring(0, 24),
+          description: t.price + " ريال"
+        }));
+        typeRows.push({ id: "back_services", title: L2.backToServices });
         await sendList(from, getServiceName(service, lang), L2.typesBtn, [{
-          title: L2.chooseType,
-          rows: service.types.map((t, i) => ({ id: "type_" + i, title: String(getTypeNameL(t, lang) || "نوع").substring(0, 24), description: t.price + " ريال" }))
+          title: L2.chooseType, rows: typeRows
         }]);
       } else {
         await setSession(from, "parts", { ...session.data, service, selectedType: { name: getServiceName(service, lang), price: 0 }, parts: [] });
@@ -695,19 +728,53 @@ app.post("/webhook", async (req, res) => {
     }
 
     // ── type: اختيار النوع ────────────────────────────────────────────────────
-    if (session.state === "type" && text.startsWith("type_")) {
-      const index   = parseInt(text.replace("type_", ""));
-      const service = session.data.service;
-      if (!service || isNaN(index) || !service.types[index]) { await sendMessage(from, L2.defaultMsg); return; }
-      const selectedType = service.types[index];
-      await setSession(from, "parts", { ...session.data, selectedType, parts: [] });
-      await sendPartsMenu(from, service, [], lang);
-      return;
+    if (session.state === "type") {
+      if (text === "back_services") {
+        const services = await getServices();
+        await setSession(from, "main", { lang });
+        await sendList(from, L2.welcome, L2.servicesBtn, [{
+          title: L2.servicesTitle,
+          rows: services.map(s => ({ id: "service_" + s.id, title: String(getServiceName(s, lang)).substring(0, 24) }))
+        }]);
+        return;
+      }
+      if (text.startsWith("type_")) {
+        const index   = parseInt(text.replace("type_", ""));
+        const service = session.data.service;
+        if (!service || isNaN(index) || !service.types[index]) { await sendMessage(from, L2.defaultMsg); return; }
+        const selectedType = service.types[index];
+        await setSession(from, "parts", { ...session.data, selectedType, parts: [] });
+        await sendPartsMenu(from, service, [], lang);
+        return;
+      }
     }
 
     // ── parts: اختيار القطع ───────────────────────────────────────────────────
     if (session.state === "parts") {
       if (text === "nomore") { await showSummary(from, session, lang); return; }
+      // رجوع للأنواع
+      if (text === "back_types") {
+        const service = session.data.service;
+        await setSession(from, "type", { ...session.data });
+        const typeRows = service.types.map((t, i) => ({
+          id: "type_" + i,
+          title: String(getTypeNameL(t, lang) || "نوع").substring(0, 24),
+          description: t.price + " ريال"
+        }));
+        typeRows.push({ id: "back_services", title: L2.backToServices });
+        await sendList(from, getServiceName(service, lang), L2.typesBtn, [{ title: L2.chooseType, rows: typeRows }]);
+        return;
+      }
+      // رجوع للخدمات
+      if (text === "back_services") {
+        const services = await getServices();
+        await setSession(from, "main", { lang });
+        await sendList(from, L2.welcome, L2.servicesBtn, [{
+          title: L2.servicesTitle,
+          rows: services.map(s => ({ id: "service_" + s.id, title: String(getServiceName(s, lang)).substring(0, 24) }))
+        }]);
+        return;
+      }
       if (text.startsWith("part_")) {
         const partId   = text.replace("part_", "");
         const allParts = await getPartsByService(session.data.service.id);
@@ -716,7 +783,10 @@ app.post("/webhook", async (req, res) => {
         await setSession(from, "qty", { ...session.data, pendingPart: part });
         await sendList(from, L2.chooseQty(part.name, part.price), L2.qtyBtn, [{
           title: L2.qtyTitle,
-          rows: [1,2,3,4,5].map(n => ({ id: "qty_" + n, title: n + (lang==="ar"?" قطع":" pcs") }))
+          rows: [
+            ...[1,2,3,4,5].map(n => ({ id: "qty_" + n, title: n + (lang==="ar"?" قطع":" pcs") })),
+            { id: "back_parts", title: L2.backToParts }
+          ]
         }]);
         return;
       }
@@ -724,26 +794,38 @@ app.post("/webhook", async (req, res) => {
     }
 
     // ── qty: اختيار الكمية ────────────────────────────────────────────────────
-    if (session.state === "qty" && text.startsWith("qty_")) {
-      const qty      = parseInt(text.replace("qty_", ""));
-      const part     = session.data.pendingPart;
-      const parts    = session.data.parts || [];
-      const total    = Math.round(part.price * qty * 100) / 100;
-      const idx      = parts.findIndex(p => p.id === part.id);
-      if (idx >= 0) { parts[idx].qty += qty; parts[idx].total += total; }
-      else parts.push({ id: part.id, name: part.name, qty, unitPrice: part.price, total });
-      await sendMessage(from, L2.addedPart(part.name, qty, total));
-      await setSession(from, "parts", { ...session.data, parts, pendingPart: null });
-      await sendMenu(from, L2.addMore, L2.addMoreBtn, [
-        { id: "addmore", title: L2.yesMore },
-        { id: "nomore",  title: L2.noMore  }
-      ]);
-      return;
+    if (session.state === "qty") {
+      if (text === "back_parts") {
+        await setSession(from, "parts", { ...session.data, pendingPart: null });
+        await sendPartsMenu(from, session.data.service, session.data.parts||[], lang);
+        return;
+      }
+      if (text.startsWith("qty_")) {
+        const qty      = parseInt(text.replace("qty_", ""));
+        const part     = session.data.pendingPart;
+        const parts    = session.data.parts || [];
+        const total    = Math.round(part.price * qty * 100) / 100;
+        const idx      = parts.findIndex(p => p.id === part.id);
+        if (idx >= 0) { parts[idx].qty += qty; parts[idx].total += total; }
+        else parts.push({ id: part.id, name: part.name, qty, unitPrice: part.price, total });
+        await sendMessage(from, L2.addedPart(part.name, qty, total));
+        await setSession(from, "parts", { ...session.data, parts, pendingPart: null });
+        await sendMenu(from, L2.addMore, L2.addMoreBtn, [
+          { id: "addmore", title: L2.yesMore },
+          { id: "nomore",  title: L2.noMore  }
+        ]);
+        return;
+      }
     }
 
     // ── confirm ───────────────────────────────────────────────────────────────
     if (session.state === "confirm") {
-      if (text === "cancel")  { await clearSession(from); await sendMessage(from, L2.cancelled); return; }
+      if (text === "cancel")       { await clearSession(from); await sendMessage(from, L2.cancelled); return; }
+      if (text === "back_parts")   {
+        await setSession(from, "parts", { ...session.data });
+        await sendPartsMenu(from, session.data.service, session.data.parts||[], lang);
+        return;
+      }
       if (text === "confirm") { await setSession(from, "location", session.data); await sendMessage(from, L2.sendLocation); return; }
     }
 
@@ -854,10 +936,8 @@ async function handleDone(text, techPhone, tech) {
 
   const CL2           = CUSTOMER_LANGS[order.lang||"ar"] || CUSTOMER_LANGS.ar;
   const customerPhone = normalize(order.customer);
-  const invoiceUrl    = `${BASE_URL}/invoice/${orderId}`;
 
   await sendMessage(customerPhone, CL2.completed(order.orderId));
-  await sendMessage(customerPhone, CL2.invoiceMsg(order.orderId, invoiceUrl));
   await sendMessage(techPhone, TL2.techDone(order.orderId, commission, newBalance));
 
   if (newBalance < MIN_BALANCE) await sendMessage(techPhone, TL2.lowBalance(newBalance, MIN_BALANCE));
