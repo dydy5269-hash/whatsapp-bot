@@ -578,6 +578,20 @@ async function dispatchToTech(orderId, order) {
   });
 }
 
+// ─── اسم القطعة حسب اللغة ────────────────────────────────────────────────────
+function getPartName(part, lang) {
+  // هيكل جديد: name.ar / name.en / name.hi / name.bn
+  if (part.name && typeof part.name === "object") {
+    if (lang === "ar") return part.name.ar || part.name.en || "قطعة";
+    if (lang === "en") return part.name.en || part.name.ar || "Part";
+    if (lang === "hi") return part.name.hi || part.name.en || part.name.ar || "पुर्जा";
+    if (lang === "bn") return part.name.bn || part.name.en || part.name.ar || "যন্ত্রাংশ";
+    return part.name.ar || "قطعة";
+  }
+  // هيكل قديم: string
+  return part.name || "قطعة";
+}
+
 // ─── Parts Menu ───────────────────────────────────────────────────────────────
 async function sendPartsMenu(phone, service, selectedParts, lang) {
   const L2    = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
@@ -586,11 +600,10 @@ async function sendPartsMenu(phone, service, selectedParts, lang) {
   const selIds = (selectedParts || []).map(p => p.id);
   const rows   = parts.map(p => ({
     id: "part_" + p.id,
-    title: String(p.name || "قطعة").substring(0, 24),
+    title: String(getPartName(p, lang)).substring(0, 24),
     description: `${p.price} ر.ع` + (selIds.includes(p.id) ? " ✅" : "")
   }));
   if (selectedParts && selectedParts.length > 0) rows.push({ id: "nomore", title: L2.noMore });
-  // زر الرجوع
   const hasTypes = service.types && service.types.length > 0;
   rows.push({ id: hasTypes ? "back_types" : "back_services", title: hasTypes ? L2.backToTypes : L2.backToServices });
   await sendList(phone, L2.chooseParts(getServiceName(service, lang)), L2.partsBtn,
@@ -817,7 +830,7 @@ app.post("/webhook", async (req, res) => {
         const part     = allParts.find(p => p.id === partId);
         if (!part) { await sendMessage(from, L2.defaultMsg); return; }
         await setSession(from, "qty", { ...session.data, pendingPart: part });
-        await sendList(from, L2.chooseQty(part.name, part.price), L2.qtyBtn, [{
+        await sendList(from, L2.chooseQty(getPartName(part, lang), part.price), L2.qtyBtn, [{
           title: L2.qtyTitle,
           rows: [
             ...[1,2,3,4,5].map(n => ({ id: "qty_" + n, title: n + (lang==="ar"?" قطع":" pcs") })),
@@ -840,11 +853,12 @@ app.post("/webhook", async (req, res) => {
         const qty      = parseInt(text.replace("qty_", ""));
         const part     = session.data.pendingPart;
         const parts    = session.data.parts || [];
+        const partName = getPartName(part, lang);
         const total    = Math.round(part.price * qty * 100) / 100;
         const idx      = parts.findIndex(p => p.id === part.id);
         if (idx >= 0) { parts[idx].qty += qty; parts[idx].total += total; }
-        else parts.push({ id: part.id, name: part.name, qty, unitPrice: part.price, total });
-        await sendMessage(from, L2.addedPart(part.name, qty, total));
+        else parts.push({ id: part.id, name: partName, qty, unitPrice: part.price, total });
+        await sendMessage(from, L2.addedPart(partName, qty, total));
         await setSession(from, "parts", { ...session.data, parts, pendingPart: null });
         await sendMenu(from, L2.addMore, L2.addMoreBtn, [
           { id: "addmore", title: L2.yesMore },
