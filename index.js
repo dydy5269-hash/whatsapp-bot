@@ -89,10 +89,10 @@ const CUSTOMER_LANGS = {
     confirmBtn:    "Confirm",
     confirmRow:    "✅ Confirm Order",
     cancelRow:     "❌ Cancel",
-    cancelled:     "Cancelled. Send *mrhba* to start.",
+    cancelled:     "Cancelled. Send *hi* to start.",
     sendLocation:  "📍 Send your location to complete the order.",
     locationOnly:  "Please send your location via WhatsApp.",
-    sessionExp:    "Session expired. Send *mrhba*.",
+    sessionExp:    "Session expired. Send *hi*.",
     noTech:        "⚠️ No technician available. Searching for 30 min.",
     noTechFinal:   (id) => `⚠️ No tech found in 30 min.\n🆔 ${id}`,
     noTechOptions: "Choose:",
@@ -107,7 +107,7 @@ const CUSTOMER_LANGS = {
     ratePrompt:    "⭐ Rate the service?",
     rateBtn:       "Rate",
     ratingDone:    (s) => `Thanks! You gave ${s} ⭐`,
-    defaultMsg:    "Send *mrhba* to start."
+    defaultMsg:    "Send *hi* to start."
   }
 };
 
@@ -207,6 +207,18 @@ const LANG_ROWS = [
   { id: "techlang_bn", title: "🇧🇩 বাংলা"    }
 ];
 
+// ─── كلمات الترحيب المعروفة ────────────────────────────────────────────────────
+const GREETINGS = [
+  "مرحبا","مرحباً","مرحبه","هلا","هلو","اهلا","أهلا","أهلاً","اهلاً",
+  "السلام","السلام عليكم","صباح الخير","مساء الخير","ابدأ","بدء","ابدا",
+  "hi","hello","hey","start","begin","yo","sup","helo","helo"
+];
+
+function isGreeting(text) {
+  const t = text.trim().toLowerCase();
+  return GREETINGS.some(g => t === g || t.startsWith(g + " ") || t.includes(g));
+}
+
 // ─── Session Helpers ──────────────────────────────────────────────────────────
 async function getSession(phone) {
   const doc = await db.collection("sessions").doc(phone).get();
@@ -229,6 +241,18 @@ function getTLang(tech) {
 }
 function CL(session) { return CUSTOMER_LANGS[getCLang(session)]; }
 function TL(tech)    { return TECH_LANGS[getTLang(tech)]; }
+
+// ─── دالة مشتركة لعرض قائمة اختيار اللغة للعميل ─────────────────────────────
+async function sendLanguageMenu(phone) {
+  await sendList(phone,
+    "مرحباً بك! 👋\nWelcome!\n\nاختر لغتك\nChoose your language",
+    "Language / اللغة",
+    [{ title: "اختر / Choose", rows: [
+      { id: "custlang_ar", title: "🇸🇦 العربية" },
+      { id: "custlang_en", title: "🇬🇧 English"  }
+    ]}]
+  );
+}
 
 // ─── WhatsApp Senders ─────────────────────────────────────────────────────────
 async function sendMessage(to, text) {
@@ -281,7 +305,6 @@ async function getServices() {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-// ─── اسم الخدمة حسب اللغة ────────────────────────────────────────────────────
 function getServiceName(service, lang) {
   if (lang === "ar") return service.nameAr || service.name || service.id;
   if (lang === "en") return service.nameEn || service.nameAr || service.name || service.id;
@@ -299,6 +322,7 @@ function getTypeNameL(type, lang) {
   if (lang === "bn") return type.nameBn || type.nameEn || type.nameAr || type.name || "";
   return type.nameAr || type.name || "";
 }
+
 async function getPartsByService(serviceId) {
   const snap = await db.collection("parts").where("serviceId", "==", serviceId).get();
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -414,7 +438,6 @@ async function dispatchToTech(orderId, order) {
     return;
   }
 
-  // وُجد فني
   const TL2       = TECH_LANGS[getTLang(tech)] || TECH_LANGS.ar;
   const partsText = (order.parts || []).map(p => `• ${p.name} x${p.qty} = ${p.total} SAR`).join("\n");
   const techPhone = normalize(tech.phone);
@@ -494,12 +517,10 @@ app.post("/webhook", async (req, res) => {
     // ── فني ───────────────────────────────────────────────────────────────────
     const tech = await getTechByPhone(from);
     if (tech) {
-      // أوامر الطلبات — تعمل دائماً
       if (text.startsWith("accept_")) { await handleAccept(text, from, tech); return; }
       if (text.startsWith("reject_")) { await handleReject(text, from, tech); return; }
       if (text.startsWith("done_"))   { await handleDone(text, from, tech);   return; }
 
-      // اختيار اللغة من القائمة
       if (text.startsWith("techlang_")) {
         const chosenLang = text.replace("techlang_", "");
         if (TECH_LANGS[chosenLang]) {
@@ -510,14 +531,13 @@ app.post("/webhook", async (req, res) => {
         return;
       }
 
-      // info بأي لغة
       if (["info","معلومات","जानकारी","তথ্য"].includes(text)) {
         const TL2 = TECH_LANGS[getTLang(tech)] || TECH_LANGS.ar;
         await sendMessage(from, TL2.info(tech.name, tech.phone, tech.rating, tech.balance||0, tech.active));
         return;
       }
 
-      // أي رسالة أخرى من الفني → دائماً يعرض قائمة اللغات الأربع
+      // أي رسالة أخرى من الفني → قائمة اللغات
       await sendList(from,
         "مرحباً! / Hello! / नमस्ते! / হ্যালো!\n\nاختر لغتك / Choose your language",
         "Language",
@@ -557,6 +577,13 @@ app.post("/webhook", async (req, res) => {
       return;
     }
 
+    // ── ✅ التعديل: تعرف على كلمات الترحيب في أي وقت ─────────────────────────
+    if (msg.type === "text" && isGreeting(text)) {
+      await clearSession(from);
+      await sendLanguageMenu(from);
+      return;
+    }
+
     // ── اختيار لغة العميل من القائمة ─────────────────────────────────────────
     if (text === "custlang_ar" || text === "custlang_en") {
       const lang = text.replace("custlang_", "");
@@ -576,19 +603,11 @@ app.post("/webhook", async (req, res) => {
     // ── جلسة العميل ──────────────────────────────────────────────────────────
     let session = await getSession(from);
 
-    // أي رسالة بدون جلسة → ترحيب + اختيار اللغة (عربي / إنجليزي)
+    // زائر جديد بدون جلسة → قائمة اللغة
     if (!session.state) {
-      await sendList(from,
-        "مرحباً بك! 👋\nWelcome!\n\nاختر لغتك\nChoose your language",
-        "Language / اللغة",
-        [{ title: "اختر / Choose", rows: [
-          { id: "custlang_ar", title: "🇸🇦 العربية"  },
-          { id: "custlang_en", title: "🇬🇧 English"   }
-        ]}]
-      );
+      await sendLanguageMenu(from);
       return;
     }
-
 
     const lang = getCLang(session);
     const L2   = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
@@ -692,7 +711,9 @@ app.post("/webhook", async (req, res) => {
       return;
     }
 
+    // أي رسالة غير معروفة
     await sendMessage(from, L2.defaultMsg);
+
   } catch(err) { console.error("WEBHOOK ERROR:", err); }
 });
 
