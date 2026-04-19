@@ -759,7 +759,8 @@ app.post("/webhook", async (req, res) => {
       const region     = await getRegionForLocation(userLat, userLng);
       if (!region) {
         await sendMessage(from, L2.outOfZone);
-        return; // لا نمسح الجلسة حتى يقدر يرسل موقع آخر
+        await clearSession(from); // ننهي الجلسة — أي رسالة بعدها تبدأ من جديد
+        return;
       }
       // ────────────────────────────────────────────────────────────────────────
 
