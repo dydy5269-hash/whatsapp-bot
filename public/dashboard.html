@@ -1273,8 +1273,11 @@ async function deleteUser(id){if(!confirm("حذف هذا المستخدم؟"))re
 async function loadWaiting(){
   document.getElementById("waiting-table").innerHTML='<div class="loader"><div class="spinner"></div></div>';
   try{
-    const snap=await db.collection("orders").where("status","==","searching").orderBy("createdAt","asc").get();
-    const list=snap.docs.map(d=>({id:d.id,...d.data()}));
+    // بدون orderBy لتجنب الحاجة لـ index مركّب
+    const snap=await db.collection("orders").where("status","==","searching").get();
+    // ترتيب في الكود بدل Firestore
+    const list=snap.docs.map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>(a.createdAt?.seconds||0)-(b.createdAt?.seconds||0));
     const badge=document.getElementById("waiting-badge");badge.style.display=list.length?"inline":"none";badge.textContent=list.length;
     if(!list.length){document.getElementById("waiting-table").innerHTML='<div class="empty">لا توجد طلبات في قائمة الانتظار ✅</div>';return;}
     const rows=list.map(o=>{
