@@ -252,6 +252,7 @@ html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
       <div class="nav-section">التقارير</div>
       <button class="nav-item" onclick="showPage('finance',this)"><span class="icon">💰</span>التقارير المالية</button>
       <button class="nav-item" id="nav-users" onclick="showPage('users',this)"><span class="icon">👥</span>المستخدمون</button>
+      <button class="nav-item" onclick="showPage('customers',this)"><span class="icon">📱</span>العملاء</button>
     </nav>
     <div class="sidebar-footer">
       <div class="admin-info"><strong id="admin-email">—</strong><span class="admin-role-badge role-admin" id="admin-role-badge">مدير</span></div>
@@ -304,13 +305,21 @@ html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
           </div>
         </div>
         <div class="search-bar"><input type="text" id="order-search" placeholder="بحث..." oninput="renderFilteredOrders()"/></div>
-        <div class="filter-bar">
-          <button class="filter-btn active" onclick="setOrderFilter('all',this)">الكل</button>
-          <button class="filter-btn" onclick="setOrderFilter('pending',this)">قيد الانتظار</button>
-          <button class="filter-btn" onclick="setOrderFilter('accepted',this)">مقبول</button>
-          <button class="filter-btn" onclick="setOrderFilter('done',this)">مكتمل</button>
-          <button class="filter-btn" onclick="setOrderFilter('searching',this)">⏳ يبحث</button>
-          <button class="filter-btn" onclick="setOrderFilter('cancelled',this)">ملغي</button>
+        <div class="filter-bar" style="flex-wrap:wrap;gap:8px">
+          <div style="display:flex;gap:5px;flex-wrap:wrap">
+            <button class="filter-btn active" onclick="setOrderFilter('all',this)">الكل</button>
+            <button class="filter-btn" onclick="setOrderFilter('pending',this)">قيد الانتظار</button>
+            <button class="filter-btn" onclick="setOrderFilter('accepted',this)">مقبول</button>
+            <button class="filter-btn" onclick="setOrderFilter('done',this)">مكتمل</button>
+            <button class="filter-btn" onclick="setOrderFilter('searching',this)">⏳ يبحث</button>
+            <button class="filter-btn" onclick="setOrderFilter('cancelled',this)">ملغي</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-right:auto">
+            <input type="date" id="date-from" onchange="renderFilteredOrders()" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:.75rem"/>
+            <span style="color:var(--muted);font-size:.75rem">—</span>
+            <input type="date" id="date-to" onchange="renderFilteredOrders()" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:.75rem"/>
+            <button class="btn btn-sm" style="background:var(--surface2);color:var(--muted)" onclick="clearDateFilter()">✕</button>
+          </div>
         </div>
         <div class="table-wrap" id="orders-table"><div class="loader"><div class="spinner"></div></div></div>
       </div>
@@ -335,6 +344,7 @@ html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
     <div id="page-technicians" class="page">
       <div class="card">
         <div class="card-header"><h3>الفنيون</h3><button class="btn btn-primary btn-sm" onclick="openModal('tech-modal')">+ إضافة فني</button></div>
+        <div class="search-bar"><input type="text" id="tech-search" placeholder="بحث بالاسم أو الهاتف..." oninput="filterTechnicians()"/></div>
         <div id="tech-grid" class="tech-grid"><div class="loader"><div class="spinner"></div></div></div>
       </div>
     </div>
@@ -387,6 +397,18 @@ html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
       <div class="card">
         <div class="card-header"><h3>👥 المستخدمون والصلاحيات</h3><button class="btn btn-primary btn-sm" onclick="openModal('user-modal')">+ إضافة مستخدم</button></div>
         <div class="table-wrap" id="users-table"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+
+    <!-- Customers -->
+    <div id="page-customers" class="page">
+      <div class="card">
+        <div class="card-header">
+          <h3>📱 العملاء</h3>
+          <button class="btn btn-success btn-sm" onclick="exportCustomersExcel()">📊 Excel</button>
+        </div>
+        <div class="search-bar"><input type="text" id="customer-search" placeholder="بحث برقم الهاتف..." oninput="renderFilteredCustomers()"/></div>
+        <div class="table-wrap" id="customers-table"><div class="loader"><div class="spinner"></div></div></div>
       </div>
     </div>
   </main>
@@ -648,14 +670,58 @@ function startNotifications(){
       if(!_notifInit)return;
       if(change.type==="added"){
         const o=change.doc.data();
-        const n={id:change.doc.id,title:`🔔 طلب جديد — ${o.serviceName||""}`,subtitle:`${o.customer||""} · ${(o.totalPrice||0).toFixed(2)} ر.ع`,time:new Date(),read:false};
+        const n={id:change.doc.id,title:`🔔 طلب جديد — ${o.serviceName||""}`,subtitle:`${o.customer||""} · ${(o.totalPrice||0).toFixed(2)} ر.ع · ${o.orderId||""}`,time:new Date(),read:false};
         notifications.unshift(n);unreadCount++;
-        showLiveNotif(n.title,n.subtitle);updateNotifBell();renderNotifList();
-        const badge=document.getElementById("pending-badge");if(o.status==="pending"){badge.style.display="inline";badge.textContent=(parseInt(badge.textContent)||0)+1;}
+        playNotifSound("new");
+        showBrowserNotif(n.title,n.subtitle);
+        showLiveNotif(n.title,n.subtitle);
+        updateNotifBell();renderNotifList();
+        const badge=document.getElementById("pending-badge");
+        if(o.status==="pending"||o.status==="searching"){badge.style.display="inline";badge.textContent=(parseInt(badge.textContent)||0)+1;}
+        // تحديث badge الانتظار
+        loadWaitingBadge();
+      }
+      if(change.type==="modified"){
+        const o=change.doc.data();
+        if(o.status==="accepted") showLiveNotif("✅ طلب مقبول",`${o.orderId||""} — ${o.techName||o.techPhone||""}`,change.doc.id,"var(--accent3)");
+        if(o.status==="done"){showLiveNotif("🎉 طلب مكتمل",`${o.orderId||""} — ${(o.totalPrice||0).toFixed(2)} ر.ع`,change.doc.id,"var(--accent2)");playNotifSound("done");loadOverview();}
+        if(o.status==="searching") playNotifSound("waiting");
       }
     });
     if(!_notifInit)_notifInit=true;
   });
+}
+
+function playNotifSound(type="new"){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const patterns={
+      new:    [{f:880,t:0},{f:660,t:0.12},{f:880,t:0.24}],
+      done:   [{f:440,t:0},{f:660,t:0.12},{f:880,t:0.24}],
+      waiting:[{f:440,t:0},{f:330,t:0.15}]
+    };
+    (patterns[type]||patterns.new).forEach(({f,t})=>{
+      const osc=ctx.createOscillator(),gain=ctx.createGain();
+      osc.connect(gain);gain.connect(ctx.destination);
+      osc.frequency.value=f;
+      gain.gain.setValueAtTime(0.3,ctx.currentTime+t);
+      gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+t+0.1);
+      osc.start(ctx.currentTime+t);osc.stop(ctx.currentTime+t+0.12);
+    });
+  }catch(e){}
+}
+
+function showBrowserNotif(title,body){
+  if(!("Notification"in window)||Notification.permission!=="granted")return;
+  try{const n=new Notification(title,{body});setTimeout(()=>n.close(),5000);}catch(e){}
+}
+
+async function loadWaitingBadge(){
+  try{
+    const snap=await db.collection("orders").where("status","==","searching").get();
+    const badge=document.getElementById("waiting-badge");
+    badge.style.display=snap.size?"inline":"none";badge.textContent=snap.size;
+  }catch(e){}
 }
 function showLiveNotif(title,body,color="var(--accent)"){
   document.querySelectorAll(".live-notif").forEach(el=>el.remove());
@@ -680,6 +746,7 @@ function showPage(name,btn){
   if(name==="orders")loadOrders();if(name==="technicians")loadTechnicians();if(name==="regions")loadRegions();
   if(name==="services")loadServices();if(name==="parts")loadParts();if(name==="coupons")loadCoupons();
   if(name==="finance")loadFinance();if(name==="map")loadMap();if(name==="users")loadUsers();if(name==="waiting")loadWaiting();
+  if(name==="customers")loadCustomers();
 }
 const SL={ar:{pending:"قيد الانتظار",accepted:"مقبول",done:"مكتمل",rejected:"مرفوض",cancelled:"ملغي",searching:"يبحث"},en:{pending:"Pending",accepted:"Accepted",done:"Done",rejected:"Rejected",cancelled:"Cancelled",searching:"Searching"}};
 const sl=s=>SL[currentLang]?.[s]||s;
@@ -727,10 +794,16 @@ async function loadOrders(){
   catch(e){document.getElementById("orders-table").innerHTML='<div class="empty">خطأ في التحميل</div>';}
 }
 function setOrderFilter(f,btn){orderFilter=f;document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));btn.classList.add("active");renderFilteredOrders();}
+// ══ Date Filter ══
+function clearDateFilter(){document.getElementById("date-from").value="";document.getElementById("date-to").value="";renderFilteredOrders();}
 function renderFilteredOrders(){
   const q=(document.getElementById("order-search").value||"").toLowerCase();
+  const from=document.getElementById("date-from").value;
+  const to=document.getElementById("date-to").value;
   let list=orderFilter==="all"?allOrders:allOrders.filter(o=>o.status===orderFilter);
   if(q)list=list.filter(o=>(o.orderId||"").toLowerCase().includes(q)||(o.customer||"").includes(q)||(o.serviceName||"").toLowerCase().includes(q));
+  if(from){const f=new Date(from);list=list.filter(o=>o.createdAt&&new Date(o.createdAt.seconds*1000)>=f);}
+  if(to){const t=new Date(to);t.setHours(23,59,59);list=list.filter(o=>o.createdAt&&new Date(o.createdAt.seconds*1000)<=t);}
   renderOrdersTable(list,"orders-table",true);
 }
 function getTypeName(o){
@@ -801,7 +874,85 @@ function renderMapMarkers(){
   });
 }
 
-// ══ Tech Stats Modal — FIXED ══
+// ══ Tech Search ══
+let allTechs = [];
+function filterTechnicians(){
+  const q=(document.getElementById("tech-search")?.value||"").toLowerCase();
+  const filtered=q?allTechs.filter(t=>(t.name||"").toLowerCase().includes(q)||(t.phone||"").includes(q)):allTechs;
+  renderTechGrid(filtered);
+}
+function renderTechGrid(techs){
+  if(!techs.length){document.getElementById("tech-grid").innerHTML='<div class="empty">لا يوجد فنيون</div>';return;}
+  const today=new Date().toLocaleDateString("en-CA");
+  document.getElementById("tech-grid").innerHTML=techs.map(tc=>{
+    const bal=parseFloat(tc.balance||0),lowBal=bal<2;
+    // إحصائيات اليوم من allOrders إذا كانت محملة
+    const todayOrders=allOrders.filter(o=>o.technicianId===tc.id&&o.createdAt&&new Date(o.createdAt.seconds*1000).toLocaleDateString("en-CA")===today).length;
+    return`<div class="tech-card">
+      <div class="tech-avatar">👨‍🔧</div>
+      <div class="tech-name" title="${tc.name||""}">${tc.name||"-"}</div>
+      <div class="tech-phone">📞 ${tc.phone||"-"}</div>
+      <div class="tech-region">📍 ${(tc.regionName||tc.regionId||"غير محدد").substring(0,20)}</div>
+      ${tc.suspendReason?`<div style="font-size:.65rem;color:var(--danger);margin-bottom:5px;padding:3px 8px;background:rgba(239,68,68,.1);border-radius:4px">⛔ ${tc.suspendReason.substring(0,40)}</div>`:""}
+      <div class="tech-stats">
+        <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent)">${tc.rating?tc.rating.toFixed(1):"-"}</div><div class="tech-stat-lbl">تقييم</div></div>
+        <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent3)">${tc.stats?.totalOrders||0}</div><div class="tech-stat-lbl">إجمالي</div></div>
+        <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent2)">${todayOrders}</div><div class="tech-stat-lbl">اليوم</div></div>
+        <div class="tech-stat"><div class="tech-stat-val" style="color:${lowBal?"var(--danger)":"var(--accent3)"}">${bal.toFixed(2)}</div><div class="tech-stat-lbl">ر.ع</div></div>
+      </div>
+      <div class="tech-footer">
+        <span class="active-pill ${tc.active?"on":"off"}">${tc.active?lowBal?"⚠️ رصيد":"متاح":"موقوف"}</span>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-sm ${tc.active?"btn-danger":"btn-success"}" onclick="${tc.active?`openSuspendModal('${tc.id}','${(tc.name||"").replace(/'/g,"")}')`:`reactivateTech('${tc.id}','${(tc.name||"").replace(/'/g,"")}')`}">${tc.active?"⛔":"✅"}</button>
+          <button class="btn btn-sm" style="background:var(--surface);border:1px solid var(--border)" onclick="editTechBalance('${tc.id}','${(tc.name||"").replace(/'/g,"")}',${bal})">💰</button>
+          <button class="btn btn-sm btn-blue" data-tech-id="${tc.id}" onclick="openTechStats(this)">📊</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteTech('${tc.id}')">🗑</button>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+// ══ Customers Page ══
+let allCustomers=[];
+async function loadCustomers(){
+  document.getElementById("customers-table").innerHTML='<div class="loader"><div class="spinner"></div></div>';
+  try{
+    const snap=await db.collection("customers").orderBy("totalOrders","desc").get();
+    allCustomers=snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderFilteredCustomers();
+  }catch(e){
+    // إذا لم يكن هناك index جرب بدون ترتيب
+    try{
+      const snap=await db.collection("customers").get();
+      allCustomers=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.totalOrders||0)-(a.totalOrders||0));
+      renderFilteredCustomers();
+    }catch(e2){document.getElementById("customers-table").innerHTML=`<div class="empty">خطأ: ${e2.message}</div>`;}
+  }
+}
+function renderFilteredCustomers(){
+  const q=(document.getElementById("customer-search")?.value||"").toLowerCase();
+  let list=q?allCustomers.filter(c=>(c.phone||"").includes(q)):allCustomers;
+  if(!list.length){document.getElementById("customers-table").innerHTML='<div class="empty">لا يوجد عملاء بعد</div>';return;}
+  const rows=list.map(c=>{
+    const first=c.firstSeen?new Date(c.firstSeen.seconds*1000).toLocaleDateString("ar"):"-";
+    const last=c.lastSeen?new Date(c.lastSeen.seconds*1000).toLocaleDateString("ar"):"-";
+    const loc=c.lastLocation?`📍 ${c.lastLocation.latitude?.toFixed(3)}, ${c.lastLocation.longitude?.toFixed(3)}`:"—";
+    return`<tr>
+      <td style="font-weight:700;direction:ltr">${c.phone||"-"}</td>
+      <td style="font-weight:700;color:var(--accent)">${c.totalOrders||0}</td>
+      <td style="font-size:.72rem;color:var(--accent2)">${loc}</td>
+      <td style="color:var(--muted);font-size:.7rem">${first}</td>
+      <td style="color:var(--muted);font-size:.7rem">${last}</td>
+    </tr>`;
+  }).join("");
+  document.getElementById("customers-table").innerHTML=`<table><thead><tr><th>رقم الهاتف</th><th>عدد الطلبات</th><th>آخر موقع</th><th>أول طلب</th><th>آخر نشاط</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function exportCustomersExcel(){
+  if(!allCustomers.length){showToast("لا توجد بيانات","error");return;}
+  const data=allCustomers.map(c=>({"الهاتف":c.phone||"-","عدد الطلبات":c.totalOrders||0,"آخر موقع lat":c.lastLocation?.latitude||"","آخر موقع lng":c.lastLocation?.longitude||"","أول طلب":c.firstSeen?new Date(c.firstSeen.seconds*1000).toLocaleDateString("ar"):"-","آخر نشاط":c.lastSeen?new Date(c.lastSeen.seconds*1000).toLocaleDateString("ar"):"-"}));
+  const ws=XLSX.utils.json_to_sheet(data),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"العملاء");XLSX.writeFile(wb,`taqa_customers_${new Date().toLocaleDateString("en-CA")}.xlsx`);showToast("✅ تم تصدير Excel");
+}
 let tsChart=null;
 async function openTechStats(btn){
   const techId=btn.getAttribute("data-tech-id");
@@ -913,32 +1064,8 @@ async function loadTechnicians(){
   document.getElementById("tech-grid").innerHTML='<div class="loader"><div class="spinner"></div></div>';
   try{
     const snap=await db.collection("technicians").get();
-    const techs=snap.docs.map(d=>({id:d.id,...d.data()}));
-    if(!techs.length){document.getElementById("tech-grid").innerHTML='<div class="empty">لا يوجد فنيون</div>';return;}
-    document.getElementById("tech-grid").innerHTML=techs.map(tc=>{
-      const bal=parseFloat(tc.balance||0),lowBal=bal<2;
-      return`<div class="tech-card">
-        <div class="tech-avatar">👨‍🔧</div>
-        <div class="tech-name" title="${tc.name||""}">${tc.name||"-"}</div>
-        <div class="tech-phone">📞 ${tc.phone||"-"}</div>
-        <div class="tech-region">📍 ${(tc.regionName||tc.regionId||"غير محدد").substring(0,20)}</div>
-        ${tc.suspendReason?`<div style="font-size:.65rem;color:var(--danger);margin-bottom:5px;padding:3px 8px;background:rgba(239,68,68,.1);border-radius:4px">⛔ ${tc.suspendReason.substring(0,40)}</div>`:""}
-        <div class="tech-stats">
-          <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent)">${tc.rating?tc.rating.toFixed(1):"-"}</div><div class="tech-stat-lbl">تقييم</div></div>
-          <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent3)">${tc.stats?.totalOrders||tc.ratingCount||0}</div><div class="tech-stat-lbl">طلبات</div></div>
-          <div class="tech-stat"><div class="tech-stat-val" style="color:${lowBal?"var(--danger)":"var(--accent2)"}">${bal.toFixed(2)}</div><div class="tech-stat-lbl">ر.ع</div></div>
-        </div>
-        <div class="tech-footer">
-          <span class="active-pill ${tc.active?"on":"off"}">${tc.active?lowBal?"⚠️ رصيد":"متاح":"موقوف"}</span>
-          <div style="display:flex;gap:4px">
-            <button class="btn btn-sm ${tc.active?"btn-danger":"btn-success"}" onclick="${tc.active?`openSuspendModal('${tc.id}','${(tc.name||"").replace(/'/g,"")}')`:`reactivateTech('${tc.id}','${(tc.name||"").replace(/'/g,"")}')`}">${tc.active?"⛔":"✅"}</button>
-            <button class="btn btn-sm" style="background:var(--surface);border:1px solid var(--border)" onclick="editTechBalance('${tc.id}','${(tc.name||"").replace(/'/g,"")}',${bal})">💰</button>
-            <button class="btn btn-sm btn-blue" data-tech-id="${tc.id}" onclick="openTechStats(this)">📊</button>
-            <button class="btn btn-sm btn-danger" onclick="deleteTech('${tc.id}')">🗑</button>
-          </div>
-        </div>
-      </div>`;
-    }).join("");
+    allTechs=snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderTechGrid(allTechs);
   }catch(e){console.error(e);}
 }
 async function editTechBalance(id,name,cur){
