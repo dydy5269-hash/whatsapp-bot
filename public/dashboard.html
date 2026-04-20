@@ -815,13 +815,26 @@ function getTypeName(o){
   return "-";
 }
 
+// حساب المدة بين وقتين بشكل مقروء
+function calcDuration(startTs, endTs){
+  if(!startTs || !endTs) return "—";
+  const diffMs = (endTs.seconds - startTs.seconds) * 1000;
+  if(diffMs < 0) return "—";
+  const mins  = Math.floor(diffMs / 60000);
+  const hours = Math.floor(mins / 60);
+  const rem   = mins % 60;
+  if(hours > 0) return `${hours}س ${rem}د`;
+  return `${mins}د`;
+}
+
 function renderOrdersTable(list,targetId,showActions){
   if(!list.length){document.getElementById(targetId).innerHTML='<div class="empty">لا توجد طلبات</div>';return;}
   const rows=list.map(o=>{
     const date=o.createdAt?new Date(o.createdAt.seconds*1000).toLocaleDateString("ar"):"-";
     const typeName=getTypeName(o);
-    // اسم الفني — من techName أو techPhone
     const techName=o.techName||o.technicianName||(o.techPhone?`📞 ${o.techPhone}`:"—");
+    // مدة الطلب: من acceptedAt إلى completedAt
+    const duration = calcDuration(o.acceptedAt, o.completedAt);
     return`<tr>
       <td style="font-weight:700;color:var(--accent);font-size:.72rem">${o.orderId||o.id}</td>
       <td style="font-size:.74rem">${o.customer||"-"}</td>
@@ -831,6 +844,7 @@ function renderOrdersTable(list,targetId,showActions){
       <td>${o.rating?"⭐".repeat(Math.min(o.rating,5)):"-"}</td>
       <td><span class="badge ${o.status||""}">${sl(o.status)}</span></td>
       <td style="font-size:.74rem;color:var(--accent2)">${techName}</td>
+      <td style="color:${duration==="—"?"var(--muted)":"var(--accent3)"};font-weight:${duration==="—"?"400":"700"};font-size:.78rem">${duration}</td>
       <td style="color:var(--muted);font-size:.7rem">${date}</td>
       ${showActions?`<td><div style="display:flex;gap:4px">
         ${o.status==="pending"||o.status==="searching"?`<button class="btn btn-sm btn-blue" onclick="openAssignModal('${o.id}','${o.orderId||o.id}','${o.serviceId||""}')">👨‍🔧 تعيين</button>`:""}
@@ -838,7 +852,12 @@ function renderOrdersTable(list,targetId,showActions){
       </div></td>`:""}
     </tr>`;
   }).join("");
-  document.getElementById(targetId).innerHTML=`<table><thead><tr><th>رقم الطلب</th><th>العميل</th><th>الخدمة</th><th>النوع</th><th>الإجمالي</th><th>التقييم</th><th>الحالة</th><th>👨‍🔧 الفني</th><th>التاريخ</th>${showActions?"<th>إجراءات</th>":""}</tr></thead><tbody>${rows}</tbody></table>`;
+  document.getElementById(targetId).innerHTML=`<table><thead><tr>
+    <th>رقم الطلب</th><th>العميل</th><th>الخدمة</th><th>النوع</th>
+    <th>الإجمالي</th><th>التقييم</th><th>الحالة</th>
+    <th>👨‍🔧 الفني</th><th>⏱ المدة</th><th>التاريخ</th>
+    ${showActions?"<th>إجراءات</th>":""}
+  </tr></thead><tbody>${rows}</tbody></table>`;
 }
 async function deleteOrder(id){if(!confirm("حذف هذا الطلب؟"))return;try{await db.collection("orders").doc(id).delete();showToast("تم الحذف");allOrders=allOrders.filter(o=>o.id!==id);renderFilteredOrders();}catch(e){showToast(e.message,"error");}}
 async function deleteAllPending(){
@@ -978,6 +997,13 @@ async function openTechStats(btn){
     const commission=Math.round(totalRev*0.1*100)/100;
     const avgRev=done.length?Math.round(totalRev/done.length*100)/100:0;
 
+    // متوسط مدة الطلب (من acceptedAt إلى completedAt)
+    const durations=done.filter(o=>o.acceptedAt&&o.completedAt).map(o=>
+      Math.round((o.completedAt.seconds - o.acceptedAt.seconds)/60)
+    );
+    const avgDuration=durations.length?Math.round(durations.reduce((a,b)=>a+b,0)/durations.length):null;
+    const maxDuration=durations.length?Math.max(...durations):null;
+
     // ── إحصائيات من stats field (محفوظة بالسيرفر) ──
     const stats=tc.stats||{};
 
@@ -995,7 +1021,9 @@ async function openTechStats(btn){
       <div class="ts-card"><div class="ts-val" style="color:var(--accent3)">${avgRev.toFixed(2)}</div><div class="ts-lbl">متوسط الطلب (ر.ع)</div></div>
       <div class="ts-card"><div class="ts-val" style="color:var(--accent)">${tc.rating?tc.rating.toFixed(1):"—"}</div><div class="ts-lbl">التقييم ⭐</div></div>
       <div class="ts-card"><div class="ts-val" style="color:var(--accent2)">${(tc.balance||0).toFixed(2)}</div><div class="ts-lbl">الرصيد الحالي (ر.ع)</div></div>
-      <div class="ts-card"><div class="ts-val" style="color:var(--muted)">${tc.ratingCount||0}</div><div class="ts-lbl">عدد التقييمات</div></div>`;
+      <div class="ts-card"><div class="ts-val" style="color:var(--muted)">${tc.ratingCount||0}</div><div class="ts-lbl">عدد التقييمات</div></div>
+      <div class="ts-card"><div class="ts-val" style="color:var(--accent3)">${avgDuration!==null?avgDuration+"د":"—"}</div><div class="ts-lbl">⏱ متوسط المدة</div></div>
+      <div class="ts-card"><div class="ts-val" style="color:var(--danger)">${maxDuration!==null?maxDuration+"د":"—"}</div><div class="ts-lbl">⏱ أطول طلب</div></div>`;
 
     // ── الرسم البياني ──
     const labels=Object.keys(last30).map(k=>k.slice(5));
@@ -1010,16 +1038,18 @@ async function openTechStats(btn){
     // ── آخر 10 طلبات ──
     const recentRows=orders.slice(0,10).map(o=>{
       const date=o.createdAt?new Date(o.createdAt.seconds*1000).toLocaleDateString("ar"):"-";
+      const dur=o.acceptedAt&&o.completedAt?Math.round((o.completedAt.seconds-o.acceptedAt.seconds)/60)+"د":"—";
       return`<tr>
         <td style="font-weight:700;color:var(--accent);font-size:.72rem">${o.orderId||o.id}</td>
         <td>${o.serviceName||"-"}</td>
         <td style="color:var(--accent3);font-weight:700">${(o.totalPrice||0).toFixed(2)} ر.ع</td>
+        <td style="color:var(--accent2);font-weight:700">${dur}</td>
         <td><span class="badge ${o.status||""}">${sl(o.status)}</span></td>
         <td style="color:var(--muted);font-size:.7rem">${date}</td>
       </tr>`;
     }).join("");
     document.getElementById("ts-orders-table").innerHTML=recentRows
-      ?`<table><thead><tr><th>رقم الطلب</th><th>الخدمة</th><th>الإجمالي</th><th>الحالة</th><th>التاريخ</th></tr></thead><tbody>${recentRows}</tbody></table>`
+      ?`<table><thead><tr><th>رقم الطلب</th><th>الخدمة</th><th>الإجمالي</th><th>⏱ المدة</th><th>الحالة</th><th>التاريخ</th></tr></thead><tbody>${recentRows}</tbody></table>`
       :'<div class="empty">لا توجد طلبات لهذا الفني</div>';
 
   }catch(e){
