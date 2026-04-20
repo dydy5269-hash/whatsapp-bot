@@ -733,18 +733,31 @@ function renderFilteredOrders(){
   if(q)list=list.filter(o=>(o.orderId||"").toLowerCase().includes(q)||(o.customer||"").includes(q)||(o.serviceName||"").toLowerCase().includes(q));
   renderOrdersTable(list,"orders-table",true);
 }
+function getTypeName(o){
+  if(!o.type) return "-";
+  if(typeof o.type === "string") return o.type || "-";
+  if(typeof o.type === "object"){
+    return o.type.ar || o.type.en || o.type.name || "-";
+  }
+  return "-";
+}
+
 function renderOrdersTable(list,targetId,showActions){
   if(!list.length){document.getElementById(targetId).innerHTML='<div class="empty">لا توجد طلبات</div>';return;}
   const rows=list.map(o=>{
     const date=o.createdAt?new Date(o.createdAt.seconds*1000).toLocaleDateString("ar"):"-";
+    const typeName=getTypeName(o);
+    // اسم الفني — من techName أو techPhone
+    const techName=o.techName||o.technicianName||(o.techPhone?`📞 ${o.techPhone}`:"—");
     return`<tr>
       <td style="font-weight:700;color:var(--accent);font-size:.72rem">${o.orderId||o.id}</td>
       <td style="font-size:.74rem">${o.customer||"-"}</td>
       <td>${o.serviceName||"-"}</td>
-      <td>${o.type||"-"}</td>
+      <td>${typeName}</td>
       <td style="font-weight:700;color:var(--accent3)">${(o.totalPrice||0).toFixed(2)} ر.ع</td>
       <td>${o.rating?"⭐".repeat(Math.min(o.rating,5)):"-"}</td>
       <td><span class="badge ${o.status||""}">${sl(o.status)}</span></td>
+      <td style="font-size:.74rem;color:var(--accent2)">${techName}</td>
       <td style="color:var(--muted);font-size:.7rem">${date}</td>
       ${showActions?`<td><div style="display:flex;gap:4px">
         ${o.status==="pending"||o.status==="searching"?`<button class="btn btn-sm btn-blue" onclick="openAssignModal('${o.id}','${o.orderId||o.id}','${o.serviceId||""}')">👨‍🔧 تعيين</button>`:""}
@@ -752,7 +765,7 @@ function renderOrdersTable(list,targetId,showActions){
       </div></td>`:""}
     </tr>`;
   }).join("");
-  document.getElementById(targetId).innerHTML=`<table><thead><tr><th>رقم الطلب</th><th>العميل</th><th>الخدمة</th><th>النوع</th><th>الإجمالي</th><th>التقييم</th><th>الحالة</th><th>التاريخ</th>${showActions?"<th>إجراءات</th>":""}</tr></thead><tbody>${rows}</tbody></table>`;
+  document.getElementById(targetId).innerHTML=`<table><thead><tr><th>رقم الطلب</th><th>العميل</th><th>الخدمة</th><th>النوع</th><th>الإجمالي</th><th>التقييم</th><th>الحالة</th><th>👨‍🔧 الفني</th><th>التاريخ</th>${showActions?"<th>إجراءات</th>":""}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 async function deleteOrder(id){if(!confirm("حذف هذا الطلب؟"))return;try{await db.collection("orders").doc(id).delete();showToast("تم الحذف");allOrders=allOrders.filter(o=>o.id!==id);renderFilteredOrders();}catch(e){showToast(e.message,"error");}}
 async function deleteAllPending(){
