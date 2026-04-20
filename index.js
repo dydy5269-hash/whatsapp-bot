@@ -23,6 +23,25 @@ const normalize     = (p) => String(p).replace(/\+/g, "");
 const MIN_BALANCE   = 2;
 const COMMISSION    = 0.10;
 const RETRY_MINUTES = 30;
+const SESSION_TIMEOUT_MINUTES = 60; // انتهاء الجلسة بعد ساعة
+const MAX_PARTS_PER_ORDER     = 5;  // حد أقصى للقطع المختلفة في طلب واحد
+
+// ─── حماية من الطلبات المكررة ─────────────────────────────────────────────────
+const processingOrders = new Set();
+function lockOrder(id)   { processingOrders.add(id); }
+function unlockOrder(id) { processingOrders.delete(id); }
+function isLocked(id)    { return processingOrders.has(id); }
+
+// ─── إعادة المحاولة عند فشل WhatsApp API ─────────────────────────────────────
+async function axiosWithRetry(config, retries = 2) {
+  for (let i = 0; i <= retries; i++) {
+    try { return await axios(config); }
+    catch(e) {
+      if (i === retries) throw e;
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+    }
+  }
+}
 
 // ─── Customer Languages (AR / EN) ─────────────────────────────────────────────
 const CUSTOMER_LANGS = {
@@ -48,6 +67,7 @@ const CUSTOMER_LANGS = {
     backToParts:   "🔙 الرجوع للقطع",
     backToSummary: "🔙 الرجوع للملخص",
     noParts:       "⚠️ لا توجد قطع. أضفها من لوحة التحكم.",
+    noPartsNeeded: "🔧 بدون قطع",
     summary:       (l, lb, pt, t) => `📋 *ملخص طلبك*\n\n🔧 *القطع:*\n${l}\n\n💼 أجرة: ${lb} ر.ع\n🔩 قطع: ${pt} ر.ع\n💰 *الإجمالي: ${t} ر.ع*`,
     confirmBtn:    "تأكيد",
     confirmRow:    "✅ تأكيد الطلب",
@@ -100,6 +120,7 @@ const CUSTOMER_LANGS = {
     backToParts:   "🔙 Back to Parts",
     backToSummary: "🔙 Back to Summary",
     noParts:       "⚠️ No parts found. Add from dashboard.",
+    noPartsNeeded: "🔧 No parts needed",
     summary:       (l, lb, pt, t) => `📋 *Order Summary*\n\n🔧 *Parts:*\n${l}\n\n💼 Labor: ${lb} OMR\n🔩 Parts: ${pt} OMR\n💰 *Total: ${t} OMR*`,
     confirmBtn:    "Confirm",
     confirmRow:    "✅ Confirm Order",
@@ -246,7 +267,11 @@ async function getSession(phone) {
   return doc.exists ? doc.data() : { state: null, data: {} };
 }
 async function setSession(phone, state, data) {
-  await db.collection("sessions").doc(phone).set({ state, data: data || {} });
+  await db.collection("sessions").doc(phone).set({
+    state,
+    data: data || {},
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  });
 }
 async function clearSession(phone) {
   await db.collection("sessions").doc(phone).delete();
@@ -678,11 +703,28 @@ async function sendPartsMenu(phone, service, selectedParts, lang) {
   const parts = await getPartsByService(service.id);
   if (!parts.length) { await sendMessage(phone, L2.noParts); return; }
   const selIds = (selectedParts || []).map(p => p.id);
-  const rows   = parts.map(p => ({
-    id: "part_" + p.id,
-    title: String(getPartName(p, lang)).substring(0, 24),
-    description: `${p.price} ر.ع` + (selIds.includes(p.id) ? " ✅" : "")
-  }));
+
+  // ── فلترة القطع حسب المخزون (stock=0 تُخفى، stock=undefined = غير محدود) ──
+  const availableParts = parts.filter(p => p.stock === undefined || p.stock === null || p.stock > 0);
+
+  if (!availableParts.length) {
+    await sendMessage(phone, lang === "ar" ? "⚠️ جميع القطع نفدت حالياً." : "⚠️ All parts are out of stock.");
+    return;
+  }
+
+  const rows = availableParts.map(p => {
+    const stockInfo = (p.stock !== undefined && p.stock !== null)
+      ? ` (${p.stock} ${lang === "ar" ? "متبقي" : "left"})`
+      : "";
+    return {
+      id: "part_" + p.id,
+      title: String(getPartName(p, lang)).substring(0, 24),
+      description: `${p.price} ر.ع${stockInfo}` + (selIds.includes(p.id) ? " ✅" : "")
+    };
+  });
+
+  // ── خيار بدون قطع ─────────────────────────────────────────────────────────
+  rows.unshift({ id: "noparts_needed", title: L2.noPartsNeeded, description: lang === "ar" ? "أجرة الخدمة فقط" : "Labor only" });
   if (selectedParts && selectedParts.length > 0) rows.push({ id: "nomore", title: L2.noMore });
   const hasTypes = service.types && service.types.length > 0;
   rows.push({ id: hasTypes ? "back_types" : "back_services", title: hasTypes ? L2.backToTypes : L2.backToServices });
@@ -885,6 +927,16 @@ app.post("/webhook", async (req, res) => {
       return;
     }
 
+    // ── انتهاء الجلسة بعد SESSION_TIMEOUT_MINUTES ────────────────────────────
+    if (session.updatedAt) {
+      const elapsed = (Date.now() - session.updatedAt.toDate().getTime()) / 60000;
+      if (elapsed > SESSION_TIMEOUT_MINUTES) {
+        await clearSession(from);
+        await sendLanguageMenu(from);
+        return;
+      }
+    }
+
     const lang = getCLang(session);
     const L2   = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
 
@@ -937,6 +989,14 @@ app.post("/webhook", async (req, res) => {
     // ── parts: اختيار القطع ───────────────────────────────────────────────────
     if (session.state === "parts") {
       if (text === "nomore") { await showSummary(from, session, lang); return; }
+
+      // ── بدون قطع → ملخص بأجرة الخدمة فقط ──────────────────────────────────
+      if (text === "noparts_needed") {
+        const noPartsSession = { ...session, data: { ...session.data, parts: [] } };
+        await setSession(from, "parts", noPartsSession.data);
+        await showSummary(from, noPartsSession, lang);
+        return;
+      }
       // رجوع للأنواع
       if (text === "back_types") {
         const service = session.data.service;
@@ -965,6 +1025,27 @@ app.post("/webhook", async (req, res) => {
         const allParts = await getPartsByService(session.data.service.id);
         const part     = allParts.find(p => p.id === partId);
         if (!part) { await sendMessage(from, L2.defaultMsg); return; }
+
+        // ── فحص الحد الأقصى للقطع المختلفة ──────────────────────────────────
+        const currentParts = session.data.parts || [];
+        const isAlreadyAdded = currentParts.some(p => p.id === partId);
+        if (!isAlreadyAdded && currentParts.length >= MAX_PARTS_PER_ORDER) {
+          const maxMsg = lang === "ar"
+            ? `⚠️ الحد الأقصى ${MAX_PARTS_PER_ORDER} أنواع قطع في طلب واحد.`
+            : `⚠️ Maximum ${MAX_PARTS_PER_ORDER} part types per order.`;
+          await sendMessage(from, maxMsg);
+          await sendPartsMenu(from, session.data.service, currentParts, lang);
+          return;
+        }
+
+        // ── فحص المخزون ───────────────────────────────────────────────────────
+        if (part.stock !== undefined && part.stock !== null && part.stock <= 0) {
+          const outMsg = lang === "ar" ? "⚠️ هذه القطعة نفدت من المخزون." : "⚠️ This part is out of stock.";
+          await sendMessage(from, outMsg);
+          await sendPartsMenu(from, session.data.service, currentParts, lang);
+          return;
+        }
+
         await setSession(from, "qty", { ...session.data, pendingPart: part });
         await sendList(from, L2.chooseQty(getPartName(part, lang), part.price), L2.qtyBtn, [{
           title: L2.qtyTitle,
@@ -1032,6 +1113,10 @@ app.post("/webhook", async (req, res) => {
       }
       // ────────────────────────────────────────────────────────────────────────
 
+      // ── حماية من الطلبات المكررة ─────────────────────────────────────────────
+      if (isLocked(from)) return;
+      lockOrder(from);
+
       const partsTotal = (parts||[]).reduce((s,p) => s+p.total, 0);
       const laborPrice = selectedType ? selectedType.price : 0;
       const totalPrice = Math.round((partsTotal + laborPrice)*100)/100;
@@ -1052,8 +1137,9 @@ app.post("/webhook", async (req, res) => {
       await db.collection("orders").doc(orderId).set(orderData);
       await sendMessage(from, L2.orderSent(orderId));
       await clearSession(from);
+      unlockOrder(from); // رفع القفل بعد إنشاء الطلب
 
-      // ── 3: تحديث بيانات العميل ───────────────────────────────────────────────
+      // ── تحديث بيانات العميل ───────────────────────────────────────────────────
       await updateCustomerData(from, { latitude: userLat, longitude: userLng });
       await incrementCustomerOrders(from);
 
@@ -1117,12 +1203,17 @@ async function handleReject(text, techPhone, tech) {
 
 async function handleDone(text, techPhone, tech) {
   const orderId = text.replace("done_", "");
+
+  // ── حماية من الضغط المزدوج ────────────────────────────────────────────────
+  if (isLocked(orderId)) return;
+  lockOrder(orderId);
+
   const ref     = db.collection("orders").doc(orderId);
   const snap    = await ref.get();
   const TL2     = TECH_LANGS[getTLang(tech)] || TECH_LANGS.ar;
-  if (!snap.exists) { await sendMessage(techPhone, TL2.orderNotFound); return; }
+  if (!snap.exists) { unlockOrder(orderId); await sendMessage(techPhone, TL2.orderNotFound); return; }
   const order = snap.data();
-  if (order.status === "done") { await sendMessage(techPhone, TL2.alreadyDone); return; }
+  if (order.status === "done") { unlockOrder(orderId); await sendMessage(techPhone, TL2.alreadyDone); return; }
 
   await ref.update({ status: "done", completedAt: admin.firestore.FieldValue.serverTimestamp() });
   const techRef  = db.collection("technicians").doc(order.technicianId || tech.id);
@@ -1132,19 +1223,36 @@ async function handleDone(text, techPhone, tech) {
   const commission = Math.round(order.totalPrice * COMMISSION * 100) / 100;
   const newBalance = Math.max(0, Math.round(((techData.balance||0) - commission)*100)/100);
 
-  // ── 4: تحديث إحصائيات الفني ─────────────────────────────────────────────
-  const prevStats     = techData.stats || {};
-  const totalOrders   = (prevStats.totalOrders   || 0) + 1;
-  const totalEarnings = Math.round(((prevStats.totalEarnings || 0) + order.totalPrice) * 100) / 100;
-  const totalCommission = Math.round(((prevStats.totalCommission || 0) + commission) * 100) / 100;
-  const lastOrderAt   = admin.firestore.FieldValue.serverTimestamp();
+  // ── تحديث إحصائيات الفني ──────────────────────────────────────────────────
+  const prevStats       = techData.stats || {};
+  const totalOrders     = (prevStats.totalOrders     || 0) + 1;
+  const totalEarnings   = Math.round(((prevStats.totalEarnings   || 0) + order.totalPrice) * 100) / 100;
+  const totalCommission = Math.round(((prevStats.totalCommission || 0) + commission)        * 100) / 100;
 
   await techRef.update({
     balance: newBalance,
     active:  true,
-    stats: { totalOrders, totalEarnings, totalCommission, lastOrderAt }
+    stats: { totalOrders, totalEarnings, totalCommission, lastOrderAt: admin.firestore.FieldValue.serverTimestamp() }
   });
-  // ─────────────────────────────────────────────────────────────────────────
+
+  // ── خصم المخزون لكل قطعة في الطلب ────────────────────────────────────────
+  if (order.parts && order.parts.length > 0) {
+    const batch = db.batch();
+    // نجلب القطع من Firestore للتحقق من المخزون
+    const partSnaps = await Promise.all(
+      order.parts.map(p => db.collection("parts").doc(p.id).get())
+    );
+    partSnaps.forEach((pSnap, i) => {
+      if (!pSnap.exists) return;
+      const pData = pSnap.data();
+      // نخصم فقط إذا المخزون محدود (ليس undefined/null)
+      if (pData.stock !== undefined && pData.stock !== null) {
+        const newStock = Math.max(0, pData.stock - order.parts[i].qty);
+        batch.update(pSnap.ref, { stock: newStock });
+      }
+    });
+    await batch.commit();
+  }
 
   const CL2           = CUSTOMER_LANGS[order.lang||"ar"] || CUSTOMER_LANGS.ar;
   const customerPhone = normalize(order.customer);
@@ -1154,6 +1262,7 @@ async function handleDone(text, techPhone, tech) {
 
   if (newBalance < MIN_BALANCE) await sendMessage(techPhone, TL2.lowBalance(newBalance, MIN_BALANCE));
   await sendRatingPrompt(customerPhone, orderId, order.lang || "ar");
+  unlockOrder(orderId);
 }
 
 // ─── 3: Admin API — تعيين فني يدوياً من لوحة التحكم ─────────────────────────
