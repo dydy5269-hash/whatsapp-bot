@@ -622,19 +622,21 @@ function getPartName(part, lang) {
 // ─── التحقق من وجود تقييم معلق ──────────────────────────────────────────────
 async function getPendingRatingOrder(phone) {
   try {
-    // استعلام بسيط بدون index مركّب — فلتر واحد فقط
     const snap = await db.collection("orders")
       .where("customer", "==", phone)
       .where("status", "==", "done")
       .limit(10).get();
     for (const doc of snap.docs) {
       const d = doc.data();
-      if (!d.rating) return { id: doc.id, ...d };
+      // التحقق الصريح — التقييم غير موجود إذا كان undefined أو null فقط
+      if (d.rating === undefined || d.rating === null) {
+        return { id: doc.id, ...d };
+      }
     }
     return null;
   } catch(e) {
     console.error("getPendingRatingOrder:", e.message);
-    return null; // نتجاوز الخطأ ولا نوقف العميل
+    return null;
   }
 }
 
