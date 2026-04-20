@@ -1165,10 +1165,11 @@ async function handleAccept(text, techPhone, tech) {
   if ((tech.balance||0) < MIN_BALANCE) { await sendMessage(techPhone, TL2.lowBalance(tech.balance||0, MIN_BALANCE)); return; }
 
   await ref.update({
-    status: "accepted",
+    status:      "accepted",
     technicianId: tech.id,
-    techPhone: normalize(tech.phone),
-    techName: tech.name || ""   // ← لعرضه في لوحة التحكم
+    techPhone:   normalize(tech.phone),
+    techName:    tech.name || "",
+    acceptedAt:  admin.firestore.FieldValue.serverTimestamp() // ← وقت القبول
   });
   await db.collection("technicians").doc(tech.id).update({ active: false });
 
