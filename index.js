@@ -621,23 +621,21 @@ function getPartName(part, lang) {
 
 // ─── التحقق من وجود تقييم معلق ──────────────────────────────────────────────
 async function getPendingRatingOrder(phone) {
-  const snap = await db.collection("orders")
-    .where("customer", "==", phone)
-    .where("status", "==", "done")
-    .where("rating", "==", null)
-    .limit(1).get();
-  if (!snap.empty) return { id: snap.docs[0].id, ...snap.docs[0].data() };
-  // أيضاً نتحقق من الطلبات التي ليس فيها حقل rating
-  const snap2 = await db.collection("orders")
-    .where("customer", "==", phone)
-    .where("status", "==", "done")
-    .orderBy("completedAt", "desc")
-    .limit(5).get();
-  for (const doc of snap2.docs) {
-    const d = doc.data();
-    if (!d.rating) return { id: doc.id, ...d };
+  try {
+    // استعلام بسيط بدون index مركّب — فلتر واحد فقط
+    const snap = await db.collection("orders")
+      .where("customer", "==", phone)
+      .where("status", "==", "done")
+      .limit(10).get();
+    for (const doc of snap.docs) {
+      const d = doc.data();
+      if (!d.rating) return { id: doc.id, ...d };
+    }
+    return null;
+  } catch(e) {
+    console.error("getPendingRatingOrder:", e.message);
+    return null; // نتجاوز الخطأ ولا نوقف العميل
   }
-  return null;
 }
 
 // ─── تحديث بيانات العميل في Firestore ────────────────────────────────────────
