@@ -338,9 +338,9 @@ async function sendButtons(to, body, buttons) {
   }
 }
 
-// ─── دالة ذكية: قائمة إذا 3+ خيارات، أزرار إذا أقل ─────────────────────────
+// ─── دالة ذكية: قائمة إذا 4+ خيارات، أزرار إذا 3 أو أقل ────────────────────
 async function sendMenu(to, body, buttonLabel, rows) {
-  if (rows.length >= 3) {
+  if (rows.length > 3) {
     await sendList(to, body, buttonLabel, [{ title: buttonLabel, rows }]);
   } else {
     await sendButtons(to, body, rows.map(r => ({ id: r.id, title: r.title })));
@@ -701,14 +701,11 @@ async function showSummary(phone, session, lang) {
   const lines      = (parts || []).map(p => `• ${p.name} x${p.qty} = ${p.total} ريال`).join("\n");
   await sendMessage(phone, L2.summary(lines, laborPrice, Math.round(partsTotal*100)/100, totalPrice));
   await setSession(phone, "confirm", session.data);
-  await sendList(phone, lang === "ar" ? "هل تؤكد الطلب؟" : "Confirm order?", L2.confirmBtn, [{
-    title: lang === "ar" ? "الخيارات" : "Options",
-    rows: [
-      { id: "confirm",    title: L2.confirmRow  },
-      { id: "back_parts", title: L2.backToParts },
-      { id: "cancel",     title: L2.cancelRow   }
-    ]
-  }]);
+  await sendButtons(phone, lang === "ar" ? "هل تؤكد الطلب؟" : "Confirm order?", [
+    { id: "confirm",    title: L2.confirmRow  },
+    { id: "back_parts", title: L2.backToParts },
+    { id: "cancel",     title: L2.cancelRow   }
+  ]);
 }
 
 // ─── Webhook ──────────────────────────────────────────────────────────────────
@@ -1081,7 +1078,12 @@ async function handleAccept(text, techPhone, tech) {
   if (!["pending","searching"].includes(order.status)) { await sendMessage(techPhone, TL2.alreadyProc); return; }
   if ((tech.balance||0) < MIN_BALANCE) { await sendMessage(techPhone, TL2.lowBalance(tech.balance||0, MIN_BALANCE)); return; }
 
-  await ref.update({ status: "accepted", technicianId: tech.id, techPhone: normalize(tech.phone) });
+  await ref.update({
+    status: "accepted",
+    technicianId: tech.id,
+    techPhone: normalize(tech.phone),
+    techName: tech.name || ""   // ← لعرضه في لوحة التحكم
+  });
   await db.collection("technicians").doc(tech.id).update({ active: false });
 
   const customerPhone = normalize(order.customer);
