@@ -23,14 +23,75 @@ const normalize     = (p) => String(p).replace(/\+/g, "");
 const MIN_BALANCE   = 2;
 const COMMISSION    = 0.10;
 const RETRY_MINUTES = 30;
-const SESSION_TIMEOUT_MINUTES = 60; // انتهاء الجلسة بعد ساعة
-const MAX_PARTS_PER_ORDER     = 5;  // حد أقصى للقطع المختلفة في طلب واحد
+const SESSION_TIMEOUT_MINUTES = 60;
+const MAX_PARTS_PER_ORDER     = 5;
+const LATE_TECH_MINUTES       = 30; // إشعار العميل إذا تأخر الفني
 
 // ─── حماية من الطلبات المكررة ─────────────────────────────────────────────────
 const processingOrders = new Set();
 function lockOrder(id)   { processingOrders.add(id); }
 function unlockOrder(id) { processingOrders.delete(id); }
 function isLocked(id)    { return processingOrders.has(id); }
+
+// ─── Rate Limiting — منع الإرسال المتكرر ─────────────────────────────────────
+const rateLimitMap = new Map(); // phone → { count, resetAt }
+const RATE_LIMIT_MAX      = 15; // رسائل
+const RATE_LIMIT_WINDOW   = 60 * 1000; // في دقيقة واحدة
+
+function checkRateLimit(phone) {
+  const now  = Date.now();
+  const entry = rateLimitMap.get(phone);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(phone, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return false; // لم يتجاوز الحد
+  }
+  entry.count++;
+  if (entry.count > RATE_LIMIT_MAX) return true; // تجاوز الحد
+  return false;
+}
+
+// ─── تنظيف rateLimitMap كل دقيقة ─────────────────────────────────────────────
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of rateLimitMap.entries()) {
+    if (now > v.resetAt) rateLimitMap.delete(k);
+  }
+}, 60 * 1000);
+
+// ─── تسجيل الأخطاء في Firestore ──────────────────────────────────────────────
+async function logError(context, error, extra = {}) {
+  try {
+    await db.collection("logs").add({
+      level:   "error",
+      context,
+      message: error?.message || String(error),
+      stack:   error?.stack   || "",
+      extra,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+  } catch(e) { /* لا نوقف التطبيق بسبب خطأ في اللوج */ }
+  console.error(`[${context}]`, error?.message || error);
+}
+
+async function logInfo(context, message, extra = {}) {
+  try {
+    await db.collection("logs").add({
+      level: "info", context, message, extra,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+  } catch(e) {}
+}
+
+// ─── تاريخ تغييرات حالة الطلب ────────────────────────────────────────────────
+async function addOrderHistory(orderId, status, actor = "system", note = "") {
+  try {
+    await db.collection("orders").doc(orderId)
+      .collection("history").add({
+        status, actor, note,
+        timestamp: admin.firestore.FieldValue.serverTimestamp()
+      });
+  } catch(e) {}
+}
 
 // ─── إعادة المحاولة عند فشل WhatsApp API ─────────────────────────────────────
 async function axiosWithRetry(config, retries = 2) {
@@ -96,6 +157,23 @@ const CUSTOMER_LANGS = {
     rateBtn:       "التقييم",
     ratingDone:    (s) => `شكراً! أعطيت ${s} ⭐`,
     outOfZone:     "⚠️ عذراً، موقعك خارج نطاق الخدمة حالياً.\nسنعمل على توسيع خدمتنا قريباً! 🙏",
+    rateLimited:   "⚠️ أنت ترسل رسائل كثيرة. انتظر دقيقة ثم حاول.",
+    techLate:      (n) => `⏰ مضى ${n} دقيقة منذ قبول الفني طلبك. هل تريد إلغاء الطلب؟`,
+    cancelAfterAccept: "❌ إلغاء الطلب",
+    keepOrder:     "✅ استمرار",
+    orderCancelledByCustomer: "تم إلغاء طلبك. أرسل *مرحبا* لطلب جديد.",
+    myOrders:      "📋 *طلباتك الأخيرة:*\n",
+    noOrders:      "لا توجد طلبات سابقة.",
+    vipQuestion:   "⭐ هل تريد فني VIP؟\nيضمن لك أفضل جودة وأسرع استجابة",
+    vipYes:        "⭐ فني VIP",
+    vipNo:         "👨‍🔧 فني عادي",
+    vipList:       "اختر الفني VIP المناسب:",
+    vipBtn:        "اختر فني VIP",
+    vipBusy:       (n) => `⭐ *${n}* مشغول حالياً.\nهل تنتظر حتى يتوفر؟`,
+    vipWaitYes:    "⏳ انتظار الفني",
+    vipWaitNo:     "👨‍🔧 فني عادي بدلاً",
+    vipWaiting:    (n) => `⏳ طلبك محفوظ في قائمة انتظار الفني *${n}*.\nسيتم إشعارك فور توفره.`,
+    vipSummaryNote:(pct) => `\n⭐ رسوم VIP: +${pct}%`,
     defaultMsg:    "أرسل *مرحبا* للبدء."
   },
   en: {
@@ -149,6 +227,23 @@ const CUSTOMER_LANGS = {
     rateBtn:       "Rate",
     ratingDone:    (s) => `Thanks! You gave ${s} ⭐`,
     outOfZone:     "⚠️ Sorry, your location is outside our service area.\nWe're expanding soon! 🙏",
+    rateLimited:   "⚠️ Too many messages. Please wait a minute.",
+    techLate:      (n) => `⏰ It's been ${n} minutes since the technician accepted. Cancel?`,
+    cancelAfterAccept: "❌ Cancel Order",
+    keepOrder:     "✅ Keep Order",
+    orderCancelledByCustomer: "Order cancelled. Send *hi* for a new request.",
+    myOrders:      "📋 *Your recent orders:*\n",
+    noOrders:      "No previous orders.",
+    vipQuestion:   "⭐ Would you like a VIP technician?\nGuaranteed best quality & fastest response",
+    vipYes:        "⭐ VIP Technician",
+    vipNo:         "👨‍🔧 Regular Technician",
+    vipList:       "Choose your VIP technician:",
+    vipBtn:        "Choose VIP Tech",
+    vipBusy:       (n) => `⭐ *${n}* is currently busy.\nWould you like to wait?`,
+    vipWaitYes:    "⏳ Wait for this tech",
+    vipWaitNo:     "👨‍🔧 Regular tech instead",
+    vipWaiting:    (n) => `⏳ Your order is queued for *${n}*.\nYou'll be notified when available.`,
+    vipSummaryNote:(pct) => `\n⭐ VIP fee: +${pct}%`,
     defaultMsg:    "Send *hi* to start."
   }
 };
@@ -539,13 +634,32 @@ async function sendRatingPrompt(to, orderId, lang) {
 
 // ─── Dispatch Tech ────────────────────────────────────────────────────────────
 async function dispatchToTech(orderId, order) {
-  const lang   = order.lang || "ar";
-  const CL2    = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
-  const tech   = await getAvailableTech(order.serviceId, order.rejectedTechs || []);
+  const lang = order.lang || "ar";
+  const CL2  = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
+
+  // ── VIP: إرسال مباشر للفني المختار ─────────────────────────────────────────
+  if (order.vip && order.vipTechId) {
+    const techSnap = await db.collection("technicians").doc(order.vipTechId).get();
+    if (techSnap.exists) {
+      const tech = { id: techSnap.id, ...techSnap.data() };
+      if (!tech.active) {
+        // الفني مشغول → حفظ الطلب بحالة waiting_vip
+        await db.collection("orders").doc(orderId).update({ status: "waiting_vip" });
+        // سيُرسل له تلقائياً عند تفرغه (في handleDone)
+        return;
+      }
+      // الفني متاح → أرسل له الطلب
+      await sendOrderToTech(orderId, order, tech);
+      return;
+    }
+  }
+
+  // ── عادي: البحث عن فني متاح ──────────────────────────────────────────────
+  const tech = await getAvailableTech(order.serviceId, order.rejectedTechs || []);
 
   if (!tech) {
-    const ref          = db.collection("orders").doc(orderId);
-    const searchStart  = order.searchStartedAt;
+    const ref         = db.collection("orders").doc(orderId);
+    const searchStart = order.searchStartedAt;
     if (!searchStart) {
       await ref.update({ status: "searching", searchStartedAt: admin.firestore.FieldValue.serverTimestamp() });
       await sendMessage(normalize(order.customer), CL2.noTech);
@@ -563,6 +677,11 @@ async function dispatchToTech(orderId, order) {
     return;
   }
 
+  await sendOrderToTech(orderId, order, tech);
+}
+
+// ─── إرسال الطلب لفني محدد ───────────────────────────────────────────────────
+async function sendOrderToTech(orderId, order, tech) {
   const TL2       = TECH_LANGS[getTLang(tech)] || TECH_LANGS.ar;
   const techLang  = getTLang(tech);
   const techPhone = normalize(tech.phone);
@@ -572,23 +691,19 @@ async function dispatchToTech(orderId, order) {
   const serviceData = serviceSnap.exists ? serviceSnap.data() : null;
   const svcName = serviceData ? getServiceName({ ...serviceData, id: order.serviceId }, techLang) : order.serviceName;
 
-  // النوع بلغة الفني — يدعم هيكل name:{ar,en,hi,bn} والهيكل القديم
+  // النوع بلغة الفني
   let typeName = order.type || "";
   if (serviceData && serviceData.types) {
     const matchedType = serviceData.types.find(t => {
       if (order.typeId && (t.id === order.typeId)) return true;
-      // هيكل جديد: name object
-      if (t.name && typeof t.name === "object") {
-        return Object.values(t.name).includes(order.type);
-      }
-      // هيكل قديم
+      if (t.name && typeof t.name === "object") return Object.values(t.name).includes(order.type);
       return t.nameAr === order.type || t.nameEn === order.type ||
              t.nameHi === order.type || t.nameBn === order.type || t.name === order.type;
     });
     if (matchedType) typeName = getTypeNameL(matchedType, techLang) || order.type;
   }
 
-  // القطع بلغة الفني — نجلب من Firestore لنحول الاسم للغة الفني
+  // القطع بلغة الفني
   let partsText = "";
   if (order.parts && order.parts.length > 0) {
     const allParts = await getPartsByService(order.serviceId);
@@ -599,26 +714,28 @@ async function dispatchToTech(orderId, order) {
     }).join("\n");
   }
 
-  // حساب المسافة بين الفني والعميل
+  // المسافة
   let distanceText = "";
   if (tech.lat && tech.lng && order.location) {
     const dist = calcDistanceKm(tech.lat, tech.lng, order.location.latitude, order.location.longitude);
-    distanceText = getTLang(tech) === "ar"
+    distanceText = techLang === "ar"
       ? `\n📍 المسافة: ${dist.toFixed(1)} كم`
       : `\n📍 Distance: ${dist.toFixed(1)} km`;
   }
 
+  // إشارة VIP للفني
+  const vipBadge = order.vip ? (techLang === "ar" ? "\n⭐ *طلب VIP*" : "\n⭐ *VIP Order*") : "";
+
   await sendMessage(techPhone,
-    TL2.newOrder(order.orderId, svcName, typeName, partsText, order.laborPrice || 0, order.totalPrice || 0) + distanceText
+    TL2.newOrder(order.orderId, svcName, typeName, partsText, order.laborPrice || 0, order.totalPrice || 0)
+    + distanceText + vipBadge
   );
 
-  // إرسال موقع العميل للفني
-  if (order.location) {
-    await sendLocation(techPhone, order.location.latitude, order.location.longitude);
-  }
+  // موقع العميل
+  if (order.location) await sendLocation(techPhone, order.location.latitude, order.location.longitude);
 
   await sendMenu(techPhone,
-    getTLang(tech) === "ar" ? "هل تقبل هذا الطلب؟" : "Accept this order?",
+    techLang === "ar" ? "هل تقبل هذا الطلب؟" : "Accept this order?",
     TL2.acceptBtn,
     [
       { id: `accept_${orderId}`, title: TL2.acceptRow },
@@ -698,6 +815,38 @@ async function incrementCustomerOrders(phone) {
   }
 }
 
+// ─── VIP: جلب الفنيين VIP للخدمة ─────────────────────────────────────────────
+async function getVipTechs(serviceId) {
+  const snap = await db.collection("technicians")
+    .where("vip", "==", true)
+    .where("services", "array-contains", serviceId).get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .filter(t => (t.balance || 0) >= MIN_BALANCE);
+}
+
+// ─── VIP: إرسال قائمة الفنيين VIP ────────────────────────────────────────────
+async function sendVipTechList(phone, vipTechs, lang, baseTotal) {
+  const L2       = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
+  const VIP_RATE = 0.20;
+  const rows = vipTechs.map(t => {
+    const vipTotal = Math.round(baseTotal * (1 + VIP_RATE) * 100) / 100;
+    const stars    = t.rating ? "⭐".repeat(Math.min(Math.round(t.rating), 5)) : "—";
+    const status   = t.active ? (lang === "ar" ? "✅ متاح" : "✅ Available")
+                               : (lang === "ar" ? "🔴 مشغول" : "🔴 Busy");
+    return {
+      id:          `vip_${t.id}`,
+      title:       String(t.name || "VIP").substring(0, 24),
+      description: `${stars} · ${vipTotal} ر.ع · ${status}`
+    };
+  });
+  rows.push({ id: "vip_skip", title: L2.vipNo });
+  await sendList(phone, L2.vipList, L2.vipBtn, [{ title: "VIP ⭐", rows: rows.slice(0, 10) }]);
+}
+
+function applyVipRate(total, rate = 0.20) {
+  return Math.round(total * (1 + rate) * 100) / 100;
+}
+
 async function sendPartsMenu(phone, service, selectedParts, lang) {
   const L2    = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
   const parts = await getPartsByService(service.id);
@@ -736,17 +885,35 @@ async function sendPartsMenu(phone, service, selectedParts, lang) {
 // ─── Summary ──────────────────────────────────────────────────────────────────
 async function showSummary(phone, session, lang) {
   const L2         = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
-  const { service, selectedType, parts } = session.data;
-  const partsTotal = (parts || []).reduce((s, p) => s + p.total, 0);
-  const laborPrice = selectedType ? selectedType.price : 0;
-  const totalPrice = Math.round((partsTotal + laborPrice) * 100) / 100;
-  const lines      = (parts || []).map(p => `• ${p.name} x${p.qty} = ${p.total} ريال`).join("\n");
-  await sendMessage(phone, L2.summary(lines, laborPrice, Math.round(partsTotal*100)/100, totalPrice));
-  await setSession(phone, "confirm", session.data);
+  const { service, selectedType, parts, vipTechId, vipRate } = session.data;
+  const partsTotal  = (parts || []).reduce((s, p) => s + p.total, 0);
+  const laborPrice  = selectedType ? selectedType.price : 0;
+  const baseTotal   = Math.round((partsTotal + laborPrice) * 100) / 100;
+  const totalPrice  = vipTechId ? applyVipRate(baseTotal, vipRate || 0.20) : baseTotal;
+  const lines       = (parts || []).map(p => `• ${p.name} x${p.qty} = ${p.total} ر.ع`).join("\n") || (lang === "ar" ? "بدون قطع" : "No parts");
+  const vipNote     = vipTechId ? L2.vipSummaryNote(20) : "";
+  await sendMessage(phone, L2.summary(lines, laborPrice, Math.round(partsTotal*100)/100, totalPrice) + vipNote);
+  await setSession(phone, "confirm", { ...session.data, totalPrice });
   await sendButtons(phone, lang === "ar" ? "هل تؤكد الطلب؟" : "Confirm order?", [
     { id: "confirm",    title: L2.confirmRow  },
     { id: "back_parts", title: L2.backToParts },
     { id: "cancel",     title: L2.cancelRow   }
+  ]);
+}
+
+// ─── VIP: سؤال العميل هل يريد VIP ────────────────────────────────────────────
+async function askVipQuestion(phone, session, lang, baseTotal) {
+  const L2       = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
+  const vipTechs = await getVipTechs(session.data.service.id);
+  if (!vipTechs.length) {
+    // لا يوجد فنيون VIP → اذهب للملخص مباشرة
+    await showSummary(phone, session, lang);
+    return;
+  }
+  await setSession(phone, "vip_question", { ...session.data, baseTotal });
+  await sendMenu(phone, L2.vipQuestion, L2.vipBtn, [
+    { id: "vip_yes",  title: L2.vipYes },
+    { id: "vip_skip", title: L2.vipNo  }
   ]);
 }
 
@@ -772,6 +939,57 @@ app.post("/webhook", async (req, res) => {
       text = msg.interactive.list_reply?.id || msg.interactive.button_reply?.id || "";
     }
     console.log("FROM:", from, "TEXT:", text);
+
+    // ── Rate Limiting ─────────────────────────────────────────────────────────
+    if (checkRateLimit(from)) {
+      const tech2 = await getTechByPhone(from);
+      if (!tech2) await sendMessage(from, CUSTOMER_LANGS.ar.rateLimited);
+      return;
+    }
+
+    // ── "طلباتي" — عرض تاريخ العميل ──────────────────────────────────────────
+    if (msg.type === "text" && ["طلباتي","my orders","my order","طلبات"].includes(text.toLowerCase())) {
+      const session0 = await getSession(from);
+      const L0 = CUSTOMER_LANGS[getCLang(session0)] || CUSTOMER_LANGS.ar;
+      const mySnap = await db.collection("orders")
+        .where("customer", "==", from)
+        .limit(5).get();
+      if (mySnap.empty) { await sendMessage(from, L0.noOrders); return; }
+      const myList = mySnap.docs.map(d => d.data())
+        .sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+      const lines = myList.map(o => {
+        const date = o.createdAt ? new Date(o.createdAt.seconds*1000).toLocaleDateString("ar") : "-";
+        return `• 🆔 ${o.orderId} — ${o.serviceName||"-"} — ${(o.totalPrice||0).toFixed(2)} ر.ع — ${date}`;
+      }).join("\n");
+      await sendMessage(from, L0.myOrders + lines);
+      return;
+    }
+
+    // ── إلغاء الطلب بعد قبول الفني ───────────────────────────────────────────
+    if (text.startsWith("cancel_accepted_")) {
+      const orderId0 = text.replace("cancel_accepted_", "");
+      const session0 = await getSession(from);
+      const L0 = CUSTOMER_LANGS[getCLang(session0)] || CUSTOMER_LANGS.ar;
+      const oRef = db.collection("orders").doc(orderId0);
+      const oSnap = await oRef.get();
+      if (oSnap.exists && oSnap.data().customer === from && oSnap.data().status === "accepted") {
+        const oData = oSnap.data();
+        await oRef.update({ status: "cancelled", cancelledAt: admin.firestore.FieldValue.serverTimestamp(), cancelledBy: "customer_after_accept" });
+        // إعادة تفعيل الفني
+        if (oData.technicianId) await db.collection("technicians").doc(oData.technicianId).update({ active: true });
+        // إشعار الفني
+        if (oData.techPhone) {
+          const techDoc = await db.collection("technicians").doc(oData.technicianId||"").get();
+          const tLang   = techDoc.exists ? (techDoc.data().lang || "ar") : "ar";
+          const TL0     = TECH_LANGS[tLang] || TECH_LANGS.ar;
+          await sendMessage(normalize(oData.techPhone), TL0.techRejected);
+        }
+        await addOrderHistory(orderId0, "cancelled", from, "customer cancelled after accept");
+        await clearSession(from);
+        await sendMessage(from, L0.orderCancelledByCustomer);
+      }
+      return;
+    }
 
     // ── فني ───────────────────────────────────────────────────────────────────
     const tech = await getTechByPhone(from);
@@ -988,13 +1206,17 @@ app.post("/webhook", async (req, res) => {
 
     // ── parts: اختيار القطع ───────────────────────────────────────────────────
     if (session.state === "parts") {
-      if (text === "nomore") { await showSummary(from, session, lang); return; }
-
-      // ── بدون قطع → ملخص بأجرة الخدمة فقط ──────────────────────────────────
-      if (text === "noparts_needed") {
-        const noPartsSession = { ...session, data: { ...session.data, parts: [] } };
-        await setSession(from, "parts", noPartsSession.data);
-        await showSummary(from, noPartsSession, lang);
+      if (text === "nomore" || text === "noparts_needed") {
+        // حساب السعر الأساسي ثم اسأل عن VIP
+        const { selectedType, parts: sp } = session.data;
+        const pt = (sp||[]).reduce((s,p)=>s+p.total, 0);
+        const lp = selectedType ? selectedType.price : 0;
+        const base = Math.round((pt+lp)*100)/100;
+        if (text === "noparts_needed") {
+          await setSession(from, "parts", { ...session.data, parts: [] });
+          session.data.parts = [];
+        }
+        await askVipQuestion(from, session, lang, base);
         return;
       }
       // رجوع للأنواع
@@ -1085,6 +1307,73 @@ app.post("/webhook", async (req, res) => {
       }
     }
 
+    // ── vip_question: هل يريد VIP؟ ───────────────────────────────────────────
+    if (session.state === "vip_question") {
+      if (text === "vip_skip") {
+        // لا يريد VIP → ملخص عادي
+        await setSession(from, "parts", { ...session.data, vipTechId: null });
+        await showSummary(from, { ...session, data: { ...session.data, vipTechId: null } }, lang);
+        return;
+      }
+      if (text === "vip_yes") {
+        // يريد VIP → عرض قائمة الفنيين VIP
+        const vipTechs = await getVipTechs(session.data.service.id);
+        if (!vipTechs.length) {
+          await sendMessage(from, lang === "ar" ? "⚠️ لا يوجد فنيون VIP متاحون حالياً." : "⚠️ No VIP technicians available.");
+          await showSummary(from, { ...session, data: { ...session.data, vipTechId: null } }, lang);
+          return;
+        }
+        await setSession(from, "vip_list", session.data);
+        await sendVipTechList(from, vipTechs, lang, session.data.baseTotal || 0);
+        return;
+      }
+    }
+
+    // ── vip_list: اختيار الفني VIP ────────────────────────────────────────────
+    if (session.state === "vip_list") {
+      if (text === "vip_skip") {
+        await showSummary(from, { ...session, data: { ...session.data, vipTechId: null } }, lang);
+        return;
+      }
+      if (text.startsWith("vip_")) {
+        const techId   = text.replace("vip_", "");
+        const techSnap = await db.collection("technicians").doc(techId).get();
+        if (!techSnap.exists) { await sendMessage(from, L2.defaultMsg); return; }
+        const tech = { id: techSnap.id, ...techSnap.data() };
+        if (tech.active) {
+          // الفني متاح → ملخص مع VIP
+          const newData = { ...session.data, vipTechId: techId, vipTechName: tech.name, vipRate: 0.20 };
+          await setSession(from, "confirm", newData);
+          await showSummary(from, { ...session, data: newData }, lang);
+        } else {
+          // الفني مشغول → اسأل هل ينتظر؟
+          await setSession(from, "vip_waiting", { ...session.data, vipTechId: techId, vipTechName: tech.name, vipRate: 0.20 });
+          await sendMenu(from, L2.vipBusy(tech.name), L2.vipBtn, [
+            { id: "vip_wait_yes", title: L2.vipWaitYes },
+            { id: "vip_wait_no",  title: L2.vipWaitNo  }
+          ]);
+        }
+        return;
+      }
+    }
+
+    // ── vip_waiting: انتظار الفني VIP ────────────────────────────────────────
+    if (session.state === "vip_waiting") {
+      if (text === "vip_wait_no") {
+        // لا ينتظر → ملخص عادي
+        await showSummary(from, { ...session, data: { ...session.data, vipTechId: null } }, lang);
+        return;
+      }
+      if (text === "vip_wait_yes") {
+        // ينتظر → ملخص مع VIP وحالة waiting_vip
+        const newData = { ...session.data };
+        await setSession(from, "confirm", newData);
+        await sendMessage(from, L2.vipWaiting(session.data.vipTechName || ""));
+        await showSummary(from, { ...session, data: newData }, lang);
+        return;
+      }
+    }
+
     // ── confirm ───────────────────────────────────────────────────────────────
     if (session.state === "confirm") {
       if (text === "cancel")       { await clearSession(from); await sendMessage(from, L2.cancelled); return; }
@@ -1119,7 +1408,10 @@ app.post("/webhook", async (req, res) => {
 
       const partsTotal = (parts||[]).reduce((s,p) => s+p.total, 0);
       const laborPrice = selectedType ? selectedType.price : 0;
-      const totalPrice = Math.round((partsTotal + laborPrice)*100)/100;
+      const baseTotal  = Math.round((partsTotal + laborPrice)*100)/100;
+      const vipTechId  = session.data.vipTechId  || null;
+      const vipRate    = session.data.vipRate     || 0.20;
+      const totalPrice = vipTechId ? applyVipRate(baseTotal, vipRate) : baseTotal;
       const orderId    = generateOrderId();
       const orderData  = {
         orderId, customer: from,
@@ -1127,6 +1419,7 @@ app.post("/webhook", async (req, res) => {
         type:   selectedType ? (getTypeNameL(selectedType, lang) || "") : "",
         typeId: selectedType ? (selectedType.id || (selectedType.name && typeof selectedType.name === "object" ? selectedType.name.en || selectedType.name.ar : selectedType.name) || "") : "",
         laborPrice, partsTotal: Math.round(partsTotal*100)/100, totalPrice,
+        vip: !!vipTechId, vipTechId, vipRate: vipTechId ? vipRate : null,
         parts: parts || [], status: "searching", lang,
         rejectedTechs: [],
         location: { latitude: userLat, longitude: userLng },
@@ -1135,9 +1428,10 @@ app.post("/webhook", async (req, res) => {
         searchStartedAt:  admin.firestore.FieldValue.serverTimestamp()
       };
       await db.collection("orders").doc(orderId).set(orderData);
+      await addOrderHistory(orderId, "searching", from, "Order created");
       await sendMessage(from, L2.orderSent(orderId));
       await clearSession(from);
-      unlockOrder(from); // رفع القفل بعد إنشاء الطلب
+      unlockOrder(from);
 
       // ── تحديث بيانات العميل ───────────────────────────────────────────────────
       await updateCustomerData(from, { latitude: userLat, longitude: userLng });
@@ -1150,7 +1444,9 @@ app.post("/webhook", async (req, res) => {
     // أي رسالة غير معروفة
     await sendMessage(from, L2.defaultMsg);
 
-  } catch(err) { console.error("WEBHOOK ERROR:", err); }
+  } catch(err) {
+    await logError("WEBHOOK", err, { from: req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from });
+  }
 });
 
 // ─── Tech Handlers ────────────────────────────────────────────────────────────
@@ -1169,9 +1465,12 @@ async function handleAccept(text, techPhone, tech) {
     technicianId: tech.id,
     techPhone:   normalize(tech.phone),
     techName:    tech.name || "",
-    acceptedAt:  admin.firestore.FieldValue.serverTimestamp() // ← وقت القبول
+    acceptedAt:  admin.firestore.FieldValue.serverTimestamp()
   });
   await db.collection("technicians").doc(tech.id).update({ active: false });
+
+  // تسجيل تاريخ الطلب
+  await addOrderHistory(orderId, "accepted", tech.id, `Tech: ${tech.name}`);
 
   const customerPhone = normalize(order.customer);
   const CL2 = CUSTOMER_LANGS[order.lang||"ar"] || CUSTOMER_LANGS.ar;
@@ -1182,6 +1481,25 @@ async function handleAccept(text, techPhone, tech) {
     { id: "done_" + orderId, title: TL2.doneRow }
   ]);
   await sendMessage(customerPhone, CL2.accepted(tech.name, tech.phone));
+
+  // إشعار تأخر الفني بعد LATE_TECH_MINUTES
+  setTimeout(async () => {
+    try {
+      const freshSnap = await ref.get();
+      if (!freshSnap.exists) return;
+      const fresh = freshSnap.data();
+      if (fresh.status === "accepted") {
+        // الطلب لم يُنجز بعد → أشعر العميل
+        await sendButtons(normalize(order.customer),
+          CL2.techLate(LATE_TECH_MINUTES),
+          [
+            { id: `keep_order_${orderId}`,          title: CL2.keepOrder },
+            { id: `cancel_accepted_${orderId}`,      title: CL2.cancelAfterAccept }
+          ]
+        );
+      }
+    } catch(e) { await logError("late_tech_notify", e, { orderId }); }
+  }, LATE_TECH_MINUTES * 60 * 1000);
 }
 
 async function handleReject(text, techPhone, tech) {
@@ -1195,6 +1513,7 @@ async function handleReject(text, techPhone, tech) {
 
   const rejectedTechs = [...(order.rejectedTechs||[]), tech.id];
   await ref.update({ status: "searching", rejectedTechs, technicianId: null });
+  await addOrderHistory(orderId, "searching", tech.id, `Rejected by: ${tech.name}`);
   await sendMessage(techPhone, TL2.techRejected);
 
   const CL2 = CUSTOMER_LANGS[order.lang||"ar"] || CUSTOMER_LANGS.ar;
@@ -1217,6 +1536,7 @@ async function handleDone(text, techPhone, tech) {
   if (order.status === "done") { unlockOrder(orderId); await sendMessage(techPhone, TL2.alreadyDone); return; }
 
   await ref.update({ status: "done", completedAt: admin.firestore.FieldValue.serverTimestamp() });
+  await addOrderHistory(orderId, "done", tech.id, `Commission: ${Math.round(order.totalPrice * COMMISSION * 100)/100}`);
   const techRef  = db.collection("technicians").doc(order.technicianId || tech.id);
   const techSnap = await techRef.get();
   const techData = techSnap.data();
@@ -1235,6 +1555,24 @@ async function handleDone(text, techPhone, tech) {
     active:  true,
     stats: { totalOrders, totalEarnings, totalCommission, lastOrderAt: admin.firestore.FieldValue.serverTimestamp() }
   });
+
+  // ── إرسال أول طلب منتظر للفني VIP (إن وجد) ──────────────────────────────
+  try {
+    const vipWaiting = await db.collection("orders")
+      .where("vipTechId", "==", order.technicianId || tech.id)
+      .where("status", "==", "waiting_vip")
+      .limit(1).get();
+    if (!vipWaiting.empty) {
+      const waitDoc   = vipWaiting.docs[0];
+      const waitOrder = { id: waitDoc.id, ...waitDoc.data() };
+      const techFresh = (await techRef.get()).data();
+      // تحقق أن الفني عنده رصيد كافٍ
+      if ((techFresh.balance || 0) >= MIN_BALANCE) {
+        await techRef.update({ active: false });
+        await sendOrderToTech(waitDoc.id, waitOrder, { id: order.technicianId || tech.id, ...techFresh });
+      }
+    }
+  } catch(e) { console.error("VIP waiting dispatch:", e.message); }
 
   // ── خصم المخزون لكل قطعة في الطلب ────────────────────────────────────────
   if (order.parts && order.parts.length > 0) {
@@ -1374,7 +1712,58 @@ setInterval(async () => {
       const elapsed = (Date.now() - order.searchStartedAt.toDate().getTime()) / 60000;
       if (elapsed < RETRY_MINUTES) await dispatchToTech(order.id, order);
     }
-  } catch(e) { console.error("Background:", e.message); }
+  } catch(e) { await logError("Background_Search", e); }
 }, 5 * 60 * 1000);
+
+// ─── التقرير اليومي — يُرسل كل يوم الساعة 8 صباحاً ──────────────────────────
+async function sendDailyReport() {
+  try {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(0,0,0,0);
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    const snap = await db.collection("orders")
+      .where("createdAt", ">=", admin.firestore.Timestamp.fromDate(yesterday))
+      .where("createdAt", "<",  admin.firestore.Timestamp.fromDate(today))
+      .get();
+
+    const orders  = snap.docs.map(d => d.data());
+    const done    = orders.filter(o => o.status === "done");
+    const revenue = done.reduce((s,o) => s + (o.totalPrice||0), 0);
+    const dateStr = yesterday.toLocaleDateString("ar-SA");
+
+    const report = `📊 *التقرير اليومي — ${dateStr}*\n\n` +
+      `📋 إجمالي الطلبات: *${orders.length}*\n` +
+      `✅ مكتملة: *${done.length}*\n` +
+      `❌ ملغاة: *${orders.filter(o=>o.status==="cancelled").length}*\n` +
+      `⏳ في الانتظار: *${orders.filter(o=>o.status==="searching").length}*\n` +
+      `💰 الإيراد: *${revenue.toFixed(2)} ر.ع*\n` +
+      `💸 العمولات: *${Math.round(revenue*COMMISSION*100)/100} ر.ع*`;
+
+    // إرسال لكل المدراء في adminUsers
+    const admins = await db.collection("adminUsers").where("role","==","admin").get();
+    for (const adm of admins.docs) {
+      const phone = adm.data().phone;
+      if (phone) await sendMessage(normalize(phone), report);
+    }
+    await logInfo("daily_report", `Sent to ${admins.size} admins`, { orders: orders.length, revenue });
+  } catch(e) { await logError("daily_report", e); }
+}
+
+// جدولة التقرير كل 24 ساعة — يبدأ من أقرب الساعة 8 صباحاً
+function scheduleDailyReport() {
+  const now    = new Date();
+  const next8  = new Date();
+  next8.setHours(8, 0, 0, 0);
+  if (now >= next8) next8.setDate(next8.getDate() + 1);
+  const msUntil = next8.getTime() - now.getTime();
+  setTimeout(() => {
+    sendDailyReport();
+    setInterval(sendDailyReport, 24 * 60 * 60 * 1000);
+  }, msUntil);
+}
+scheduleDailyReport();
 
 app.listen(process.env.PORT || 3000, () => console.log("✅ TAQA Server running"));
