@@ -217,6 +217,11 @@ html[dir="ltr"] .live-notif{left:auto;right:24px;}
 .live-notif-close{position:absolute;top:8px;left:10px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;}
 html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
 .permission-notice{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:12px 16px;margin:16px;font-size:.82rem;color:var(--danger);}
+/* ── Service Picker ── */
+.svc-pill{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:20px;font-size:.78rem;font-weight:700;cursor:pointer;border:2px solid var(--border);background:var(--surface);color:var(--muted);transition:all .2s;user-select:none;}
+.svc-pill:hover{border-color:var(--accent2);color:var(--accent2);}
+.svc-pill.selected{background:rgba(59,130,246,.15);border-color:var(--accent2);color:var(--accent2);}
+.svc-pill .svc-icon{font-size:1rem;}
 </style>
 </head>
 <body>
@@ -344,7 +349,7 @@ html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
     <!-- Technicians -->
     <div id="page-technicians" class="page">
       <div class="card">
-        <div class="card-header"><h3>الفنيون</h3><button class="btn btn-primary btn-sm" onclick="openModal('tech-modal')">+ إضافة فني</button></div>
+        <div class="card-header"><h3>الفنيون</h3><button class="btn btn-primary btn-sm" onclick="openTechModal()">+ إضافة فني</button></div>
         <div class="search-bar"><input type="text" id="tech-search" placeholder="بحث بالاسم أو الهاتف..." oninput="filterTechnicians()"/></div>
         <div id="tech-grid" class="tech-grid"><div class="loader"><div class="spinner"></div></div></div>
       </div>
@@ -504,19 +509,28 @@ html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
 
 <!-- Tech Modal -->
 <div class="modal-overlay" id="tech-modal">
-  <div class="modal">
-    <div class="modal-header"><h3>إضافة فني جديد</h3><button class="modal-close" onclick="closeModal('tech-modal')">×</button></div>
+  <div class="modal" style="max-width:600px">
+    <div class="modal-header"><h3 id="tech-modal-title">إضافة فني جديد</h3><button class="modal-close" onclick="closeModal('tech-modal')">×</button></div>
     <div class="form-grid">
       <div class="form-group"><label>الاسم</label><input type="text" id="tech-name"/></div>
       <div class="form-group"><label>رقم الهاتف</label><input type="text" id="tech-phone" placeholder="968xxxxxxxx" style="direction:ltr"/></div>
       <div class="form-group"><label>🔑 Document ID (اختياري)</label><input type="text" id="tech-id" placeholder="tech1" style="direction:ltr;font-family:monospace"/></div>
       <div class="form-group"><label>المنطقة</label><select id="tech-region"><option value="">بدون تحديد</option></select></div>
-      <div class="form-group" style="grid-column:1/-1"><label>الخدمات — Document ID مفصولة بفاصلة</label><input type="text" id="tech-services" placeholder="electric, plumbing, ac" style="direction:ltr;font-family:monospace"/></div>
       <div class="form-group"><label>⭐ فني VIP</label><select id="tech-vip"><option value="false">لا</option><option value="true">نعم — VIP</option></select></div>
       <div class="form-group"><label>نسبة رسوم VIP (%)</label><input type="number" id="tech-vip-rate" placeholder="20" min="0" max="100" value="20"/></div>
     </div>
+
+    <!-- ── اختيار الخدمات بشكل مرئي ── -->
+    <div style="padding:0 18px 14px">
+      <label style="font-size:.73rem;font-weight:700;color:var(--muted);display:block;margin-bottom:8px">🔧 الخدمات التي يقدمها الفني</label>
+      <div id="tech-services-picker" style="display:flex;flex-wrap:wrap;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;min-height:48px">
+        <div style="color:var(--muted);font-size:.78rem">جارٍ تحميل الخدمات...</div>
+      </div>
+      <p style="font-size:.68rem;color:var(--muted);margin-top:6px">اضغط على الخدمة لتحديدها أو إلغاء تحديدها. يمكن اختيار أكثر من خدمة.</p>
+    </div>
+
     <div class="form-actions">
-      <button class="btn btn-primary" onclick="addTechnician()">حفظ</button>
+      <button class="btn btn-primary" onclick="saveTechnician()">💾 حفظ</button>
       <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="closeModal('tech-modal')">إلغاء</button>
     </div>
   </div>
@@ -977,6 +991,7 @@ function renderTechGrid(techs){
       <div class="tech-name" title="${tc.name||""}">${tc.vip?'<span style="color:var(--accent);font-size:.7rem">⭐ VIP</span> ':''}${tc.name||"-"}</div>
       <div class="tech-phone">📞 ${tc.phone||"-"}</div>
       <div class="tech-region">📍 ${(tc.regionName||tc.regionId||"غير محدد").substring(0,20)}</div>
+      ${tc.services&&tc.services.length?`<div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px">${tc.services.map(s=>`<span style="background:rgba(59,130,246,.1);color:var(--accent2);padding:1px 7px;border-radius:10px;font-size:.62rem;font-weight:700">${s}</span>`).join("")}</div>`:""}
       ${tc.suspendReason?`<div style="font-size:.65rem;color:var(--danger);margin-bottom:5px;padding:3px 8px;background:rgba(239,68,68,.1);border-radius:4px">⛔ ${tc.suspendReason.substring(0,40)}</div>`:""}
       <div class="tech-stats">
         <div class="tech-stat"><div class="tech-stat-val" style="color:var(--accent)">${tc.rating?tc.rating.toFixed(1):"-"}</div><div class="tech-stat-lbl">تقييم</div></div>
@@ -988,6 +1003,7 @@ function renderTechGrid(techs){
         <span class="active-pill ${tc.active?"on":"off"}">${tc.active?lowBal?"⚠️ رصيد":"متاح":"موقوف"}</span>
         <div style="display:flex;gap:4px">
           <button class="btn btn-sm ${tc.active?"btn-danger":"btn-success"}" onclick="${tc.active?`openSuspendModal('${tc.id}','${(tc.name||"").replace(/'/g,"")}')`:`reactivateTech('${tc.id}','${(tc.name||"").replace(/'/g,"")}')`}">${tc.active?"⛔":"✅"}</button>
+          <button class="btn btn-sm btn-blue" onclick="openTechModal('${tc.id}')">✏️</button>
           <button class="btn btn-sm" style="background:var(--surface);border:1px solid var(--border)" onclick="editTechBalance('${tc.id}','${(tc.name||"").replace(/'/g,"")}',${bal})">💰</button>
           <button class="btn btn-sm btn-blue" data-tech-id="${tc.id}" onclick="openTechStats(this)">📊</button>
           <button class="btn btn-sm btn-danger" onclick="deleteTech('${tc.id}')">🗑</button>
@@ -1179,25 +1195,110 @@ async function reactivateTech(id,name){
   try{await db.collection("technicians").doc(id).update({active:true,suspendReason:null,suspendedAt:null});showToast("✅ تم تفعيل الفني");loadTechnicians();}catch(e){showToast(e.message,"error");}
 }
 async function deleteTech(id){if(!confirm("حذف؟"))return;try{await db.collection("technicians").doc(id).delete();showToast("تم الحذف");loadTechnicians();}catch(e){showToast(e.message,"error");}}
-async function addTechnician(){
-  const name=document.getElementById("tech-name").value.trim(),phone=document.getElementById("tech-phone").value.trim();
-  const svcs=document.getElementById("tech-services").value.split(",").map(s=>s.trim()).filter(Boolean);
-  const regionId=document.getElementById("tech-region").value,regionName=regionId?(allRegions.find(r=>r.id===regionId)?.name||regionId):"";
-  const techId=document.getElementById("tech-id").value.trim();
-  const isVip=document.getElementById("tech-vip").value==="true";
-  const vipRate=parseFloat(document.getElementById("tech-vip-rate").value||20)/100;
-  if(!name||!phone){showToast("يرجى ملء الحقول","error");return;}
-  try{
-    const data={name,phone,services:svcs,active:true,balance:0,rating:0,ratingCount:0,
-      regionId:regionId||null,regionName:regionName||null,
-      vip:isVip, vipRate:isVip?vipRate:null,
-      stats:{totalOrders:0,totalEarnings:0,totalCommission:0}};
-    if(techId)await db.collection("technicians").doc(techId).set(data);
-    else await db.collection("technicians").add(data);
-    showToast("✅ تمت الإضافة");closeModal("tech-modal");
-    ["tech-name","tech-phone","tech-id","tech-services"].forEach(id=>document.getElementById(id).value="");
+// ══ Tech Services Picker ══
+let editingTechId = null;
+let selectedTechServices = new Set();
+
+async function openTechModal(techId = null) {
+  editingTechId = techId;
+  selectedTechServices = new Set();
+  document.getElementById("tech-modal-title").textContent = techId ? "تعديل الفني" : "إضافة فني جديد";
+
+  // تفريغ الحقول
+  ["tech-name","tech-phone","tech-id"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("tech-region").value = "";
+  document.getElementById("tech-vip").value = "false";
+  document.getElementById("tech-vip-rate").value = "20";
+  document.getElementById("tech-id").disabled = !!techId;
+
+  // إذا تعديل — حمّل بيانات الفني
+  if (techId) {
+    const snap = await db.collection("technicians").doc(techId).get();
+    if (snap.exists) {
+      const d = snap.data();
+      document.getElementById("tech-name").value  = d.name  || "";
+      document.getElementById("tech-phone").value = d.phone || "";
+      document.getElementById("tech-id").value    = techId;
+      document.getElementById("tech-region").value   = d.regionId  || "";
+      document.getElementById("tech-vip").value      = d.vip ? "true" : "false";
+      document.getElementById("tech-vip-rate").value = d.vipRate ? Math.round(d.vipRate*100) : 20;
+      selectedTechServices = new Set(d.services || []);
+    }
+  }
+
+  // بناء الـ picker من الخدمات المتاحة
+  await renderServicePicker();
+  openModal("tech-modal");
+}
+
+async function renderServicePicker() {
+  const picker = document.getElementById("tech-services-picker");
+  picker.innerHTML = '<div style="color:var(--muted);font-size:.78rem">جارٍ تحميل...</div>';
+  try {
+    const snap = await db.collection("services").get();
+    const services = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (!services.length) { picker.innerHTML = '<div style="color:var(--muted);font-size:.78rem">لا توجد خدمات</div>'; return; }
+    picker.innerHTML = services.map(s => {
+      const name     = getLocalizedName(s, "ar") || s.id;
+      const icon     = s.icon || "🔧";
+      const selected = selectedTechServices.has(s.id);
+      return `<div class="svc-pill ${selected?"selected":""}" onclick="toggleTechService('${s.id}',this)">
+        <span class="svc-icon">${icon}</span>${name}
+        ${selected?'<span style="color:var(--accent2)">✓</span>':""}
+      </div>`;
+    }).join("");
+  } catch(e) { picker.innerHTML = `<div style="color:var(--danger);font-size:.78rem">خطأ: ${e.message}</div>`; }
+}
+
+function toggleTechService(serviceId, el) {
+  if (selectedTechServices.has(serviceId)) {
+    selectedTechServices.delete(serviceId);
+    el.classList.remove("selected");
+    el.querySelector("span:last-child")?.remove();
+  } else {
+    selectedTechServices.add(serviceId);
+    el.classList.add("selected");
+    if (!el.querySelector("span:last-child")?.textContent?.includes("✓")) {
+      el.insertAdjacentHTML("beforeend", '<span style="color:var(--accent2)">✓</span>');
+    }
+  }
+}
+
+async function saveTechnician() {
+  const name    = document.getElementById("tech-name").value.trim();
+  const phone   = document.getElementById("tech-phone").value.trim();
+  const techId  = document.getElementById("tech-id").value.trim();
+  const regionId    = document.getElementById("tech-region").value;
+  const regionName  = regionId ? (allRegions.find(r=>r.id===regionId)?.name||regionId) : "";
+  const isVip   = document.getElementById("tech-vip").value === "true";
+  const vipRate = parseFloat(document.getElementById("tech-vip-rate").value||20) / 100;
+  const svcs    = [...selectedTechServices];
+
+  if (!name || !phone) { showToast("يرجى ملء الاسم والهاتف","error"); return; }
+  if (!svcs.length)    { showToast("يرجى اختيار خدمة واحدة على الأقل","error"); return; }
+
+  const data = {
+    name, phone, services: svcs, active: true,
+    regionId: regionId||null, regionName: regionName||null,
+    vip: isVip, vipRate: isVip ? vipRate : null,
+  };
+
+  try {
+    if (editingTechId) {
+      await db.collection("technicians").doc(editingTechId).update(data);
+      showToast("✅ تم التحديث");
+    } else {
+      data.balance = 0; data.rating = 0; data.ratingCount = 0;
+      data.stats = { totalOrders:0, totalEarnings:0, totalCommission:0 };
+      if (techId) await db.collection("technicians").doc(techId).set(data);
+      else        await db.collection("technicians").add(data);
+      showToast("✅ تمت الإضافة");
+    }
+    closeModal("tech-modal");
+    document.getElementById("tech-id").disabled = false;
+    editingTechId = null;
     loadTechnicians();
-  }catch(e){showToast(e.message,"error");}
+  } catch(e) { showToast(e.message,"error"); }
 }
 
 // ══ Services ══
