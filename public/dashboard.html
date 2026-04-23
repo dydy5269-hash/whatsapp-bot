@@ -253,6 +253,7 @@ html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
       <button class="nav-item" onclick="showPage('finance',this)"><span class="icon">💰</span>التقارير المالية</button>
       <button class="nav-item" id="nav-users" onclick="showPage('users',this)"><span class="icon">👥</span>المستخدمون</button>
       <button class="nav-item" onclick="showPage('customers',this)"><span class="icon">📱</span>العملاء</button>
+      <button class="nav-item" onclick="showPage('logs',this)"><span class="icon">📝</span>السجلات</button>
     </nav>
     <div class="sidebar-footer">
       <div class="admin-info"><strong id="admin-email">—</strong><span class="admin-role-badge role-admin" id="admin-role-badge">مدير</span></div>
@@ -411,6 +412,22 @@ html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
         <div class="table-wrap" id="customers-table"><div class="loader"><div class="spinner"></div></div></div>
       </div>
     </div>
+
+    <!-- Logs -->
+    <div id="page-logs" class="page">
+      <div class="card">
+        <div class="card-header">
+          <h3>📝 السجلات</h3>
+          <div class="btn-group">
+            <button class="filter-btn active" onclick="setLogFilter('all',this)">الكل</button>
+            <button class="filter-btn" onclick="setLogFilter('error',this)" style="color:var(--danger)">أخطاء</button>
+            <button class="filter-btn" onclick="setLogFilter('info',this)">معلومات</button>
+            <button class="btn btn-danger btn-sm" onclick="clearLogs()">🗑 مسح الكل</button>
+          </div>
+        </div>
+        <div class="table-wrap" id="logs-table"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -495,6 +512,8 @@ html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
       <div class="form-group"><label>🔑 Document ID (اختياري)</label><input type="text" id="tech-id" placeholder="tech1" style="direction:ltr;font-family:monospace"/></div>
       <div class="form-group"><label>المنطقة</label><select id="tech-region"><option value="">بدون تحديد</option></select></div>
       <div class="form-group" style="grid-column:1/-1"><label>الخدمات — Document ID مفصولة بفاصلة</label><input type="text" id="tech-services" placeholder="electric, plumbing, ac" style="direction:ltr;font-family:monospace"/></div>
+      <div class="form-group"><label>⭐ فني VIP</label><select id="tech-vip"><option value="false">لا</option><option value="true">نعم — VIP</option></select></div>
+      <div class="form-group"><label>نسبة رسوم VIP (%)</label><input type="number" id="tech-vip-rate" placeholder="20" min="0" max="100" value="20"/></div>
     </div>
     <div class="form-actions">
       <button class="btn btn-primary" onclick="addTechnician()">حفظ</button>
@@ -746,7 +765,7 @@ function showPage(name,btn){
   if(name==="orders")loadOrders();if(name==="technicians")loadTechnicians();if(name==="regions")loadRegions();
   if(name==="services")loadServices();if(name==="parts")loadParts();if(name==="coupons")loadCoupons();
   if(name==="finance")loadFinance();if(name==="map")loadMap();if(name==="users")loadUsers();if(name==="waiting")loadWaiting();
-  if(name==="customers")loadCustomers();
+  if(name==="customers")loadCustomers();if(name==="logs")loadLogs();
 }
 const SL={ar:{pending:"قيد الانتظار",accepted:"مقبول",done:"مكتمل",rejected:"مرفوض",cancelled:"ملغي",searching:"يبحث"},en:{pending:"Pending",accepted:"Accepted",done:"Done",rejected:"Rejected",cancelled:"Cancelled",searching:"Searching"}};
 const sl=s=>SL[currentLang]?.[s]||s;
@@ -833,21 +852,23 @@ function renderOrdersTable(list,targetId,showActions){
     const date=o.createdAt?new Date(o.createdAt.seconds*1000).toLocaleDateString("ar"):"-";
     const typeName=getTypeName(o);
     const techName=o.techName||o.technicianName||(o.techPhone?`📞 ${o.techPhone}`:"—");
-    // مدة الطلب: من acceptedAt إلى completedAt
-    const duration = calcDuration(o.acceptedAt, o.completedAt);
+    const duration=calcDuration(o.acceptedAt, o.completedAt);
+    const vipBadge=o.vip?'<span style="background:rgba(245,158,11,.2);color:var(--accent);padding:1px 5px;border-radius:8px;font-size:.6rem;font-weight:700;margin-right:3px">⭐VIP</span>':"";
+    const statusLabel=o.status==="waiting_vip"?`<span class="badge" style="background:rgba(245,158,11,.15);color:var(--accent)">⭐ انتظار VIP</span>`:`<span class="badge ${o.status||""}">${sl(o.status)}</span>`;
     return`<tr>
-      <td style="font-weight:700;color:var(--accent);font-size:.72rem">${o.orderId||o.id}</td>
+      <td style="font-weight:700;color:var(--accent);font-size:.72rem">${vipBadge}${o.orderId||o.id}</td>
       <td style="font-size:.74rem">${o.customer||"-"}</td>
       <td>${o.serviceName||"-"}</td>
       <td>${typeName}</td>
       <td style="font-weight:700;color:var(--accent3)">${(o.totalPrice||0).toFixed(2)} ر.ع</td>
       <td>${o.rating?"⭐".repeat(Math.min(o.rating,5)):"-"}</td>
-      <td><span class="badge ${o.status||""}">${sl(o.status)}</span></td>
+      <td>${statusLabel}</td>
       <td style="font-size:.74rem;color:var(--accent2)">${techName}</td>
       <td style="color:${duration==="—"?"var(--muted)":"var(--accent3)"};font-weight:${duration==="—"?"400":"700"};font-size:.78rem">${duration}</td>
       <td style="color:var(--muted);font-size:.7rem">${date}</td>
       ${showActions?`<td><div style="display:flex;gap:4px">
-        ${o.status==="pending"||o.status==="searching"?`<button class="btn btn-sm btn-blue" onclick="openAssignModal('${o.id}','${o.orderId||o.id}','${o.serviceId||""}')">👨‍🔧 تعيين</button>`:""}
+        ${o.status==="pending"||o.status==="searching"||o.status==="waiting_vip"?`<button class="btn btn-sm btn-blue" onclick="openAssignModal('${o.id}','${o.orderId||o.id}','${o.serviceId||""}')">👨‍🔧 تعيين</button>`:""}
+        <button class="btn btn-sm" style="background:var(--surface2);color:var(--muted)" onclick="viewOrderHistory('${o.id}')">📋</button>
         ${currentUserRole==="admin"?`<button class="btn btn-sm btn-danger" onclick="deleteOrder('${o.id}')">🗑</button>`:""}
       </div></td>`:""}
     </tr>`;
@@ -866,6 +887,50 @@ async function deleteAllPending(){
   if(!p.length){showToast("لا توجد طلبات معلقة","error");return;}
   if(!confirm(`حذف ${p.length} طلب معلق؟`))return;
   try{const b=db.batch();p.forEach(o=>b.delete(db.collection("orders").doc(o.id)));await b.commit();showToast(`تم حذف ${p.length}`);loadOrders();}catch(e){showToast(e.message,"error");}
+}
+
+// ══ Order History Viewer ══
+async function viewOrderHistory(orderId){
+  try{
+    const snap=await db.collection("orders").doc(orderId).collection("history").get();
+    if(snap.empty){showToast("لا يوجد تاريخ لهذا الطلب","error");return;}
+    const sorted=snap.docs.map(d=>d.data()).sort((a,b)=>(a.timestamp?.seconds||0)-(b.timestamp?.seconds||0));
+    const lines=sorted.map(h=>{
+      const t=h.timestamp?new Date(h.timestamp.seconds*1000).toLocaleString("ar"):"-";
+      return`${t}\n  ↳ الحالة: ${h.status} ${h.note?`| ${h.note}`:""}`;
+    }).join("\n");
+    alert(`📋 تاريخ الطلب:\n\n${lines}`);
+  }catch(e){showToast(e.message,"error");}
+}
+
+// ══ Logs Page ══
+let logFilter="all";
+async function loadLogs(){
+  document.getElementById("logs-table").innerHTML='<div class="loader"><div class="spinner"></div></div>';
+  try{
+    const snap=await db.collection("logs").orderBy("createdAt","desc").limit(100).get();
+    const logs=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const list=logFilter==="all"?logs:logs.filter(l=>l.level===logFilter);
+    if(!list.length){document.getElementById("logs-table").innerHTML='<div class="empty">لا توجد سجلات</div>';return;}
+    const rows=list.map(l=>{
+      const date=l.createdAt?new Date(l.createdAt.seconds*1000).toLocaleString("ar"):"-";
+      const color=l.level==="error"?"var(--danger)":"var(--muted)";
+      return`<tr>
+        <td><span style="color:${color};font-weight:700;font-size:.7rem">${l.level==="error"?"❌":"ℹ️"} ${l.level}</span></td>
+        <td style="font-size:.75rem;font-weight:600">${l.context||"-"}</td>
+        <td style="font-size:.75rem;max-width:300px;word-break:break-word">${l.message||"-"}</td>
+        <td style="font-size:.68rem;color:var(--muted)">${date}</td>
+        <td><button class="btn btn-sm btn-danger" onclick="deleteLog('${l.id}')">🗑</button></td>
+      </tr>`;
+    }).join("");
+    document.getElementById("logs-table").innerHTML=`<table><thead><tr><th>النوع</th><th>السياق</th><th>الرسالة</th><th>الوقت</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  }catch(e){document.getElementById("logs-table").innerHTML=`<div class="empty">خطأ: ${e.message}</div>`;}
+}
+function setLogFilter(f,btn){logFilter=f;document.querySelectorAll("#page-logs .filter-btn").forEach(b=>b.classList.remove("active"));btn.classList.add("active");loadLogs();}
+async function deleteLog(id){try{await db.collection("logs").doc(id).delete();loadLogs();}catch(e){showToast(e.message,"error");}}
+async function clearLogs(){
+  if(!confirm("حذف جميع السجلات؟"))return;
+  try{const snap=await db.collection("logs").limit(500).get();const b=db.batch();snap.docs.forEach(d=>b.delete(d.ref));await b.commit();showToast("✅ تم مسح السجلات");loadLogs();}catch(e){showToast(e.message,"error");}
 }
 function exportOrdersExcel(){
   if(!allOrders.length){showToast("لا توجد بيانات","error");return;}
@@ -908,8 +973,8 @@ function renderTechGrid(techs){
     // إحصائيات اليوم من allOrders إذا كانت محملة
     const todayOrders=allOrders.filter(o=>o.technicianId===tc.id&&o.createdAt&&new Date(o.createdAt.seconds*1000).toLocaleDateString("en-CA")===today).length;
     return`<div class="tech-card">
-      <div class="tech-avatar">👨‍🔧</div>
-      <div class="tech-name" title="${tc.name||""}">${tc.name||"-"}</div>
+      <div class="tech-avatar">${tc.vip?"⭐":"👨‍🔧"}</div>
+      <div class="tech-name" title="${tc.name||""}">${tc.vip?'<span style="color:var(--accent);font-size:.7rem">⭐ VIP</span> ':''}${tc.name||"-"}</div>
       <div class="tech-phone">📞 ${tc.phone||"-"}</div>
       <div class="tech-region">📍 ${(tc.regionName||tc.regionId||"غير محدد").substring(0,20)}</div>
       ${tc.suspendReason?`<div style="font-size:.65rem;color:var(--danger);margin-bottom:5px;padding:3px 8px;background:rgba(239,68,68,.1);border-radius:4px">⛔ ${tc.suspendReason.substring(0,40)}</div>`:""}
@@ -1119,9 +1184,14 @@ async function addTechnician(){
   const svcs=document.getElementById("tech-services").value.split(",").map(s=>s.trim()).filter(Boolean);
   const regionId=document.getElementById("tech-region").value,regionName=regionId?(allRegions.find(r=>r.id===regionId)?.name||regionId):"";
   const techId=document.getElementById("tech-id").value.trim();
+  const isVip=document.getElementById("tech-vip").value==="true";
+  const vipRate=parseFloat(document.getElementById("tech-vip-rate").value||20)/100;
   if(!name||!phone){showToast("يرجى ملء الحقول","error");return;}
   try{
-    const data={name,phone,services:svcs,active:true,balance:0,rating:0,ratingCount:0,regionId:regionId||null,regionName:regionName||null,stats:{totalOrders:0,totalEarnings:0,totalCommission:0}};
+    const data={name,phone,services:svcs,active:true,balance:0,rating:0,ratingCount:0,
+      regionId:regionId||null,regionName:regionName||null,
+      vip:isVip, vipRate:isVip?vipRate:null,
+      stats:{totalOrders:0,totalEarnings:0,totalCommission:0}};
     if(techId)await db.collection("technicians").doc(techId).set(data);
     else await db.collection("technicians").add(data);
     showToast("✅ تمت الإضافة");closeModal("tech-modal");
