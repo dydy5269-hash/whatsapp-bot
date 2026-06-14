@@ -102,6 +102,9 @@ html[dir="ltr"] .notif-item.unread{border-right:none;border-left:3px solid var(-
 .badge.rejected{background:rgba(239,68,68,.15);color:var(--danger);}
 .badge.searching{background:rgba(249,115,22,.15);color:#f97316;}
 .badge.cancelled{background:rgba(100,116,139,.15);color:#94a3b8;}
+.badge.on_way{background:rgba(59,130,246,.2);color:#60a5fa;}
+.badge.arrived{background:rgba(16,185,129,.2);color:#34d399;}
+.badge.waiting_vip{background:rgba(245,158,11,.2);color:var(--accent);}
 .table-wrap{overflow-x:auto;}
 table{width:100%;border-collapse:collapse;min-width:500px;}
 th{padding:9px 15px;text-align:right;font-size:.68rem;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;}
@@ -316,6 +319,8 @@ html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
             <button class="filter-btn active" onclick="setOrderFilter('all',this)">الكل</button>
             <button class="filter-btn" onclick="setOrderFilter('pending',this)">قيد الانتظار</button>
             <button class="filter-btn" onclick="setOrderFilter('accepted',this)">مقبول</button>
+            <button class="filter-btn" onclick="setOrderFilter('on_way',this)">🚗 في الطريق</button>
+            <button class="filter-btn" onclick="setOrderFilter('arrived',this)">🏠 وصل</button>
             <button class="filter-btn" onclick="setOrderFilter('done',this)">مكتمل</button>
             <button class="filter-btn" onclick="setOrderFilter('searching',this)">⏳ يبحث</button>
             <button class="filter-btn" onclick="setOrderFilter('cancelled',this)">ملغي</button>
@@ -784,7 +789,10 @@ function showPage(name,btn){
   if(name==="finance")loadFinance();if(name==="map")loadMap();if(name==="users")loadUsers();if(name==="waiting")loadWaiting();
   if(name==="customers")loadCustomers();if(name==="logs")loadLogs();
 }
-const SL={ar:{pending:"قيد الانتظار",accepted:"مقبول",done:"مكتمل",rejected:"مرفوض",cancelled:"ملغي",searching:"يبحث"},en:{pending:"Pending",accepted:"Accepted",done:"Done",rejected:"Rejected",cancelled:"Cancelled",searching:"Searching"}};
+const SL={
+  ar:{pending:"قيد الانتظار",accepted:"مقبول",done:"مكتمل",rejected:"مرفوض",cancelled:"ملغي",searching:"يبحث",on_way:"في الطريق 🚗",arrived:"وصل 🏠",waiting_vip:"انتظار VIP ⭐"},
+  en:{pending:"Pending",accepted:"Accepted",done:"Done",rejected:"Rejected",cancelled:"Cancelled",searching:"Searching",on_way:"On the Way 🚗",arrived:"Arrived 🏠",waiting_vip:"Waiting VIP ⭐"}
+};
 const sl=s=>SL[currentLang]?.[s]||s;
 function showToast(msg,type="success"){const t=document.createElement("div");t.className="toast "+type;t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3000);}
 function openModal(id){document.getElementById(id).classList.add("open");}
