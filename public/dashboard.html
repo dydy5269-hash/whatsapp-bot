@@ -1544,10 +1544,16 @@ async function assignTechToOrder(){
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({orderId:assignOrderDocId,techId,adminKey:"admin-secret-key"})
       });
-      if(res.ok) showToast("✅ تم إرسال الطلب للفني عبر واتساب");
-      else       showToast("⚠️ تم التعيين لكن البوت لم يرد","error");
+      const data=await res.json().catch(()=>({}));
+      if(res.ok){
+        showToast("✅ وصلت الرسالة للفني عبر واتساب");
+      } else {
+        showToast(`⚠️ خطأ من البوت: ${data.error||res.status}`,"error");
+        console.error("Bot error:",data);
+      }
     }catch(e){
-      showToast("⚠️ تم التعيين في Firestore — تحقق من اتصال البوت","error");
+      showToast(`⚠️ تعذر الاتصال بالبوت: ${e.message}`,"error");
+      console.error("Bot connect error:",e);
     }
 
     // ── تحديث الجداول ────────────────────────────────────────────────────────
