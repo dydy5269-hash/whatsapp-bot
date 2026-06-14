@@ -1625,8 +1625,13 @@ async function handleDone(text, techPhone, tech) {
 app.post("/admin/assign", async (req, res) => {
   try {
     const { orderId, techId, adminKey } = req.body;
-    if (adminKey !== process.env.ADMIN_KEY) return res.status(403).json({ error: "Unauthorized" });
+    // التحقق من المفتاح — إذا لم يكن ADMIN_KEY معيّناً، نقبل "admin-secret-key" كافتراضي
+    const expectedKey = process.env.ADMIN_KEY || "admin-secret-key";
+    if (adminKey !== expectedKey) {
+      return res.status(403).json({ error: "Unauthorized — wrong adminKey" });
+    }
     if (!orderId || !techId) return res.status(400).json({ error: "orderId and techId required" });
+    await logInfo("admin_assign", `Assigning order ${orderId} to tech ${techId}`);
 
     const orderRef  = db.collection("orders").doc(orderId);
     const orderSnap = await orderRef.get();
