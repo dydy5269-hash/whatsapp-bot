@@ -29,12 +29,50 @@ const BASE_URL        = process.env.BASE_URL || "https://your-app.railway.app";
 const ADMIN_KEY       = process.env.ADMIN_KEY || "admin-secret-key";
 
 const normalize     = (p) => String(p).replace(/\+/g, "");
-const MIN_BALANCE   = 2;
-const COMMISSION    = 0.10;
 const RETRY_MINUTES = 30;
 const SESSION_TIMEOUT_MINUTES = 60;
 const MAX_PARTS_PER_ORDER     = 5;
-const LATE_TECH_MINUTES       = 30; // إشعار العميل إذا تأخر الفني
+const LATE_TECH_MINUTES       = 30;
+
+// ─── الإعدادات من Firestore (تُحدَّث كل 10 دقائق) ────────────────────────────
+let _settings = {
+  normalRate:  0.10,  // عمولة الفني العادي
+  vipRate:     0.10,  // عمولة الفني VIP
+  partsRate:   0.00,  // عمولة القطع
+  minBalance:  2.00,  // الحد الأدنى للرصيد
+  vipMarkup:   0.20,  // نسبة زيادة السعر على العميل (VIP)
+};
+
+async function loadSettings() {
+  try {
+    const snap = await db.collection("settings").doc("commissions").get();
+    if (snap.exists) {
+      const d = snap.data();
+      _settings = {
+        normalRate: d.normalRate  ?? 0.10,
+        vipRate:    d.vipRate     ?? 0.10,
+        partsRate:  d.partsRate   ?? 0.00,
+        minBalance: d.minBalance  ?? 2.00,
+        vipMarkup:  d.vipMarkup   ?? 0.20,
+      };
+      console.log("✅ Settings loaded:", _settings);
+    }
+  } catch(e) { console.error("loadSettings:", e.message); }
+}
+
+// جلب الإعدادات عند البدء وكل 10 دقائق
+loadSettings();
+setInterval(loadSettings, 10 * 60 * 1000);
+
+// دوال مساعدة للوصول للإعدادات
+const getCommission  = (isVip) => isVip ? _settings.vipRate    : _settings.normalRate;
+const getPartsRate   = ()      => _settings.partsRate;
+const getMinBalance  = ()      => _settings.minBalance;
+const getVipMarkup   = ()      => _settings.vipMarkup;
+
+// ─── الثوابت القديمة تصبح ديناميكية ──────────────────────────────────────────
+Object.defineProperty(global, "MIN_BALANCE", { get: () => _settings.minBalance });
+Object.defineProperty(global, "COMMISSION",  { get: () => _settings.normalRate  }); // إشعار العميل إذا تأخر الفني
 
 // ─── حماية من الطلبات المكررة ─────────────────────────────────────────────────
 const processingOrders = new Set();
@@ -872,8 +910,9 @@ async function sendVipTechList(phone, vipTechs, lang, baseTotal) {
   await sendList(phone, L2.vipList, L2.vipBtn, [{ title: "VIP ⭐", rows: rows.slice(0, 10) }]);
 }
 
-function applyVipRate(total, rate = 0.20) {
-  return Math.round(total * (1 + rate) * 100) / 100;
+function applyVipRate(total, rate = null) {
+  const r = rate ?? getVipMarkup();
+  return Math.round(total * (1 + r) * 100) / 100;
 }
 
 async function sendPartsMenu(phone, service, selectedParts, lang) {
@@ -1544,8 +1583,8 @@ async function handleAccept(text, techPhone, tech) {
   if (!acceptableStatuses.includes(order.status)) {
     await sendMessage(techPhone, TL2.alreadyProc); return;
   }
-  if ((tech.balance||0) < MIN_BALANCE) {
-    await sendMessage(techPhone, TL2.lowBalance(tech.balance||0, MIN_BALANCE)); return;
+  if ((tech.balance||0) < getMinBalance()) {
+    await sendMessage(techPhone, TL2.lowBalance(tech.balance||0, getMinBalance())); return;
   }
 
   await ref.update({
@@ -1646,7 +1685,16 @@ async function handleDone(text, techPhone, tech) {
   const techSnap = await techRef.get();
   const techData = techSnap.data();
 
-  const commission = Math.round(order.totalPrice * COMMISSION * 100) / 100;
+  // ── حساب العمولة من Firestore settings ───────────────────────────────────
+  const isVipOrder    = order.vip === true;
+  const commRate      = getCommission(isVipOrder);
+  const partsRate     = getPartsRate();
+
+  // عمولة منفصلة على الخدمة والقطع
+  const laborCommission = Math.round((order.laborPrice || 0) * commRate  * 100) / 100;
+  const partsCommission = Math.round((order.partsTotal || 0) * partsRate * 100) / 100;
+  const commission      = Math.round((laborCommission + partsCommission) * 100) / 100;
+
   const newBalance = Math.max(0, Math.round(((techData.balance||0) - commission)*100)/100);
 
   // ── تحديث إحصائيات الفني ──────────────────────────────────────────────────
@@ -1736,7 +1784,7 @@ app.post("/admin/assign", async (req, res) => {
       return res.status(400).json({ error: `رصيد الفني أقل من الحد الأدنى (${MIN_BALANCE} ر.ع)` });
     }
 
-    // تحديث الطلب أولاً
+    // تحديث الطلب — يبقى pending حتى يضغط الفني قبول
     await orderRef.update({
       status:          "pending",
       technicianId:    techId,
@@ -1744,7 +1792,7 @@ app.post("/admin/assign", async (req, res) => {
       techName:        tech.name || "",
       assignedByAdmin: true,
       rejectedTechs:   [],
-      acceptedAt:      admin.firestore.FieldValue.serverTimestamp()
+      assignedAt:      admin.firestore.FieldValue.serverTimestamp()
     });
     await techRef.update({ active: false });
     await addOrderHistory(orderId, "pending", "admin", `Admin assigned: ${tech.name}`);
@@ -1752,11 +1800,7 @@ app.post("/admin/assign", async (req, res) => {
     // إرسال الطلب للفني بلغته مع كل التفاصيل
     await sendOrderToTech(orderId, { ...order, rejectedTechs: [] }, tech);
 
-    // إشعار العميل
-    const CL2 = CUSTOMER_LANGS[order.lang||"ar"] || CUSTOMER_LANGS.ar;
-    await sendMessage(normalize(order.customer), CL2.accepted(tech.name, tech.phone));
-
-    res.json({ success: true, message: `Order ${orderId} assigned to ${tech.name}` });
+    res.json({ success: true, message: `Order ${orderId} assigned to ${tech.name} — waiting for tech to accept` });
   } catch(e) {
     await logError("admin_assign", e, { orderId: req.body?.orderId });
     res.status(500).json({ error: e.message });
