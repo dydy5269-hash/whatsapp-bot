@@ -656,6 +656,9 @@ let ordersChart=null,statusChart=null,mapInstance=null,mapMarkers=[],mapFilter="
 let currentUserRole="admin",currentUserRegion=null;
 let notifications=[],unreadCount=0,notifUnsubscribe=null;
 
+// ── دوال مساعدة ──────────────────────────────────────────────────────────────
+const normalize = (p) => String(p).replace(/\+/g, "");
+
 // ══ Helpers ══
 function getLocalizedName(obj,lang){
   if(!obj)return"";
