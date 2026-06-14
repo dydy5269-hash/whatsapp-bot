@@ -160,6 +160,8 @@ const CUSTOMER_LANGS = {
     needRating:    "⭐ يرجى تقييم طلبك السابق أولاً قبل طلب خدمة جديدة.",
     privacyNote:   "🔒 نستخدم بياناتك فقط لتنفيذ الطلب وتحسين الخدمة.",
     accepted:      (n, p) => `✅ تم قبول طلبك!\n👨‍🔧 ${n}\n📞 ${p}\nفي الطريق!`,
+    techOnWay:     (n) => `🚗 الفني *${n}* في الطريق إليك!\nيرجى الاستعداد.`,
+    techArrived:   (n) => `🏠 الفني *${n}* وصل!\nسيبدأ العمل الآن.`,
     rejected:      (id) => `❌ رفض الفني. نبحث عن آخر...\n🆔 ${id}`,
     completed:     (id) => `✅ اكتمل طلبك!\n🆔 ${id}\nشكراً! 🙏`,
     ratePrompt:    "⭐ كيف تقيّم الخدمة؟",
@@ -230,6 +232,8 @@ const CUSTOMER_LANGS = {
     needRating:    "⭐ Please rate your previous order first before requesting a new service.",
     privacyNote:   "🔒 We use your data only to fulfill the order and improve our service.",
     accepted:      (n, p) => `✅ Accepted!\n👨‍🔧 ${n}\n📞 ${p}\nOn the way!`,
+    techOnWay:     (n) => `🚗 Technician *${n}* is on the way!\nPlease be ready.`,
+    techArrived:   (n) => `🏠 Technician *${n}* has arrived!\nWork will begin now.`,
     rejected:      (id) => `❌ Tech rejected. Searching...\n🆔 ${id}`,
     completed:     (id) => `✅ Done!\n🆔 ${id}\nThank you! 🙏`,
     ratePrompt:    "⭐ Rate the service?",
@@ -278,6 +282,10 @@ const TECH_LANGS = {
     orderNotFound: "الطلب غير موجود.",
     alreadyProc:   "تمت معالجة الطلب مسبقاً.",
     alreadyDone:   "الطلب مكتمل مسبقاً.",
+    onMyWayLabel:  "في الطريق إليك 🚗",
+    arrivedLabel:  "لقد وصلت 🏠",
+    doneRow:       "✅ إنهاء الطلب",
+    statusPrompt:  "اختر الحالة الحالية:",
     info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "لا يوجد"}\n💰 ${b} ر.ع\n🟢 ${a ? "متاح" : "مشغول"}`
   },
   en: {
@@ -299,6 +307,10 @@ const TECH_LANGS = {
     orderNotFound: "Order not found.",
     alreadyProc:   "Order already processed.",
     alreadyDone:   "Order already completed.",
+    onMyWayLabel:  "On my way 🚗",
+    arrivedLabel:  "I've arrived 🏠",
+    doneRow:       "✅ Mark Done",
+    statusPrompt:  "Update your status:",
     info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "N/A"}\n💰 ${b} OMR\n🟢 ${a ? "Available" : "Busy"}`
   },
   hi: {
@@ -320,6 +332,10 @@ const TECH_LANGS = {
     orderNotFound: "ऑर्डर नहीं मिला।",
     alreadyProc:   "ऑर्डर पहले ही प्रोसेस हो गया।",
     alreadyDone:   "ऑर्डर पहले ही पूरा हो गया।",
+    onMyWayLabel:  "रास्ते में हूँ 🚗",
+    arrivedLabel:  "पहुँच गया 🏠",
+    doneRow:       "✅ काम पूरा",
+    statusPrompt:  "अपनी स्थिति चुनें:",
     info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "N/A"}\n💰 ${b} OMR\n🟢 ${a ? "उपलब्ध" : "व्यस्त"}`
   },
   bn: {
@@ -341,6 +357,10 @@ const TECH_LANGS = {
     orderNotFound: "অর্ডার পাওয়া যায়নি।",
     alreadyProc:   "অর্ডার ইতিমধ্যে প্রক্রিয়া করা হয়েছে।",
     alreadyDone:   "অর্ডার ইতিমধ্যে সম্পন্ন।",
+    onMyWayLabel:  "পথে আছি 🚗",
+    arrivedLabel:  "পৌঁছে গেছি 🏠",
+    doneRow:       "✅ কাজ সম্পন্ন",
+    statusPrompt:  "আপনার অবস্থান আপডেট করুন:",
     info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "N/A"}\n💰 ${b} OMR\n🟢 ${a ? "উপলব্ধ" : "ব্যস্ত"}`
   }
 };
@@ -1003,9 +1023,61 @@ app.post("/webhook", async (req, res) => {
     // ── فني ───────────────────────────────────────────────────────────────────
     const tech = await getTechByPhone(from);
     if (tech) {
-      if (text.startsWith("accept_")) { await handleAccept(text, from, tech); return; }
-      if (text.startsWith("reject_")) { await handleReject(text, from, tech); return; }
-      if (text.startsWith("done_"))   { await handleDone(text, from, tech);   return; }
+      if (text.startsWith("accept_"))  { await handleAccept(text, from, tech);  return; }
+      if (text.startsWith("reject_"))  { await handleReject(text, from, tech);  return; }
+      if (text.startsWith("done_"))    { await handleDone(text, from, tech);    return; }
+
+      // ── في الطريق ────────────────────────────────────────────────────────────
+      if (text.startsWith("onway_")) {
+        const orderId = text.replace("onway_", "");
+        const oSnap   = await db.collection("orders").doc(orderId).get();
+        if (oSnap.exists) {
+          const order = oSnap.data();
+          const TL2   = TECH_LANGS[getTLang(tech)] || TECH_LANGS.ar;
+          const CL2   = CUSTOMER_LANGS[order.lang||"ar"] || CUSTOMER_LANGS.ar;
+
+          await db.collection("orders").doc(orderId).update({
+            status:    "on_way",
+            onWayAt:   admin.firestore.FieldValue.serverTimestamp()
+          });
+          await addOrderHistory(orderId, "on_way", tech.id, "Tech on the way");
+
+          // إشعار العميل
+          await sendMessage(normalize(order.customer), CL2.techOnWay(tech.name));
+
+          // زر "وصلت" للفني
+          await sendButtons(from, TL2.statusPrompt, [
+            { id: `arrived_${orderId}`, title: TL2.arrivedLabel }
+          ]);
+        }
+        return;
+      }
+
+      // ── وصلت ─────────────────────────────────────────────────────────────────
+      if (text.startsWith("arrived_")) {
+        const orderId = text.replace("arrived_", "");
+        const oSnap   = await db.collection("orders").doc(orderId).get();
+        if (oSnap.exists) {
+          const order = oSnap.data();
+          const TL2   = TECH_LANGS[getTLang(tech)] || TECH_LANGS.ar;
+          const CL2   = CUSTOMER_LANGS[order.lang||"ar"] || CUSTOMER_LANGS.ar;
+
+          await db.collection("orders").doc(orderId).update({
+            status:     "arrived",
+            arrivedAt:  admin.firestore.FieldValue.serverTimestamp()
+          });
+          await addOrderHistory(orderId, "arrived", tech.id, "Tech arrived");
+
+          // إشعار العميل
+          await sendMessage(normalize(order.customer), CL2.techArrived(tech.name));
+
+          // زر "إنهاء الطلب" للفني
+          await sendButtons(from, TL2.doneLabel(orderId), [
+            { id: `done_${orderId}`, title: TL2.doneRow }
+          ]);
+        }
+        return;
+      }
 
       if (text.startsWith("techlang_")) {
         const chosenLang = text.replace("techlang_", "");
@@ -1466,19 +1538,24 @@ async function handleAccept(text, techPhone, tech) {
   const TL2     = TECH_LANGS[getTLang(tech)] || TECH_LANGS.ar;
   if (!snap.exists) { await sendMessage(techPhone, TL2.orderNotFound); return; }
   const order = snap.data();
-  if (!["pending","searching"].includes(order.status)) { await sendMessage(techPhone, TL2.alreadyProc); return; }
-  if ((tech.balance||0) < MIN_BALANCE) { await sendMessage(techPhone, TL2.lowBalance(tech.balance||0, MIN_BALANCE)); return; }
+
+  // قبول: pending أو searching أو accepted (إذا عيّنه الأدمن وما ضغط قبول بعد)
+  const acceptableStatuses = ["pending", "searching", "accepted"];
+  if (!acceptableStatuses.includes(order.status)) {
+    await sendMessage(techPhone, TL2.alreadyProc); return;
+  }
+  if ((tech.balance||0) < MIN_BALANCE) {
+    await sendMessage(techPhone, TL2.lowBalance(tech.balance||0, MIN_BALANCE)); return;
+  }
 
   await ref.update({
-    status:      "accepted",
+    status:       "accepted",
     technicianId: tech.id,
-    techPhone:   normalize(tech.phone),
-    techName:    tech.name || "",
-    acceptedAt:  admin.firestore.FieldValue.serverTimestamp()
+    techPhone:    normalize(tech.phone),
+    techName:     tech.name || "",
+    acceptedAt:   admin.firestore.FieldValue.serverTimestamp()
   });
   await db.collection("technicians").doc(tech.id).update({ active: false });
-
-  // تسجيل تاريخ الطلب
   await addOrderHistory(orderId, "accepted", tech.id, `Tech: ${tech.name}`);
 
   const customerPhone = normalize(order.customer);
@@ -1486,8 +1563,11 @@ async function handleAccept(text, techPhone, tech) {
 
   await sendMessage(techPhone, TL2.customerPhone(customerPhone));
   if (order.location) await sendLocation(techPhone, order.location.latitude, order.location.longitude);
-  await sendButtons(techPhone, TL2.doneLabel(orderId), [
-    { id: "done_" + orderId, title: TL2.doneRow }
+
+  // ── أزرار مراحل الطلب ────────────────────────────────────────────────────
+  await sendButtons(techPhone, TL2.statusPrompt, [
+    { id: `onway_${orderId}`,   title: TL2.onMyWayLabel },
+    { id: `arrived_${orderId}`, title: TL2.arrivedLabel }
   ]);
   await sendMessage(customerPhone, CL2.accepted(tech.name, tech.phone));
 
@@ -1497,13 +1577,12 @@ async function handleAccept(text, techPhone, tech) {
       const freshSnap = await ref.get();
       if (!freshSnap.exists) return;
       const fresh = freshSnap.data();
-      if (fresh.status === "accepted") {
-        // الطلب لم يُنجز بعد → أشعر العميل
+      if (["accepted","on_way"].includes(fresh.status)) {
         await sendButtons(normalize(order.customer),
           CL2.techLate(LATE_TECH_MINUTES),
           [
-            { id: `keep_order_${orderId}`,          title: CL2.keepOrder },
-            { id: `cancel_accepted_${orderId}`,      title: CL2.cancelAfterAccept }
+            { id: `keep_order_${orderId}`,     title: CL2.keepOrder         },
+            { id: `cancel_accepted_${orderId}`, title: CL2.cancelAfterAccept }
           ]
         );
       }
