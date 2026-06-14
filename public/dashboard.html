@@ -262,6 +262,7 @@ html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
       <button class="nav-item" id="nav-users" onclick="showPage('users',this)"><span class="icon">👥</span>المستخدمون</button>
       <button class="nav-item" onclick="showPage('customers',this)"><span class="icon">📱</span>العملاء</button>
       <button class="nav-item" onclick="showPage('logs',this)"><span class="icon">📝</span>السجلات</button>
+      <button class="nav-item" onclick="showPage('settings',this)"><span class="icon">⚙️</span>الإعدادات</button>
     </nav>
     <div class="sidebar-footer">
       <div class="admin-info"><strong id="admin-email">—</strong><span class="admin-role-badge role-admin" id="admin-role-badge">مدير</span></div>
@@ -423,8 +424,53 @@ html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
       </div>
     </div>
 
-    <!-- Logs -->
-    <div id="page-logs" class="page">
+    <!-- Settings -->
+    <div id="page-settings" class="page">
+      <div class="card" style="max-width:560px">
+        <div class="card-header"><h3>⚙️ إعدادات العمولات والأسعار</h3></div>
+        <div id="settings-loader" class="loader"><div class="spinner"></div></div>
+        <div id="settings-form" style="display:none">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>💰 عمولة الفني العادي (%)</label>
+              <input type="number" id="set-normalRate" min="0" max="100" step="0.1" placeholder="10"/>
+              <span class="hint">نسبة تُخصم من رصيد الفني على أجرة الخدمة</span>
+            </div>
+            <div class="form-group">
+              <label>⭐ عمولة الفني VIP (%)</label>
+              <input type="number" id="set-vipRate" min="0" max="100" step="0.1" placeholder="10"/>
+              <span class="hint">نسبة تُخصم من رصيد الفني VIP</span>
+            </div>
+            <div class="form-group">
+              <label>🔩 عمولة القطع (%)</label>
+              <input type="number" id="set-partsRate" min="0" max="100" step="0.1" placeholder="0"/>
+              <span class="hint">نسبة تُخصم على قيمة القطع (0 = بدون عمولة على القطع)</span>
+            </div>
+            <div class="form-group">
+              <label>⚠️ الحد الأدنى للرصيد (ر.ع)</label>
+              <input type="number" id="set-minBalance" min="0" step="0.1" placeholder="2"/>
+              <span class="hint">إذا انخفض رصيد الفني عن هذا الحد لا يمكنه قبول طلبات</span>
+            </div>
+            <div class="form-group" style="grid-column:1/-1">
+              <label>⭐ نسبة زيادة سعر VIP على العميل (%)</label>
+              <input type="number" id="set-vipMarkup" min="0" max="100" step="0.1" placeholder="20"/>
+              <span class="hint">نسبة تُضاف على إجمالي الطلب عند اختيار فني VIP</span>
+            </div>
+          </div>
+
+          <!-- معاينة حية -->
+          <div style="margin:0 18px 16px;background:var(--surface2);border-radius:10px;padding:14px">
+            <div style="font-size:.75rem;font-weight:700;color:var(--muted);margin-bottom:10px">📊 معاينة حية — مثال طلب 10 ر.ع أجرة + 5 ر.ع قطع</div>
+            <div id="settings-preview" style="font-size:.82rem;line-height:1.8"></div>
+          </div>
+
+          <div class="form-actions">
+            <button class="btn btn-primary" onclick="saveSettings()">💾 حفظ الإعدادات</button>
+            <button class="btn" style="background:var(--surface2);color:var(--muted)" onclick="loadSettingsPage()">↺ إعادة تحميل</button>
+          </div>
+        </div>
+      </div>
+    </div>
       <div class="card">
         <div class="card-header">
           <h3>📝 السجلات</h3>
@@ -787,7 +833,7 @@ function showPage(name,btn){
   if(name==="orders")loadOrders();if(name==="technicians")loadTechnicians();if(name==="regions")loadRegions();
   if(name==="services")loadServices();if(name==="parts")loadParts();if(name==="coupons")loadCoupons();
   if(name==="finance")loadFinance();if(name==="map")loadMap();if(name==="users")loadUsers();if(name==="waiting")loadWaiting();
-  if(name==="customers")loadCustomers();if(name==="logs")loadLogs();
+  if(name==="customers")loadCustomers();if(name==="logs")loadLogs();if(name==="settings")loadSettingsPage();
 }
 const SL={
   ar:{pending:"قيد الانتظار",accepted:"مقبول",done:"مكتمل",rejected:"مرفوض",cancelled:"ملغي",searching:"يبحث",on_way:"في الطريق 🚗",arrived:"وصل 🏠",waiting_vip:"انتظار VIP ⭐"},
@@ -914,7 +960,72 @@ async function deleteAllPending(){
   try{const b=db.batch();p.forEach(o=>b.delete(db.collection("orders").doc(o.id)));await b.commit();showToast(`تم حذف ${p.length}`);loadOrders();}catch(e){showToast(e.message,"error");}
 }
 
-// ══ Order History Viewer ══
+// ══ Settings Page ══
+async function loadSettingsPage(){
+  document.getElementById("settings-loader").style.display="flex";
+  document.getElementById("settings-form").style.display="none";
+  try{
+    const snap=await db.collection("settings").doc("commissions").get();
+    const d=snap.exists?snap.data():{normalRate:.10,vipRate:.10,partsRate:0,minBalance:2,vipMarkup:.20};
+    document.getElementById("set-normalRate").value = Math.round((d.normalRate||.10)*100);
+    document.getElementById("set-vipRate").value    = Math.round((d.vipRate   ||.10)*100);
+    document.getElementById("set-partsRate").value  = Math.round((d.partsRate ||0  )*100);
+    document.getElementById("set-minBalance").value = d.minBalance||2;
+    document.getElementById("set-vipMarkup").value  = Math.round((d.vipMarkup ||.20)*100);
+    document.getElementById("settings-loader").style.display="none";
+    document.getElementById("settings-form").style.display="block";
+    updateSettingsPreview();
+    // معاينة حية عند التغيير
+    ["set-normalRate","set-vipRate","set-partsRate","set-minBalance","set-vipMarkup"]
+      .forEach(id=>document.getElementById(id).addEventListener("input",updateSettingsPreview));
+  }catch(e){showToast(e.message,"error");}
+}
+
+function updateSettingsPreview(){
+  const nr  = parseFloat(document.getElementById("set-normalRate").value||10)/100;
+  const vr  = parseFloat(document.getElementById("set-vipRate").value   ||10)/100;
+  const pr  = parseFloat(document.getElementById("set-partsRate").value ||0 )/100;
+  const mb  = parseFloat(document.getElementById("set-minBalance").value||2 );
+  const vm  = parseFloat(document.getElementById("set-vipMarkup").value ||20)/100;
+
+  const labor=10, parts=5, base=labor+parts;
+  const vipTotal   = Math.round(base*(1+vm)*100)/100;
+  const normComm   = Math.round((labor*nr + parts*pr)*100)/100;
+  const vipComm    = Math.round((labor*vr + parts*pr)*100)/100; // على السعر قبل markup
+
+  document.getElementById("settings-preview").innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div style="background:var(--surface);border-radius:7px;padding:10px">
+        <div style="color:var(--muted);font-size:.7rem;margin-bottom:4px">👨‍🔧 فني عادي</div>
+        <div>إجمالي العميل: <strong style="color:var(--accent3)">${base.toFixed(2)} ر.ع</strong></div>
+        <div>عمولة الفني: <strong style="color:var(--danger)">${normComm.toFixed(2)} ر.ع</strong></div>
+        <div>صافي الفني: <strong style="color:var(--accent2)">${(base-normComm).toFixed(2)} ر.ع</strong></div>
+      </div>
+      <div style="background:var(--surface);border-radius:7px;padding:10px">
+        <div style="color:var(--accent);font-size:.7rem;margin-bottom:4px">⭐ فني VIP</div>
+        <div>إجمالي العميل: <strong style="color:var(--accent3)">${vipTotal.toFixed(2)} ر.ع</strong></div>
+        <div>عمولة الفني: <strong style="color:var(--danger)">${vipComm.toFixed(2)} ر.ع</strong></div>
+        <div>صافي الفني: <strong style="color:var(--accent2)">${(base-vipComm).toFixed(2)} ر.ع</strong></div>
+      </div>
+    </div>
+    <div style="margin-top:8px;font-size:.7rem;color:var(--muted)">⚠️ الحد الأدنى للرصيد: <strong>${mb} ر.ع</strong></div>`;
+}
+
+async function saveSettings(){
+  const data={
+    normalRate:  parseFloat(document.getElementById("set-normalRate").value||10)/100,
+    vipRate:     parseFloat(document.getElementById("set-vipRate").value   ||10)/100,
+    partsRate:   parseFloat(document.getElementById("set-partsRate").value ||0 )/100,
+    minBalance:  parseFloat(document.getElementById("set-minBalance").value||2 ),
+    vipMarkup:   parseFloat(document.getElementById("set-vipMarkup").value ||20)/100,
+    updatedAt:   firebase.firestore.FieldValue.serverTimestamp(),
+    updatedBy:   auth.currentUser?.email||"admin"
+  };
+  try{
+    await db.collection("settings").doc("commissions").set(data);
+    showToast("✅ تم حفظ الإعدادات — ستُطبَّق خلال 10 دقائق على البوت");
+  }catch(e){showToast(e.message,"error");}
+}
 async function viewOrderHistory(orderId){
   try{
     const snap=await db.collection("orders").doc(orderId).collection("history").get();
