@@ -1508,14 +1508,49 @@ async function openAssignModal(docId,orderId,serviceId){
 }
 async function assignTechToOrder(){
   const techId=document.getElementById("assign-tech-select").value;
-  if(!techId){showToast("يرجى اختيار فني","error");return;}if(!assignOrderDocId)return;
+  if(!techId){showToast("يرجى اختيار فني","error");return;}
+  if(!assignOrderDocId)return;
+
+  // جلب بيانات الفني
+  const techSnap=await db.collection("technicians").doc(techId).get();
+  if(!techSnap.exists){showToast("الفني غير موجود","error");return;}
+  const techData=techSnap.data();
+
   try{
-    await db.collection("orders").doc(assignOrderDocId).update({technicianId:techId,status:"pending",assignedByAdmin:true,rejectedTechs:[],assignedAt:firebase.firestore.FieldValue.serverTimestamp()});
+    // ── تحديث الطلب في Firestore ─────────────────────────────────────────────
+    await db.collection("orders").doc(assignOrderDocId).update({
+      technicianId:   techId,
+      techName:       techData.name||"",
+      techPhone:      normalize(techData.phone||""),
+      status:         "pending",
+      assignedByAdmin:true,
+      rejectedTechs:  [],
+      assignedAt:     firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    // ── تعطيل الفني ──────────────────────────────────────────────────────────
     await db.collection("technicians").doc(techId).update({active:false});
-    showToast("✅ تم تعيين الفني");closeModal("assign-modal");
-    // إشعار السيرفر لإرسال الطلب للفني عبر واتساب
-    try{await fetch(`${window.BOT_URL}/admin/assign`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId:assignOrderDocId,techId,adminKey:"admin-secret-key"})});}catch(e){console.warn("Bot notify failed:",e.message);}
-    loadOrders();loadWaiting();
+
+    showToast("✅ تم تعيين الفني — جارٍ إرسال الطلب...");
+    closeModal("assign-modal");
+
+    // ── إرسال الطلب للفني عبر البوت ─────────────────────────────────────────
+    try{
+      const res=await fetch(`${window.BOT_URL}/admin/assign`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({orderId:assignOrderDocId,techId,adminKey:"admin-secret-key"})
+      });
+      if(res.ok) showToast("✅ تم إرسال الطلب للفني عبر واتساب");
+      else       showToast("⚠️ تم التعيين لكن البوت لم يرد","error");
+    }catch(e){
+      showToast("⚠️ تم التعيين في Firestore — تحقق من اتصال البوت","error");
+    }
+
+    // ── تحديث الجداول ────────────────────────────────────────────────────────
+    await loadOrders();
+    await loadWaiting();
+
   }catch(e){showToast(e.message,"error");}
 }
 </script>
