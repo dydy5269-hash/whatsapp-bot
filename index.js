@@ -1512,13 +1512,30 @@ async function handleReject(text, techPhone, tech) {
   if (!["pending","searching"].includes(order.status)) { await sendMessage(techPhone, TL2.alreadyProc); return; }
 
   const rejectedTechs = [...(order.rejectedTechs||[]), tech.id];
-  await ref.update({ status: "searching", rejectedTechs, technicianId: null });
+
+  // ── إعادة تفعيل الفني الرافض ─────────────────────────────────────────────
+  await db.collection("technicians").doc(tech.id).update({ active: true });
+
+  await ref.update({
+    status: "searching",
+    rejectedTechs,
+    technicianId: null,
+    techPhone:    null,
+    techName:     null,
+    searchStartedAt: admin.firestore.FieldValue.serverTimestamp()
+  });
   await addOrderHistory(orderId, "searching", tech.id, `Rejected by: ${tech.name}`);
   await sendMessage(techPhone, TL2.techRejected);
 
   const CL2 = CUSTOMER_LANGS[order.lang||"ar"] || CUSTOMER_LANGS.ar;
   await sendMessage(normalize(order.customer), CL2.rejected(order.orderId));
-  await dispatchToTech(orderId, { ...order, rejectedTechs, status: "searching" });
+
+  // تأخير قصير ثم البحث عن الفني التالي
+  setTimeout(async () => {
+    try {
+      await dispatchToTech(orderId, { ...order, rejectedTechs, status: "searching", technicianId: null });
+    } catch(e) { await logError("handleReject_dispatch", e, { orderId }); }
+  }, 2000);
 }
 
 async function handleDone(text, techPhone, tech) {
@@ -1604,7 +1621,7 @@ async function handleDone(text, techPhone, tech) {
   unlockOrder(orderId);
 }
 
-// ─── 3: Admin API — تعيين فني يدوياً من لوحة التحكم ─────────────────────────
+// ─── Admin API — تعيين فني يدوياً من لوحة التحكم ────────────────────────────
 app.post("/admin/assign", async (req, res) => {
   try {
     const { orderId, techId, adminKey } = req.body;
@@ -1619,33 +1636,36 @@ app.post("/admin/assign", async (req, res) => {
     const techRef  = db.collection("technicians").doc(techId);
     const techSnap = await techRef.get();
     if (!techSnap.exists) return res.status(404).json({ error: "Tech not found" });
-    const tech = techSnap.data();
+    const tech = { id: techId, ...techSnap.data() };
 
-    // تحديث الطلب
-    const techPhone = normalize(tech.phone);
-    await orderRef.update({ status: "pending", technicianId: techId, techPhone, assignedByAdmin: true });
+    // تحقق من الرصيد
+    if ((tech.balance||0) < MIN_BALANCE) {
+      return res.status(400).json({ error: `رصيد الفني أقل من الحد الأدنى (${MIN_BALANCE} ر.ع)` });
+    }
+
+    // تحديث الطلب أولاً
+    await orderRef.update({
+      status:          "pending",
+      technicianId:    techId,
+      techPhone:       normalize(tech.phone),
+      techName:        tech.name || "",
+      assignedByAdmin: true,
+      rejectedTechs:   [],
+      acceptedAt:      admin.firestore.FieldValue.serverTimestamp()
+    });
     await techRef.update({ active: false });
+    await addOrderHistory(orderId, "pending", "admin", `Admin assigned: ${tech.name}`);
 
-    // إرسال الطلب للفني بلغته
-    const TL2 = TECH_LANGS[tech.lang || "ar"] || TECH_LANGS.ar;
-    const partsText = (order.parts||[]).map(p => `• ${p.name} x${p.qty} = ${p.total} OMR`).join("\n");
-    await sendMessage(techPhone, TL2.newOrder(order.orderId, order.serviceName, order.type||"", partsText, order.laborPrice||0, order.totalPrice||0));
-    if (order.location) await sendLocation(techPhone, order.location.latitude, order.location.longitude);
-    await sendButtons(techPhone,
-      tech.lang === "ar" ? "هل تقبل هذا الطلب؟ (تعيين من الإدارة)" : "Accept this order? (Admin assigned)",
-      [
-        { id: `accept_${orderId}`, title: TL2.acceptRow },
-        { id: `reject_${orderId}`, title: TL2.rejectRow }
-      ]
-    );
+    // إرسال الطلب للفني بلغته مع كل التفاصيل
+    await sendOrderToTech(orderId, { ...order, rejectedTechs: [] }, tech);
 
     // إشعار العميل
     const CL2 = CUSTOMER_LANGS[order.lang||"ar"] || CUSTOMER_LANGS.ar;
-    await sendMessage(normalize(order.customer), CL2.noTech.replace("30 دقيقة", "قريباً").replace("30 min", "soon"));
+    await sendMessage(normalize(order.customer), CL2.accepted(tech.name, tech.phone));
 
-    res.json({ success: true, message: `Order ${orderId} assigned to tech ${techId}` });
+    res.json({ success: true, message: `Order ${orderId} assigned to ${tech.name}` });
   } catch(e) {
-    console.error("Admin assign error:", e);
+    await logError("admin_assign", e, { orderId: req.body?.orderId });
     res.status(500).json({ error: e.message });
   }
 });
