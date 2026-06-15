@@ -730,11 +730,12 @@ auth.onAuthStateChanged(async user=>{
     document.getElementById("admin-email").textContent=user.email;
     const uSnap=await db.collection("adminUsers").doc(user.uid).get();
     if(uSnap.exists){const ud=uSnap.data();currentUserRole=ud.role||"admin";currentUserRegion=ud.regionId||null;document.getElementById("admin-role-badge").textContent=currentUserRole==="admin"?"مدير":"مشرف";document.getElementById("admin-role-badge").className=`admin-role-badge role-${currentUserRole}`;if(currentUserRole!=="admin")document.getElementById("nav-users").style.display="none";}
-    loadOverview();startNotifications();
+    loadOverview();startNotifications();startOrdersListener();
   }else{
     document.getElementById("login-screen").style.display="flex";
     document.getElementById("app").style.display="none";
     if(notifUnsubscribe)notifUnsubscribe();
+    if(ordersUnsubscribe)ordersUnsubscribe();
   }
 });
 async function doLogin(){
@@ -878,9 +879,63 @@ function buildStatusChart(orders){
 }
 
 // ══ Orders ══
+// ══ Real-time Orders Listener ══
+let ordersUnsubscribe = null;
+
+function startOrdersListener() {
+  if (ordersUnsubscribe) ordersUnsubscribe();
+  ordersUnsubscribe = db.collection("orders")
+    .orderBy("createdAt","desc")
+    .limit(100)
+    .onSnapshot(snap => {
+      allOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // تحديث الجدول إذا كانت صفحة الطلبات مفتوحة
+      const ordersPage = document.getElementById("page-orders");
+      if (ordersPage && ordersPage.classList.contains("active")) {
+        renderFilteredOrders();
+      }
+
+      // تحديث النظرة العامة
+      const overviewPage = document.getElementById("page-overview");
+      if (overviewPage && overviewPage.classList.contains("active")) {
+        loadOverview();
+      }
+
+      // تحديث badges
+      const pending   = allOrders.filter(o => o.status === "pending").length;
+      const searching = allOrders.filter(o => o.status === "searching").length;
+      const badge = document.getElementById("pending-badge");
+      badge.style.display = pending > 0 ? "inline" : "none";
+      badge.textContent   = pending;
+      const wBadge = document.getElementById("waiting-badge");
+      wBadge.style.display = searching > 0 ? "inline" : "none";
+      wBadge.textContent   = searching;
+
+      // إشعار تغيير الحالة
+      snap.docChanges().forEach(change => {
+        if (change.type === "modified") {
+          const o   = change.doc.data();
+          const st  = o.status;
+          const id  = o.orderId || change.doc.id;
+          if (st === "on_way")  showLiveNotif(`🚗 الفني في الطريق`, `طلب ${id} — ${o.techName||""}`, "var(--accent2)");
+          if (st === "arrived") showLiveNotif(`🏠 الفني وصل`,        `طلب ${id} — ${o.techName||""}`, "var(--accent3)");
+          if (st === "done")    showLiveNotif(`✅ طلب مكتمل`,         `طلب ${id} — ${(o.totalPrice||0).toFixed(2)} ر.ع`, "var(--accent3)");
+          if (st === "accepted")showLiveNotif(`👨‍🔧 طلب مقبول`,        `طلب ${id} — ${o.techName||""}`, "var(--accent2)");
+        }
+      });
+    }, err => console.error("Orders listener error:", err));
+}
+
 async function loadOrders(){
   document.getElementById("orders-table").innerHTML='<div class="loader"><div class="spinner"></div></div>';
-  try{const snap=await db.collection("orders").orderBy("createdAt","desc").get();allOrders=snap.docs.map(d=>({id:d.id,...d.data()}));renderFilteredOrders();}
+  try{
+    const snap=await db.collection("orders").orderBy("createdAt","desc").get();
+    allOrders=snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderFilteredOrders();
+    // تفعيل الـ listener تلقائياً
+    startOrdersListener();
+  }
   catch(e){document.getElementById("orders-table").innerHTML='<div class="empty">خطأ في التحميل</div>';}
 }
 function setOrderFilter(f,btn){orderFilter=f;document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));btn.classList.add("active");renderFilteredOrders();}
