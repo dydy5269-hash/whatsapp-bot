@@ -456,6 +456,16 @@ html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
               <input type="number" id="set-vipMarkup" min="0" max="100" step="0.1" placeholder="20"/>
               <span class="hint">نسبة تُضاف على إجمالي الطلب عند اختيار فني VIP</span>
             </div>
+            <div class="form-group">
+              <label>🧾 نسبة الضريبة (%)</label>
+              <input type="number" id="set-taxRate" min="0" max="100" step="0.1" placeholder="0"/>
+              <span class="hint">0 = بدون ضريبة — مثال: 5 = ضريبة 5%</span>
+            </div>
+            <div class="form-group">
+              <label>🧾 اسم الضريبة</label>
+              <input type="text" id="set-taxName" placeholder="ضريبة القيمة المضافة"/>
+              <span class="hint">يظهر في ملخص الطلب للعميل</span>
+            </div>
           </div>
 
           <!-- معاينة حية -->
@@ -1021,17 +1031,19 @@ async function loadSettingsPage(){
   document.getElementById("settings-form").style.display="none";
   try{
     const snap=await db.collection("settings").doc("commissions").get();
-    const d=snap.exists?snap.data():{normalRate:.10,vipRate:.10,partsRate:0,minBalance:2,vipMarkup:.20};
+    const d=snap.exists?snap.data():{normalRate:.10,vipRate:.10,partsRate:0,minBalance:2,vipMarkup:.20,taxRate:0,taxName:"ضريبة القيمة المضافة"};
     document.getElementById("set-normalRate").value = Math.round((d.normalRate||.10)*100);
     document.getElementById("set-vipRate").value    = Math.round((d.vipRate   ||.10)*100);
     document.getElementById("set-partsRate").value  = Math.round((d.partsRate ||0  )*100);
     document.getElementById("set-minBalance").value = d.minBalance||2;
     document.getElementById("set-vipMarkup").value  = Math.round((d.vipMarkup ||.20)*100);
+    document.getElementById("set-taxRate").value    = Math.round((d.taxRate   ||0  )*100);
+    document.getElementById("set-taxName").value    = d.taxName||"ضريبة القيمة المضافة";
     document.getElementById("settings-loader").style.display="none";
     document.getElementById("settings-form").style.display="block";
     updateSettingsPreview();
     // معاينة حية عند التغيير
-    ["set-normalRate","set-vipRate","set-partsRate","set-minBalance","set-vipMarkup"]
+    ["set-normalRate","set-vipRate","set-partsRate","set-minBalance","set-vipMarkup","set-taxRate","set-taxName"]
       .forEach(id=>document.getElementById(id).addEventListener("input",updateSettingsPreview));
   }catch(e){showToast(e.message,"error");}
 }
@@ -1042,28 +1054,39 @@ function updateSettingsPreview(){
   const pr  = parseFloat(document.getElementById("set-partsRate").value ||0 )/100;
   const mb  = parseFloat(document.getElementById("set-minBalance").value||2 );
   const vm  = parseFloat(document.getElementById("set-vipMarkup").value ||20)/100;
+  const tr  = parseFloat(document.getElementById("set-taxRate").value   ||0 )/100;
+  const tn  = document.getElementById("set-taxName").value||"ضريبة";
 
   const labor=10, parts=5, base=labor+parts;
-  const vipTotal   = Math.round(base*(1+vm)*100)/100;
+  const normTax    = Math.round(base*tr*100)/100;
+  const normTotal  = Math.round((base+normTax)*100)/100;
   const normComm   = Math.round((labor*nr + parts*pr)*100)/100;
-  const vipComm    = Math.round((labor*vr + parts*pr)*100)/100; // على السعر قبل markup
+
+  const vipBase    = Math.round(base*(1+vm)*100)/100;
+  const vipTax     = Math.round(vipBase*tr*100)/100;
+  const vipTotal   = Math.round((vipBase+vipTax)*100)/100;
+  const vipComm    = Math.round((labor*vr + parts*pr)*100)/100;
 
   document.getElementById("settings-preview").innerHTML=`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div style="background:var(--surface);border-radius:7px;padding:10px">
-        <div style="color:var(--muted);font-size:.7rem;margin-bottom:4px">👨‍🔧 فني عادي</div>
-        <div>إجمالي العميل: <strong style="color:var(--accent3)">${base.toFixed(2)} ر.ع</strong></div>
+        <div style="color:var(--muted);font-size:.7rem;margin-bottom:6px">👨‍🔧 فني عادي</div>
+        <div>قبل الضريبة: <strong>${base.toFixed(2)} ر.ع</strong></div>
+        ${tr>0?`<div style="color:var(--accent2)">+ ${tn}: <strong>${normTax.toFixed(2)} ر.ع</strong></div>`:""}
+        <div>إجمالي العميل: <strong style="color:var(--accent3)">${normTotal.toFixed(2)} ر.ع</strong></div>
         <div>عمولة الفني: <strong style="color:var(--danger)">${normComm.toFixed(2)} ر.ع</strong></div>
         <div>صافي الفني: <strong style="color:var(--accent2)">${(base-normComm).toFixed(2)} ر.ع</strong></div>
       </div>
       <div style="background:var(--surface);border-radius:7px;padding:10px">
-        <div style="color:var(--accent);font-size:.7rem;margin-bottom:4px">⭐ فني VIP</div>
+        <div style="color:var(--accent);font-size:.7rem;margin-bottom:6px">⭐ فني VIP (+${Math.round(vm*100)}%)</div>
+        <div>قبل الضريبة: <strong>${vipBase.toFixed(2)} ر.ع</strong></div>
+        ${tr>0?`<div style="color:var(--accent2)">+ ${tn}: <strong>${vipTax.toFixed(2)} ر.ع</strong></div>`:""}
         <div>إجمالي العميل: <strong style="color:var(--accent3)">${vipTotal.toFixed(2)} ر.ع</strong></div>
         <div>عمولة الفني: <strong style="color:var(--danger)">${vipComm.toFixed(2)} ر.ع</strong></div>
         <div>صافي الفني: <strong style="color:var(--accent2)">${(base-vipComm).toFixed(2)} ر.ع</strong></div>
       </div>
     </div>
-    <div style="margin-top:8px;font-size:.7rem;color:var(--muted)">⚠️ الحد الأدنى للرصيد: <strong>${mb} ر.ع</strong></div>`;
+    <div style="margin-top:8px;font-size:.7rem;color:var(--muted)">⚠️ الحد الأدنى للرصيد: <strong>${mb} ر.ع</strong> ${tr>0?`| 🧾 الضريبة: <strong>${Math.round(tr*100)}%</strong>`:""}</div>`;
 }
 
 async function saveSettings(){
@@ -1073,6 +1096,8 @@ async function saveSettings(){
     partsRate:   parseFloat(document.getElementById("set-partsRate").value ||0 )/100,
     minBalance:  parseFloat(document.getElementById("set-minBalance").value||2 ),
     vipMarkup:   parseFloat(document.getElementById("set-vipMarkup").value ||20)/100,
+    taxRate:     parseFloat(document.getElementById("set-taxRate").value   ||0 )/100,
+    taxName:     document.getElementById("set-taxName").value||"ضريبة القيمة المضافة",
     updatedAt:   firebase.firestore.FieldValue.serverTimestamp(),
     updatedBy:   auth.currentUser?.email||"admin"
   };
