@@ -36,11 +36,13 @@ const LATE_TECH_MINUTES       = 30;
 
 // ─── الإعدادات من Firestore (تُحدَّث كل 10 دقائق) ────────────────────────────
 let _settings = {
-  normalRate:  0.10,  // عمولة الفني العادي
-  vipRate:     0.10,  // عمولة الفني VIP
-  partsRate:   0.00,  // عمولة القطع
-  minBalance:  2.00,  // الحد الأدنى للرصيد
-  vipMarkup:   0.20,  // نسبة زيادة السعر على العميل (VIP)
+  normalRate:  0.10,
+  vipRate:     0.10,
+  partsRate:   0.00,
+  minBalance:  2.00,
+  vipMarkup:   0.20,
+  taxRate:     0.00,  // نسبة الضريبة (0 = بدون ضريبة)
+  taxName:     "ضريبة القيمة المضافة", // اسم الضريبة
 };
 
 async function loadSettings() {
@@ -49,11 +51,13 @@ async function loadSettings() {
     if (snap.exists) {
       const d = snap.data();
       _settings = {
-        normalRate: d.normalRate  ?? 0.10,
-        vipRate:    d.vipRate     ?? 0.10,
-        partsRate:  d.partsRate   ?? 0.00,
-        minBalance: d.minBalance  ?? 2.00,
-        vipMarkup:  d.vipMarkup   ?? 0.20,
+        normalRate: d.normalRate ?? 0.10,
+        vipRate:    d.vipRate    ?? 0.10,
+        partsRate:  d.partsRate  ?? 0.00,
+        minBalance: d.minBalance ?? 2.00,
+        vipMarkup:  d.vipMarkup  ?? 0.20,
+        taxRate:    d.taxRate    ?? 0.00,
+        taxName:    d.taxName    || "ضريبة القيمة المضافة",
       };
       console.log("✅ Settings loaded:", _settings);
     }
@@ -69,6 +73,8 @@ const getCommission  = (isVip) => isVip ? _settings.vipRate    : _settings.norma
 const getPartsRate   = ()      => _settings.partsRate;
 const getMinBalance  = ()      => _settings.minBalance;
 const getVipMarkup   = ()      => _settings.vipMarkup;
+const getTaxRate     = ()      => _settings.taxRate;
+const getTaxName     = ()      => _settings.taxName;
 
 // ─── الثوابت القديمة تصبح ديناميكية ──────────────────────────────────────────
 Object.defineProperty(global, "MIN_BALANCE", { get: () => _settings.minBalance });
@@ -176,7 +182,9 @@ const CUSTOMER_LANGS = {
     backToSummary: "🔙 الرجوع للملخص",
     noParts:       "⚠️ لا توجد قطع. أضفها من لوحة التحكم.",
     noPartsNeeded: "🔧 بدون قطع",
-    summary:       (l, lb, pt, t) => `📋 *ملخص طلبك*\n\n🔧 *القطع:*\n${l}\n\n💼 أجرة: ${lb} ر.ع\n🔩 قطع: ${pt} ر.ع\n💰 *الإجمالي: ${t} ر.ع*`,
+    summary:       (l, lb, pt, t, tax, taxName) => tax > 0
+      ? `📋 *ملخص طلبك*\n\n🔧 *القطع:*\n${l}\n\n💼 أجرة: ${lb} ر.ع\n🔩 قطع: ${pt} ر.ع\n🧾 ${taxName}: ${tax} ر.ع\n💰 *الإجمالي: ${t} ر.ع*`
+      : `📋 *ملخص طلبك*\n\n🔧 *القطع:*\n${l}\n\n💼 أجرة: ${lb} ر.ع\n🔩 قطع: ${pt} ر.ع\n💰 *الإجمالي: ${t} ر.ع*`,
     confirmBtn:    "تأكيد",
     confirmRow:    "✅ تأكيد الطلب",
     cancelRow:     "❌ إلغاء",
@@ -248,7 +256,9 @@ const CUSTOMER_LANGS = {
     backToSummary: "🔙 Back to Summary",
     noParts:       "⚠️ No parts found. Add from dashboard.",
     noPartsNeeded: "🔧 No parts needed",
-    summary:       (l, lb, pt, t) => `📋 *Order Summary*\n\n🔧 *Parts:*\n${l}\n\n💼 Labor: ${lb} OMR\n🔩 Parts: ${pt} OMR\n💰 *Total: ${t} OMR*`,
+    summary:       (l, lb, pt, t, tax, taxName) => tax > 0
+      ? `📋 *Order Summary*\n\n🔧 *Parts:*\n${l}\n\n💼 Labor: ${lb} OMR\n🔩 Parts: ${pt} OMR\n🧾 ${taxName}: ${tax} OMR\n💰 *Total: ${t} OMR*`
+      : `📋 *Order Summary*\n\n🔧 *Parts:*\n${l}\n\n💼 Labor: ${lb} OMR\n🔩 Parts: ${pt} OMR\n💰 *Total: ${t} OMR*`,
     confirmBtn:    "Confirm",
     confirmRow:    "✅ Confirm Order",
     cancelRow:     "❌ Cancel",
@@ -957,11 +967,20 @@ async function showSummary(phone, session, lang) {
   const partsTotal  = (parts || []).reduce((s, p) => s + p.total, 0);
   const laborPrice  = selectedType ? selectedType.price : 0;
   const baseTotal   = Math.round((partsTotal + laborPrice) * 100) / 100;
-  const totalPrice  = vipTechId ? applyVipRate(baseTotal, vipRate || 0.20) : baseTotal;
-  const lines       = (parts || []).map(p => `• ${p.name} x${p.qty} = ${p.total} ر.ع`).join("\n") || (lang === "ar" ? "بدون قطع" : "No parts");
-  const vipNote     = vipTechId ? L2.vipSummaryNote(20) : "";
-  await sendMessage(phone, L2.summary(lines, laborPrice, Math.round(partsTotal*100)/100, totalPrice) + vipNote);
-  await setSession(phone, "confirm", { ...session.data, totalPrice });
+  const afterVip    = vipTechId ? applyVipRate(baseTotal, vipRate || 0.20) : baseTotal;
+
+  // ── حساب الضريبة ───────────────────────────────────────────────────────────
+  const taxRate    = getTaxRate();
+  const taxAmount  = Math.round(afterVip * taxRate * 100) / 100;
+  const totalPrice = Math.round((afterVip + taxAmount) * 100) / 100;
+  const taxName    = getTaxName();
+
+  const lines = (parts || []).map(p => `• ${p.name} x${p.qty} = ${p.total} ر.ع`).join("\n")
+             || (lang === "ar" ? "بدون قطع" : "No parts");
+  const vipNote = vipTechId ? L2.vipSummaryNote(20) : "";
+
+  await sendMessage(phone, L2.summary(lines, laborPrice, Math.round(partsTotal*100)/100, totalPrice, taxAmount, taxName) + vipNote);
+  await setSession(phone, "confirm", { ...session.data, totalPrice, taxAmount, taxRate });
   await sendButtons(phone, lang === "ar" ? "هل تؤكد الطلب؟" : "Confirm order?", [
     { id: "confirm",    title: L2.confirmRow  },
     { id: "back_parts", title: L2.backToParts },
@@ -1539,6 +1558,8 @@ app.post("/webhook", async (req, res) => {
         type:   selectedType ? (getTypeNameL(selectedType, lang) || "") : "",
         typeId: selectedType ? (selectedType.id || (selectedType.name && typeof selectedType.name === "object" ? selectedType.name.en || selectedType.name.ar : selectedType.name) || "") : "",
         laborPrice, partsTotal: Math.round(partsTotal*100)/100, totalPrice,
+        taxAmount: session.data.taxAmount || 0,
+        taxRate:   session.data.taxRate   || 0,
         vip: !!vipTechId, vipTechId, vipRate: vipTechId ? vipRate : null,
         parts: parts || [], status: "searching", lang,
         rejectedTechs: [],
@@ -1603,10 +1624,9 @@ async function handleAccept(text, techPhone, tech) {
   await sendMessage(techPhone, TL2.customerPhone(customerPhone));
   if (order.location) await sendLocation(techPhone, order.location.latitude, order.location.longitude);
 
-  // ── أزرار مراحل الطلب ────────────────────────────────────────────────────
+  // ── زر "في الطريق" فقط — "وصلت" يظهر بعد الضغط عليه ───────────────────────
   await sendButtons(techPhone, TL2.statusPrompt, [
-    { id: `onway_${orderId}`,   title: TL2.onMyWayLabel },
-    { id: `arrived_${orderId}`, title: TL2.arrivedLabel }
+    { id: `onway_${orderId}`, title: TL2.onMyWayLabel }
   ]);
   await sendMessage(customerPhone, CL2.accepted(tech.name, tech.phone));
 
