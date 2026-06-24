@@ -33,6 +33,7 @@ const RETRY_MINUTES = 30;
 const SESSION_TIMEOUT_MINUTES = 60;
 const MAX_PARTS_PER_ORDER     = 5;
 const LATE_TECH_MINUTES       = 30;
+const ACCEPT_TIMEOUT_MINUTES  = 5; // وقت انتظار قبول/رفض الفني
 
 // ─── الإعدادات من Firestore (تُحدَّث كل 10 دقائق) ────────────────────────────
 let _settings = {
@@ -334,6 +335,8 @@ const TECH_LANGS = {
     arrivedLabel:  "لقد وصلت 🏠",
     doneRow:       "✅ إنهاء الطلب",
     statusPrompt:  "اختر الحالة الحالية:",
+    vipReminder:   (id) => `⏰ *تذكير VIP!*\nلديك طلب VIP لم تستجب له بعد.\n🆔 ${id}\nيرجى القبول أو الرفض الآن ⚠️`,
+    timeoutMsg:    (id) => `⏰ انتهى وقت الاستجابة للطلب 🆔 ${id} وتم تحويله لفني آخر.`,
     info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "لا يوجد"}\n💰 ${b} ر.ع\n🟢 ${a ? "متاح" : "مشغول"}`
   },
   en: {
@@ -359,6 +362,8 @@ const TECH_LANGS = {
     arrivedLabel:  "I've arrived 🏠",
     doneRow:       "✅ Mark Done",
     statusPrompt:  "Update your status:",
+    vipReminder:   (id) => `⏰ *VIP Reminder!*\nYou have an unanswered VIP order.\n🆔 ${id}\nPlease accept or reject now ⚠️`,
+    timeoutMsg:    (id) => `⏰ Response time expired for order 🆔 ${id} — it has been reassigned.`,
     info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "N/A"}\n💰 ${b} OMR\n🟢 ${a ? "Available" : "Busy"}`
   },
   hi: {
@@ -384,6 +389,8 @@ const TECH_LANGS = {
     arrivedLabel:  "पहुँच गया 🏠",
     doneRow:       "✅ काम पूरा",
     statusPrompt:  "अपनी स्थिति चुनें:",
+    vipReminder:   (id) => `⏰ *VIP रिमाइंडर!*\nआपके पास एक अनुत्तरित VIP ऑर्डर है।\n🆔 ${id}\nकृपया अभी स्वीकार या अस्वीकार करें ⚠️`,
+    timeoutMsg:    (id) => `⏰ ऑर्डर 🆔 ${id} के लिए प्रतिक्रिया समय समाप्त हो गया है।`,
     info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "N/A"}\n💰 ${b} OMR\n🟢 ${a ? "उपलब्ध" : "व्यस्त"}`
   },
   bn: {
@@ -409,6 +416,8 @@ const TECH_LANGS = {
     arrivedLabel:  "পৌঁছে গেছি 🏠",
     doneRow:       "✅ কাজ সম্পন্ন",
     statusPrompt:  "আপনার অবস্থান আপডেট করুন:",
+    vipReminder:   (id) => `⏰ *VIP রিমাইন্ডার!*\nআপনার একটি অনুত্তরিত VIP অর্ডার আছে।\n🆔 ${id}\nঅনুগ্রহ করে এখনই গ্রহণ বা প্রত্যাখ্যান করুন ⚠️`,
+    timeoutMsg:    (id) => `⏰ অর্ডার 🆔 ${id} এর জন্য সাড়া দেওয়ার সময় শেষ হয়ে গেছে।`,
     info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "N/A"}\n💰 ${b} OMR\n🟢 ${a ? "উপলব্ধ" : "ব্যস্ত"}`
   }
 };
@@ -611,7 +620,9 @@ async function getAvailableTech(serviceId, excludeIds = []) {
     .where("services", "array-contains", serviceId).get();
   const techs = snap.docs
     .map(d => ({ id: d.id, ...d.data() }))
-    .filter(t => !excludeIds.includes(t.id) && (t.balance || 0) >= MIN_BALANCE);
+    .filter(t => !excludeIds.includes(t.id) && (t.balance || 0) >= getMinBalance())
+    // ── الترتيب حسب التقييم (الأعلى أولاً) ─────────────────────────────────
+    .sort((a, b) => (b.rating || 0) - (a.rating || 0));
   return techs.length > 0 ? techs[0] : null;
 }
 async function getActiveOrder(phone) {
@@ -820,8 +831,66 @@ async function sendOrderToTech(orderId, order, tech) {
     ]
   );
   await db.collection("orders").doc(orderId).update({
-    technicianId: tech.id, techPhone, status: "pending"
+    technicianId: tech.id, techPhone, status: "pending",
+    dispatchedAt: admin.firestore.FieldValue.serverTimestamp(),
+    dispatchToken: Date.now() // معرف فريد لهذه المحاولة
   });
+
+  // ── جدولة فحص بعد ACCEPT_TIMEOUT_MINUTES ─────────────────────────────────
+  const myToken = Date.now();
+  await db.collection("orders").doc(orderId).update({ dispatchToken: myToken });
+  setTimeout(async () => {
+    try { await checkAcceptTimeout(orderId, tech.id, myToken); }
+    catch(e) { await logError("accept_timeout", e, { orderId }); }
+  }, ACCEPT_TIMEOUT_MINUTES * 60 * 1000);
+}
+
+// ─── فحص انتهاء وقت القبول/الرفض ─────────────────────────────────────────────
+async function checkAcceptTimeout(orderId, techId, myToken) {
+  const ref  = db.collection("orders").doc(orderId);
+  const snap = await ref.get();
+  if (!snap.exists) return;
+  const order = snap.data();
+
+  // إذا تغيّرت حالة الطلب أو أُرسل لفني آخر بعدنا، لا نفعل شيء
+  if (order.status !== "pending") return;
+  if (order.dispatchToken !== myToken) return; // فات وقته، فيه محاولة أحدث
+  if (order.technicianId !== techId) return;
+
+  const techSnap = await db.collection("technicians").doc(techId).get();
+  const tech     = techSnap.exists ? { id: techId, ...techSnap.data() } : null;
+  const techLang = tech ? getTLang(tech) : "ar";
+  const TL2      = TECH_LANGS[techLang] || TECH_LANGS.ar;
+
+  if (order.vip && order.vipTechId === techId) {
+    // ── VIP: لا نحوّل الطلب، فقط نذكّر الفني مرة ثانية ─────────────────────
+    if (tech) await sendMessage(normalize(tech.phone), TL2.vipReminder(order.orderId));
+    // إعادة جدولة فحص آخر بعد نفس المدة (تذكير متكرر حتى يستجيب)
+    setTimeout(async () => {
+      try { await checkAcceptTimeout(orderId, techId, myToken); }
+      catch(e) { await logError("vip_reminder_timeout", e, { orderId }); }
+    }, ACCEPT_TIMEOUT_MINUTES * 60 * 1000);
+    return;
+  }
+
+  // ── عادي: تحويل الطلب تلقائياً للفني التالي حسب التقييم ───────────────────
+  if (tech) await sendMessage(normalize(tech.phone), TL2.timeoutMsg(order.orderId));
+
+  // إعادة تفعيل الفني الحالي (لم يستجب فننا اعتبره متاحاً للطلبات الأخرى)
+  await db.collection("technicians").doc(techId).update({ active: true });
+
+  const rejectedTechs = [...(order.rejectedTechs || []), techId];
+  await ref.update({
+    status: "searching",
+    rejectedTechs,
+    technicianId: null,
+    techPhone:    null,
+    techName:     null,
+    searchStartedAt: order.searchStartedAt || admin.firestore.FieldValue.serverTimestamp()
+  });
+  await addOrderHistory(orderId, "searching", techId, "Timeout — no response, reassigning");
+
+  await dispatchToTech(orderId, { ...order, rejectedTechs, status: "searching", technicianId: null });
 }
 
 // ─── اسم القطعة حسب اللغة ────────────────────────────────────────────────────
@@ -892,13 +961,14 @@ async function incrementCustomerOrders(phone) {
   }
 }
 
-// ─── VIP: جلب الفنيين VIP للخدمة ─────────────────────────────────────────────
+// ─── VIP: جلب الفنيين VIP للخدمة (مرتبين حسب التقييم) ────────────────────────
 async function getVipTechs(serviceId) {
   const snap = await db.collection("technicians")
     .where("vip", "==", true)
     .where("services", "array-contains", serviceId).get();
   return snap.docs.map(d => ({ id: d.id, ...d.data() }))
-    .filter(t => (t.balance || 0) >= MIN_BALANCE);
+    .filter(t => (t.balance || 0) >= getMinBalance())
+    .sort((a, b) => (b.rating || 0) - (a.rating || 0));
 }
 
 // ─── VIP: إرسال قائمة الفنيين VIP ────────────────────────────────────────────
