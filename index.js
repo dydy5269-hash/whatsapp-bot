@@ -204,6 +204,7 @@ const CUSTOMER_LANGS = {
     cancelOrder:   "❌ إلغاء الطلب",
     keepWaiting:   "⏳ انتظار",
     orderCancelled:(id) => `تم إلغاء طلبك 🆔 ${id}`,
+    orderInProgress:(techName, techPhone) => `⚙️ *لديك طلب قيد التنفيذ*\nيمكنك التواصل مع الفني *${techName}* على الرقم:\n📞 ${techPhone}`,
     needRating:    "⭐ يرجى تقييم طلبك السابق أولاً قبل طلب خدمة جديدة.",
     privacyNote:   "🔒 نستخدم بياناتك فقط لتنفيذ الطلب وتحسين الخدمة.",
     accepted:      (n, p) => `✅ تم قبول طلبك!\n👨‍🔧 ${n}\n📞 ${p}\nفي الطريق!`,
@@ -278,6 +279,7 @@ const CUSTOMER_LANGS = {
     cancelOrder:   "❌ Cancel Order",
     keepWaiting:   "⏳ Keep Waiting",
     orderCancelled:(id) => `Order cancelled 🆔 ${id}`,
+    orderInProgress:(techName, techPhone) => `⚙️ *You have an order in progress*\nYou can contact the technician *${techName}* at:\n📞 ${techPhone}`,
     needRating:    "⭐ Please rate your previous order first before requesting a new service.",
     privacyNote:   "🔒 We use your data only to fulfill the order and improve our service.",
     accepted:      (n, p) => `✅ Accepted!\n👨‍🔧 ${n}\n📞 ${p}\nOn the way!`,
@@ -1742,7 +1744,23 @@ app.post("/webhook", async (req, res) => {
       return;
     }
 
-    // أي رسالة غير معروفة
+    // أي رسالة غير معروفة — تحقق من وجود طلب قيد التنفيذ
+    const activeCheck = await db.collection("orders")
+      .where("customer", "==", from)
+      .where("status", "in", ["accepted", "on_way", "arrived"])
+      .limit(1).get();
+
+    if (!activeCheck.empty) {
+      const ao      = activeCheck.docs[0].data();
+      const session0 = await getSession(from);
+      const L0       = CUSTOMER_LANGS[getCLang(session0)] || CUSTOMER_LANGS.ar;
+      const tName    = ao.techName
+        ? (typeof ao.techName === "object" ? ao.techName.ar || ao.techName.en || "" : ao.techName)
+        : "";
+      await sendMessage(from, L0.orderInProgress(tName, ao.techPhone || "—"));
+      return;
+    }
+
     await sendMessage(from, L2.defaultMsg);
 
   } catch(err) {
