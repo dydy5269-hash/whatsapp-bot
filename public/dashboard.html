@@ -573,12 +573,37 @@ html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
   <div class="modal" style="max-width:600px">
     <div class="modal-header"><h3 id="tech-modal-title">إضافة فني جديد</h3><button class="modal-close" onclick="closeModal('tech-modal')">×</button></div>
     <div class="form-grid">
-      <div class="form-group"><label>الاسم</label><input type="text" id="tech-name"/></div>
       <div class="form-group"><label>رقم الهاتف</label><input type="text" id="tech-phone" placeholder="968xxxxxxxx" style="direction:ltr"/></div>
       <div class="form-group"><label>🔑 Document ID (اختياري)</label><input type="text" id="tech-id" placeholder="tech1" style="direction:ltr;font-family:monospace"/></div>
       <div class="form-group"><label>المنطقة</label><select id="tech-region"><option value="">بدون تحديد</option></select></div>
       <div class="form-group"><label>⭐ فني VIP</label><select id="tech-vip"><option value="false">لا</option><option value="true">نعم — VIP</option></select></div>
       <div class="form-group"><label>نسبة رسوم VIP (%)</label><input type="number" id="tech-vip-rate" placeholder="20" min="0" max="100" value="20"/></div>
+    </div>
+
+    <!-- ── اسم الفني بجميع اللغات ── -->
+    <div style="padding:0 18px 14px">
+      <label style="font-size:.73rem;font-weight:700;color:var(--muted);display:block;margin-bottom:8px">👤 اسم الفني بجميع اللغات</label>
+      <div class="lang-tabs">
+        <button class="lang-tab active" onclick="switchTechNameLang('ar',this)">🇸🇦 العربية</button>
+        <button class="lang-tab" onclick="switchTechNameLang('en',this)">🇬🇧 English</button>
+        <button class="lang-tab" onclick="switchTechNameLang('hi',this)">🇮🇳 हिन्दी</button>
+        <button class="lang-tab" onclick="switchTechNameLang('bn',this)">🇧🇩 বাংলা</button>
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:0 8px 8px 8px;padding:10px">
+        <div id="tech-name-ar" class="lang-panel active">
+          <input class="tech-name-input" type="text" placeholder="زاهر" data-lang="ar" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 11px;color:var(--text);font-size:.88rem;font-family:inherit"/>
+        </div>
+        <div id="tech-name-en" class="lang-panel">
+          <input class="tech-name-input" type="text" placeholder="Zaher" data-lang="en" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 11px;color:var(--text);font-size:.88rem;direction:ltr;font-family:monospace"/>
+        </div>
+        <div id="tech-name-hi" class="lang-panel">
+          <input class="tech-name-input" type="text" placeholder="ज़ाहर" data-lang="hi" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 11px;color:var(--text);font-size:.88rem;font-family:inherit"/>
+        </div>
+        <div id="tech-name-bn" class="lang-panel">
+          <input class="tech-name-input" type="text" placeholder="জাহের" data-lang="bn" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 11px;color:var(--text);font-size:.88rem;font-family:inherit"/>
+        </div>
+      </div>
+      <p style="font-size:.68rem;color:var(--muted);margin-top:4px">الاسم العربي إلزامي — باقي اللغات اختيارية</p>
     </div>
 
     <!-- ── اختيار الخدمات بشكل مرئي ── -->
@@ -1397,6 +1422,18 @@ async function reactivateTech(id,name){
   try{await db.collection("technicians").doc(id).update({active:true,suspendReason:null,suspendedAt:null});showToast("✅ تم تفعيل الفني");loadTechnicians();}catch(e){showToast(e.message,"error");}
 }
 async function deleteTech(id){if(!confirm("حذف؟"))return;try{await db.collection("technicians").doc(id).delete();showToast("تم الحذف");loadTechnicians();}catch(e){showToast(e.message,"error");}}
+function switchTechNameLang(lang,btn){
+  document.querySelectorAll("#tech-modal .lang-tab").forEach(b=>b.classList.remove("active"));
+  document.querySelectorAll("#tech-modal .lang-panel").forEach(p=>p.classList.remove("active"));
+  btn.classList.add("active");
+  document.getElementById(`tech-name-${lang}`).classList.add("active");
+}
+
+function getTechName(lang="ar"){
+  const inp=document.querySelector(`.tech-name-input[data-lang="${lang}"]`);
+  return inp?inp.value.trim():"";
+}
+
 // ══ Tech Services Picker ══
 let editingTechId = null;
 let selectedTechServices = new Set();
@@ -1407,18 +1444,25 @@ async function openTechModal(techId = null) {
   document.getElementById("tech-modal-title").textContent = techId ? "تعديل الفني" : "إضافة فني جديد";
 
   // تفريغ الحقول
-  ["tech-name","tech-phone","tech-id"].forEach(id => document.getElementById(id).value = "");
+  document.querySelectorAll(".tech-name-input").forEach(i=>i.value="");
+  ["tech-phone","tech-id"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("tech-region").value = "";
   document.getElementById("tech-vip").value = "false";
   document.getElementById("tech-vip-rate").value = "20";
   document.getElementById("tech-id").disabled = !!techId;
+  // إعادة tab للعربية
+  switchTechNameLang("ar", document.querySelector("#tech-modal .lang-tab"));
 
-  // إذا تعديل — حمّل بيانات الفني
   if (techId) {
     const snap = await db.collection("technicians").doc(techId).get();
     if (snap.exists) {
       const d = snap.data();
-      document.getElementById("tech-name").value  = d.name  || "";
+      // أسماء متعددة اللغات
+      document.querySelectorAll(".tech-name-input").forEach(inp=>{
+        const lang=inp.dataset.lang;
+        if(d.names&&typeof d.names==="object") inp.value=d.names[lang]||"";
+        else if(lang==="ar") inp.value=d.name||""; // fallback للهيكل القديم
+      });
       document.getElementById("tech-phone").value = d.phone || "";
       document.getElementById("tech-id").value    = techId;
       document.getElementById("tech-region").value   = d.regionId  || "";
@@ -1428,7 +1472,6 @@ async function openTechModal(techId = null) {
     }
   }
 
-  // بناء الـ picker من الخدمات المتاحة
   await renderServicePicker();
   openModal("tech-modal");
 }
@@ -1467,7 +1510,7 @@ function toggleTechService(serviceId, el) {
 }
 
 async function saveTechnician() {
-  const name    = document.getElementById("tech-name").value.trim();
+  const nameAr  = getTechName("ar");
   const phone   = document.getElementById("tech-phone").value.trim();
   const techId  = document.getElementById("tech-id").value.trim();
   const regionId    = document.getElementById("tech-region").value;
@@ -1476,11 +1519,21 @@ async function saveTechnician() {
   const vipRate = parseFloat(document.getElementById("tech-vip-rate").value||20) / 100;
   const svcs    = [...selectedTechServices];
 
-  if (!name || !phone) { showToast("يرجى ملء الاسم والهاتف","error"); return; }
-  if (!svcs.length)    { showToast("يرجى اختيار خدمة واحدة على الأقل","error"); return; }
+  if (!nameAr || !phone) { showToast("يرجى ملء الاسم العربي والهاتف","error"); return; }
+  if (!svcs.length)       { showToast("يرجى اختيار خدمة واحدة على الأقل","error"); return; }
+
+  // تجميع الأسماء بجميع اللغات
+  const names = {};
+  document.querySelectorAll(".tech-name-input").forEach(inp=>{
+    if(inp.value.trim()) names[inp.dataset.lang]=inp.value.trim();
+  });
+  // الاسم الافتراضي = العربي (للتوافق مع الكود القديم)
+  const name = names.ar || nameAr;
 
   const data = {
-    name, phone, services: svcs, active: true,
+    name,   // للتوافق القديم
+    names,  // جميع اللغات
+    phone, services: svcs, active: true,
     regionId: regionId||null, regionName: regionName||null,
     vip: isVip, vipRate: isVip ? vipRate : null,
   };
