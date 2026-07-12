@@ -337,7 +337,7 @@ const TECH_LANGS = {
     statusPrompt:  "اختر الحالة الحالية:",
     vipReminder:   (id) => `⏰ *تذكير VIP!*\nلديك طلب VIP لم تستجب له بعد.\n🆔 ${id}\nيرجى القبول أو الرفض الآن ⚠️`,
     timeoutMsg:    (id) => `⏰ انتهى وقت الاستجابة للطلب 🆔 ${id} وتم تحويله لفني آخر.`,
-    info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "لا يوجد"}\n💰 ${b} ر.ع\n🟢 ${a ? "متاح" : "مشغول"}`
+    info: (n, p, r, b, a) => `👤 *الاسم:* ${n}\n📞 *الهاتف:* ${p}\n⭐ *التقييم:* ${r ? r.toFixed(1) : "لا يوجد"}\n💰 *الرصيد:* ${b} ر.ع\n🟢 *الحالة:* ${a ? "متاح" : "مشغول"}`
   },
   en: {
     chooseLang:    "Hello! Choose your language 👇",
@@ -364,7 +364,7 @@ const TECH_LANGS = {
     statusPrompt:  "Update your status:",
     vipReminder:   (id) => `⏰ *VIP Reminder!*\nYou have an unanswered VIP order.\n🆔 ${id}\nPlease accept or reject now ⚠️`,
     timeoutMsg:    (id) => `⏰ Response time expired for order 🆔 ${id} — it has been reassigned.`,
-    info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "N/A"}\n💰 ${b} OMR\n🟢 ${a ? "Available" : "Busy"}`
+    info: (n, p, r, b, a) => `👤 *Name:* ${n}\n📞 *Phone:* ${p}\n⭐ *Rating:* ${r ? r.toFixed(1) : "N/A"}\n💰 *Balance:* ${b} OMR\n🟢 *Status:* ${a ? "Available" : "Busy"}`
   },
   hi: {
     chooseLang:    "नमस्ते! अपनी भाषा चुनें 👇",
@@ -391,7 +391,7 @@ const TECH_LANGS = {
     statusPrompt:  "अपनी स्थिति चुनें:",
     vipReminder:   (id) => `⏰ *VIP रिमाइंडर!*\nआपके पास एक अनुत्तरित VIP ऑर्डर है।\n🆔 ${id}\nकृपया अभी स्वीकार या अस्वीकार करें ⚠️`,
     timeoutMsg:    (id) => `⏰ ऑर्डर 🆔 ${id} के लिए प्रतिक्रिया समय समाप्त हो गया है।`,
-    info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "N/A"}\n💰 ${b} OMR\n🟢 ${a ? "उपलब्ध" : "व्यस्त"}`
+    info: (n, p, r, b, a) => `👤 *नाम:* ${n}\n📞 *फोन:* ${p}\n⭐ *रेटिंग:* ${r ? r.toFixed(1) : "N/A"}\n💰 *बैलेंस:* ${b} OMR\n🟢 *स्थिति:* ${a ? "उपलब्ध" : "व्यस्त"}`
   },
   bn: {
     chooseLang:    "হ্যালো! আপনার ভাষা বেছে নিন 👇",
@@ -418,7 +418,7 @@ const TECH_LANGS = {
     statusPrompt:  "আপনার অবস্থান আপডেট করুন:",
     vipReminder:   (id) => `⏰ *VIP রিমাইন্ডার!*\nআপনার একটি অনুত্তরিত VIP অর্ডার আছে।\n🆔 ${id}\nঅনুগ্রহ করে এখনই গ্রহণ বা প্রত্যাখ্যান করুন ⚠️`,
     timeoutMsg:    (id) => `⏰ অর্ডার 🆔 ${id} এর জন্য সাড়া দেওয়ার সময় শেষ হয়ে গেছে।`,
-    info:          (n, p, r, b, a) => `👤 ${n}\n📞 ${p}\n⭐ ${r || "N/A"}\n💰 ${b} OMR\n🟢 ${a ? "উপলব্ধ" : "ব্যস্ত"}`
+    info: (n, p, r, b, a) => `👤 *নাম:* ${n}\n📞 *ফোন:* ${p}\n⭐ *রেটিং:* ${r ? r.toFixed(1) : "N/A"}\n💰 *ব্যালেন্স:* ${b} OMR\n🟢 *অবস্থা:* ${a ? "উপলব্ধ" : "ব্যস্ত"}`
   }
 };
 
