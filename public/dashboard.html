@@ -1012,7 +1012,12 @@ function renderOrdersTable(list,targetId,showActions){
   const rows=list.map(o=>{
     const date=o.createdAt?new Date(o.createdAt.seconds*1000).toLocaleDateString("ar"):"-";
     const typeName=getTypeName(o);
-    const techName=o.techName||o.technicianName||(o.techPhone?`📞 ${o.techPhone}`:"—");
+    const techName=(()=>{
+      const n=o.techName||o.technicianName;
+      if(!n) return o.techPhone?`📞 ${o.techPhone}`:"—";
+      if(typeof n==="object") return n.ar||n.en||Object.values(n)[0]||"—";
+      return n;
+    })();
     const duration=calcDuration(o.acceptedAt, o.completedAt);
     const vipBadge=o.vip?'<span style="background:rgba(245,158,11,.2);color:var(--accent);padding:1px 5px;border-radius:8px;font-size:.6rem;font-weight:700;margin-right:3px">⭐VIP</span>':"";
     const statusLabel=o.status==="waiting_vip"?`<span class="badge" style="background:rgba(245,158,11,.15);color:var(--accent)">⭐ انتظار VIP</span>`:`<span class="badge ${o.status||""}">${sl(o.status)}</span>`;
