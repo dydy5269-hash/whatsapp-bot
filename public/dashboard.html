@@ -1530,31 +1530,42 @@ async function saveTechnician() {
   const vipRate = parseFloat(document.getElementById("tech-vip-rate").value||20) / 100;
   const svcs    = [...selectedTechServices];
 
-  if (!nameAr || !phone) { showToast("يرجى ملء الاسم العربي والهاتف","error"); return; }
-  if (!svcs.length)       { showToast("يرجى اختيار خدمة واحدة على الأقل","error"); return; }
-
+  // جمع الأسماء أولاً
   const name = {};
   document.querySelectorAll(".tech-name-input").forEach(inp=>{
     if(inp.value.trim()) name[inp.dataset.lang]=inp.value.trim();
   });
-  if(!name.ar){showToast("يرجى إدخال الاسم العربي","error");return;}
+
+  // التحقق
+  if (!name.ar) { showToast("يرجى إدخال الاسم العربي","error"); return; }
+  if (!phone)   { showToast("يرجى إدخال رقم الهاتف","error");  return; }
+  if (!svcs.length) { showToast("يرجى اختيار خدمة واحدة على الأقل","error"); return; }
 
   const data = {
-    name,   // {ar, en, hi, bn} — نفس هيكل getLocalizedName في الكود
-    phone, services: svcs, active: true,
+    name, phone, services: svcs, active: true,
     regionId: regionId||null, regionName: regionName||null,
     vip: isVip, vipRate: isVip ? vipRate : null,
   };
 
   try {
     if (editingTechId) {
-      await db.collection("technicians").doc(editingTechId).update(data);
+      // عند التعديل — نحدّث الحقول فقط بدون مسح balance وstats
+      const updateData = {
+        name, phone, services: svcs,
+        regionId: regionId||null, regionName: regionName||null,
+        vip: isVip, vipRate: isVip ? vipRate : null,
+      };
+      await db.collection("technicians").doc(editingTechId).update(updateData);
       showToast("✅ تم التحديث");
     } else {
-      data.balance = 0; data.rating = 0; data.ratingCount = 0;
-      data.stats = { totalOrders:0, totalEarnings:0, totalCommission:0 };
-      if (techId) await db.collection("technicians").doc(techId).set(data);
-      else        await db.collection("technicians").add(data);
+      // عند الإضافة — نضع كل الحقول
+      const newData = {
+        ...data,
+        balance: 0, rating: 0, ratingCount: 0,
+        stats: { totalOrders:0, totalEarnings:0, totalCommission:0 }
+      };
+      if (techId) await db.collection("technicians").doc(techId).set(newData);
+      else        await db.collection("technicians").add(newData);
       showToast("✅ تمت الإضافة");
     }
     closeModal("tech-modal");
