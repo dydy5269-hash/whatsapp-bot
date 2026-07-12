@@ -1046,7 +1046,36 @@ function renderOrdersTable(list,targetId,showActions){
     ${showActions?"<th>إجراءات</th>":""}
   </tr></thead><tbody>${rows}</tbody></table>`;
 }
-async function deleteOrder(id){if(!confirm("حذف هذا الطلب؟"))return;try{await db.collection("orders").doc(id).delete();showToast("تم الحذف");allOrders=allOrders.filter(o=>o.id!==id);renderFilteredOrders();}catch(e){showToast(e.message,"error");}}
+async function deleteOrder(id){
+  if(!confirm("حذف هذا الطلب؟"))return;
+  try{
+    // جلب بيانات الطلب قبل الحذف لإشعار العميل
+    const oSnap=await db.collection("orders").doc(id).get();
+    if(oSnap.exists){
+      const o=oSnap.data();
+      const activeStatuses=["pending","accepted","searching","on_way","arrived","waiting_vip"];
+      if(o.customer && activeStatuses.includes(o.status)){
+        // إشعار العميل عبر البوت
+        try{
+          await fetch(`${window.BOT_URL}/admin/notify-customer`,{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({
+              phone:   o.customer,
+              orderId: o.orderId||id,
+              lang:    o.lang||"ar",
+              adminKey:"admin-secret-key"
+            })
+          });
+        }catch(e){console.warn("notify failed:",e.message);}
+      }
+    }
+    await db.collection("orders").doc(id).delete();
+    showToast("تم الحذف");
+    allOrders=allOrders.filter(o=>o.id!==id);
+    renderFilteredOrders();
+  }catch(e){showToast(e.message,"error");}
+}
 async function deleteAllPending(){
   if(currentUserRole!=="admin"){showToast("ليس لديك صلاحية","error");return;}
   const p=allOrders.filter(o=>o.status==="pending");
