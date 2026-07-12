@@ -29,11 +29,12 @@ const BASE_URL        = process.env.BASE_URL || "https://your-app.railway.app";
 const ADMIN_KEY       = process.env.ADMIN_KEY || "admin-secret-key";
 
 const normalize     = (p) => String(p).replace(/\+/g, "");
-const RETRY_MINUTES = 30;
+const RETRY_MINUTES = 15;
 const SESSION_TIMEOUT_MINUTES = 60;
 const MAX_PARTS_PER_ORDER     = 5;
 const LATE_TECH_MINUTES       = 30;
-const ACCEPT_TIMEOUT_MINUTES  = 5; // وقت انتظار قبول/رفض الفني
+const ACCEPT_TIMEOUT_MINUTES  = 1;  // دقيقة واحدة للقبول/الرفض
+const VIP_REMINDER_MINUTES    = 5;  // تذكير VIP كل 5 دقائق
 
 // ─── الإعدادات من Firestore (تُحدَّث كل 10 دقائق) ────────────────────────────
 let _settings = {
@@ -193,8 +194,8 @@ const CUSTOMER_LANGS = {
     sendLocation:  "📍 أرسل موقعك لإتمام الطلب.",
     locationOnly:  "يرجى إرسال موقعك عبر واتساب.",
     sessionExp:    "انتهت الجلسة. أرسل *مرحبا*.",
-    noTech:        "⚠️ لا يوجد فني متاح. سنبحث 30 دقيقة وسيتم إشعارك.",
-    noTechFinal:   (id) => `⚠️ لم نجد فنياً خلال 30 دقيقة.\n🆔 ${id}`,
+    noTech:        "⚠️ لا يوجد فني متاح. سنبحث 15 دقيقة وسيتم إشعارك.",
+    noTechFinal:   (id) => `⚠️ لم نجد فنياً خلال 15 دقيقة.\n🆔 ${id}`,
     noTechOptions: "اختر:",
     waitMore:      "⏳ انتظار أكثر",
     retryNow:      "🔄 طلب جديد",
@@ -268,8 +269,8 @@ const CUSTOMER_LANGS = {
     sendLocation:  "📍 Send your location to complete the order.",
     locationOnly:  "Please send your location via WhatsApp.",
     sessionExp:    "Session expired. Send *hi*.",
-    noTech:        "⚠️ No technician available. Searching for 30 min.",
-    noTechFinal:   (id) => `⚠️ No tech found in 30 min.\n🆔 ${id}`,
+    noTech:        "⚠️ No technician available. Searching for 15 min.",
+    noTechFinal:   (id) => `⚠️ No tech found in 15 min.\n🆔 ${id}`,
     noTechOptions: "Choose:",
     waitMore:      "⏳ Keep waiting",
     retryNow:      "🔄 New request",
@@ -895,13 +896,12 @@ async function checkAcceptTimeout(orderId, techId, myToken) {
   const TL2      = TECH_LANGS[techLang] || TECH_LANGS.ar;
 
   if (order.vip && order.vipTechId === techId) {
-    // ── VIP: لا نحوّل الطلب، فقط نذكّر الفني مرة ثانية ─────────────────────
+    // ── VIP: لا نحوّل الطلب، فقط نذكّر الفني كل VIP_REMINDER_MINUTES ──────
     if (tech) await sendMessage(normalize(tech.phone), TL2.vipReminder(order.orderId));
-    // إعادة جدولة فحص آخر بعد نفس المدة (تذكير متكرر حتى يستجيب)
     setTimeout(async () => {
       try { await checkAcceptTimeout(orderId, techId, myToken); }
       catch(e) { await logError("vip_reminder_timeout", e, { orderId }); }
-    }, ACCEPT_TIMEOUT_MINUTES * 60 * 1000);
+    }, VIP_REMINDER_MINUTES * 60 * 1000);
     return;
   }
 
