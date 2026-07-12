@@ -992,9 +992,10 @@ async function sendVipTechList(phone, vipTechs, lang, baseTotal) {
     const stars    = t.rating ? "⭐".repeat(Math.min(Math.round(t.rating), 5)) : "—";
     const status   = t.active ? (lang === "ar" ? "✅ متاح" : "✅ Available")
                                : (lang === "ar" ? "🔴 مشغول" : "🔴 Busy");
+    const tName    = getTechNameByLang(t, lang); // ← إصلاح
     return {
       id:          `vip_${t.id}`,
-      title:       String(t.name || "VIP").substring(0, 24),
+      title:       String(tName || "VIP").substring(0, 24),
       description: `${stars} · ${vipTotal} ر.ع · ${status}`
     };
   });
@@ -1047,19 +1048,21 @@ async function showSummary(phone, session, lang) {
   const L2         = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
   const { service, selectedType, parts, vipTechId, vipRate } = session.data;
 
-  const partsTotal  = (parts || []).reduce((s, p) => s + p.total, 0);
-  const totalQty    = (parts || []).reduce((s, p) => s + p.qty, 0);
-
-  // ── الأجرة = سعر النوع × إجمالي عدد القطع ───────────────────────────────────
+  const partsTotal     = (parts || []).reduce((s, p) => s + p.total, 0);
+  const totalQty       = (parts || []).reduce((s, p) => s + p.qty, 0);
   const laborUnitPrice = selectedType ? selectedType.price : 0;
   const laborPrice     = totalQty > 0
     ? Math.round(laborUnitPrice * totalQty * 100) / 100
-    : laborUnitPrice; // إذا بدون قطع → الأجرة الثابتة فقط
+    : laborUnitPrice;
 
-  const baseTotal   = Math.round((partsTotal + laborPrice) * 100) / 100;
-  const afterVip    = vipTechId ? applyVipRate(baseTotal, vipRate || 0.20) : baseTotal;
+  const subTotal  = Math.round((partsTotal + laborPrice) * 100) / 100;
 
-  // ── حساب الضريبة ───────────────────────────────────────────────────────────
+  // ── VIP markup ──────────────────────────────────────────────────────────────
+  const actualVipRate = vipRate || getVipMarkup();
+  const vipAmount     = vipTechId ? Math.round(subTotal * actualVipRate * 100) / 100 : 0;
+  const afterVip      = Math.round((subTotal + vipAmount) * 100) / 100;
+
+  // ── الضريبة ─────────────────────────────────────────────────────────────────
   const taxRate    = getTaxRate();
   const taxAmount  = Math.round(afterVip * taxRate * 100) / 100;
   const totalPrice = Math.round((afterVip + taxAmount) * 100) / 100;
@@ -1067,19 +1070,32 @@ async function showSummary(phone, session, lang) {
 
   const lines = (parts || []).map(p => `• ${p.name} x${p.qty} = ${p.total} ر.ع`).join("\n")
              || (lang === "ar" ? "بدون قطع" : "No parts");
-  const vipNote = vipTechId ? L2.vipSummaryNote(20) : "";
 
-  // إضافة توضيح حساب الأجرة في الملخص
+  // توضيح الأجرة
   const laborNote = totalQty > 0
-    ? `${laborUnitPrice} ر.ع × ${totalQty} قطعة = ${laborPrice} ر.ع`
+    ? `${laborUnitPrice} ر.ع × ${totalQty} ${lang==="ar"?"قطعة":"pcs"} = ${laborPrice} ر.ع`
     : `${laborPrice} ر.ع`;
+
+  // توضيح VIP
+  const vipNote = vipTechId
+    ? (lang === "ar"
+        ? `\n⭐ رسوم VIP (+${Math.round(actualVipRate*100)}%): ${vipAmount} ر.ع`
+        : `\n⭐ VIP fee (+${Math.round(actualVipRate*100)}%): ${vipAmount} OMR`)
+    : "";
 
   await sendMessage(phone, L2.summary(lines, laborNote, Math.round(partsTotal*100)/100, totalPrice, taxAmount, taxName) + vipNote);
   await setSession(phone, "confirm", { ...session.data, totalPrice, laborPrice, taxAmount, taxRate });
+
+  // ── زر الرجوع: إذا VIP → رجوع لاختيار الفني، وإلا → رجوع للقطع ──────────
+  const backId    = vipTechId ? "back_vip"    : "back_parts";
+  const backTitle = vipTechId
+    ? (lang === "ar" ? "🔙 تغيير الفني VIP" : "🔙 Change VIP Tech")
+    : L2.backToParts;
+
   await sendButtons(phone, lang === "ar" ? "هل تؤكد الطلب؟" : "Confirm order?", [
-    { id: "confirm",    title: L2.confirmRow  },
-    { id: "back_parts", title: L2.backToParts },
-    { id: "cancel",     title: L2.cancelRow   }
+    { id: "confirm",  title: L2.confirmRow },
+    { id: backId,     title: backTitle     },
+    { id: "cancel",   title: L2.cancelRow  }
   ]);
 }
 
@@ -1618,10 +1634,17 @@ app.post("/webhook", async (req, res) => {
 
     // ── confirm ───────────────────────────────────────────────────────────────
     if (session.state === "confirm") {
-      if (text === "cancel")       { await clearSession(from); await sendMessage(from, L2.cancelled); return; }
-      if (text === "back_parts")   {
+      if (text === "cancel")     { await clearSession(from); await sendMessage(from, L2.cancelled); return; }
+      if (text === "back_parts") {
         await setSession(from, "parts", { ...session.data });
         await sendPartsMenu(from, session.data.service, session.data.parts||[], lang);
+        return;
+      }
+      // رجوع لاختيار الفني VIP
+      if (text === "back_vip") {
+        const vipTechs = await getVipTechs(session.data.service.id);
+        await setSession(from, "vip_list", { ...session.data, vipTechId: null });
+        await sendVipTechList(from, vipTechs, lang, session.data.baseTotal || 0);
         return;
       }
       if (text === "confirm") { await setSession(from, "location", session.data); await sendMessage(from, L2.sendLocation); return; }
