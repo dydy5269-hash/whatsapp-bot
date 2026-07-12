@@ -1304,7 +1304,7 @@ async function openTechStats(btn){
     const techSnap=await db.collection("technicians").doc(techId).get();
     if(!techSnap.exists){showToast("الفني غير موجود","error");return;}
     const tc=techSnap.data();
-    document.getElementById("ts-tech-name").textContent=tc.name||techId;
+    document.getElementById("ts-tech-name").textContent=getTechDisplayName({...tc,id:techId})||techId;
 
     // ── جلب طلباته ──
     const snap=await db.collection("orders").where("technicianId","==",techId).orderBy("createdAt","desc").get();
@@ -1418,11 +1418,18 @@ async function loadTechnicians(){
   }catch(e){console.error(e);}
 }
 async function editTechBalance(id,name,cur){
-  const val=prompt(`رصيد الفني ${name}\nالحالي: ${cur.toFixed(2)} ر.ع\n\nالرصيد الجديد:`,cur.toFixed(2));
+  const displayName=typeof name==="object"?(name.ar||name.en||Object.values(name)[0]||"-"):name;
+  const val=prompt(`رصيد الفني ${displayName}\nالحالي: ${cur.toFixed(2)} ر.ع\n\nالرصيد الجديد:`,cur.toFixed(2));
   if(val===null)return;const newBal=parseFloat(val);if(isNaN(newBal)||newBal<0){showToast("رصيد غير صالح","error");return;}
   try{await db.collection("technicians").doc(id).update({balance:newBal});showToast(`✅ تم تحديث الرصيد إلى ${newBal.toFixed(2)} ر.ع`);loadTechnicians();}catch(e){showToast(e.message,"error");}
 }
-function openSuspendModal(id,name){document.getElementById("suspend-tech-id").value=id;document.getElementById("suspend-tech-name").textContent=name;document.getElementById("suspend-reason").value="";openModal("suspend-modal");}
+function openSuspendModal(id,name){
+  const displayName=typeof name==="object"?(name.ar||name.en||Object.values(name)[0]||"-"):name;
+  document.getElementById("suspend-tech-id").value=id;
+  document.getElementById("suspend-tech-name").textContent=displayName;
+  document.getElementById("suspend-reason").value="";
+  openModal("suspend-modal");
+}
 async function confirmSuspend(){
   const id=document.getElementById("suspend-tech-id").value,reason=document.getElementById("suspend-reason").value.trim();
   if(!reason){showToast("يرجى كتابة سبب الإيقاف","error");return;}
@@ -1777,7 +1784,7 @@ async function openAssignModal(docId,orderId,serviceId){
     const snap=await db.collection("technicians").where("active","==",true).get();
     let techs=snap.docs.map(d=>({id:d.id,...d.data()}));
     if(serviceId)techs=techs.filter(t=>(t.services||[]).includes(serviceId));
-    sel.innerHTML=techs.length?'<option value="">اختر فني…</option>'+techs.map(t=>`<option value="${t.id}">👨‍🔧 ${t.name||"-"} — ⭐${t.rating?t.rating.toFixed(1):"—"} — 📍${t.regionName||"—"}</option>`).join(""):'<option value="">لا يوجد فني متاح</option>';
+    sel.innerHTML=techs.length?'<option value="">اختر فني…</option>'+techs.map(t=>`<option value="${t.id}">👨‍🔧 ${getTechDisplayName(t)} — ⭐${t.rating?t.rating.toFixed(1):"—"} — 📍${t.regionName||"—"}</option>`).join(""):'<option value="">لا يوجد فني متاح</option>';
   }catch(e){sel.innerHTML='<option value="">خطأ في التحميل</option>';showToast(e.message,"error");}
 }
 async function assignTechToOrder(){
