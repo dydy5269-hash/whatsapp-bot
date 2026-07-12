@@ -206,6 +206,13 @@ const CUSTOMER_LANGS = {
     keepWaiting:   "⏳ انتظار",
     orderCancelled:(id) => `تم إلغاء طلبك 🆔 ${id}`,
     orderInProgress:(techName, techPhone) => `⚙️ *لديك طلب قيد التنفيذ*\nيمكنك التواصل مع الفني *${techName}* على الرقم:\n📞 ${techPhone}`,
+    orderActiveBlock:(id, status, techName, techPhone) => {
+      const statusAr = {"pending":"قيد الانتظار","accepted":"مقبول","on_way":"الفني في الطريق","arrived":"الفني وصل","searching":"جارٍ البحث عن فني","waiting_vip":"انتظار فني VIP"}[status]||status;
+      let msg = `⚠️ لديك طلب نشط:\n🆔 *${id}*\nالحالة: ${statusAr}\n\nلا يمكنك طلب خدمة جديدة حتى ينتهي طلبك الحالي وتقييمه.`;
+      if(techName && ["accepted","on_way","arrived"].includes(status)) msg += `\n\n📞 للتواصل مع الفني: *${techPhone||"—"}*`;
+      return msg;
+    },
+    orderDeletedByAdmin: (id) => `🗑 تم حذف طلبك 🆔 ${id} من قبل الإدارة.\nأرسل *مرحبا* لطلب خدمة جديدة.`,
     needRating:    "⭐ يرجى تقييم طلبك السابق أولاً قبل طلب خدمة جديدة.",
     privacyNote:   "🔒 نستخدم بياناتك فقط لتنفيذ الطلب وتحسين الخدمة.",
     accepted:      (n, p) => `✅ تم قبول طلبك!\n👨‍🔧 ${n}\n📞 ${p}\nفي الطريق!`,
@@ -281,6 +288,13 @@ const CUSTOMER_LANGS = {
     keepWaiting:   "⏳ Keep Waiting",
     orderCancelled:(id) => `Order cancelled 🆔 ${id}`,
     orderInProgress:(techName, techPhone) => `⚙️ *You have an order in progress*\nYou can contact the technician *${techName}* at:\n📞 ${techPhone}`,
+    orderActiveBlock:(id, status, techName, techPhone) => {
+      const statusEn = {"pending":"Pending","accepted":"Accepted","on_way":"Tech On the Way","arrived":"Tech Arrived","searching":"Searching for tech","waiting_vip":"Waiting VIP Tech"}[status]||status;
+      let msg = `⚠️ You have an active order:\n🆔 *${id}*\nStatus: ${statusEn}\n\nYou cannot request a new service until your current order and rating are complete.`;
+      if(techName && ["accepted","on_way","arrived"].includes(status)) msg += `\n\n📞 Contact technician: *${techPhone||"—"}*`;
+      return msg;
+    },
+    orderDeletedByAdmin: (id) => `🗑 Your order 🆔 ${id} was deleted by admin.\nSend *hi* to request a new service.`,
     needRating:    "⭐ Please rate your previous order first before requesting a new service.",
     privacyNote:   "🔒 We use your data only to fulfill the order and improve our service.",
     accepted:      (n, p) => `✅ Accepted!\n👨‍🔧 ${n}\n📞 ${p}\nOn the way!`,
@@ -661,7 +675,7 @@ async function getAvailableTech(serviceId, excludeIds = []) {
 async function getActiveOrder(phone) {
   const snap = await db.collection("orders")
     .where("customer", "==", phone)
-    .where("status", "in", ["pending","accepted","searching"])
+    .where("status", "in", ["pending","accepted","searching","on_way","arrived","waiting_vip"])
     .limit(1).get();
   if (snap.empty) return null;
   return { id: snap.docs[0].id, ...snap.docs[0].data() };
@@ -1369,9 +1383,32 @@ app.post("/webhook", async (req, res) => {
 
     // ── ✅ التعديل: تعرف على كلمات الترحيب في أي وقت ─────────────────────────
     if (msg.type === "text" && isGreeting(text)) {
-      await clearSession(from);
       // تسجيل العميل
       await updateCustomerData(from);
+
+      // ── تحقق من وجود طلب نشط أو قيد التنفيذ ─────────────────────────────
+      const activeSnap = await db.collection("orders")
+        .where("customer", "==", from)
+        .where("status", "in", ["pending","accepted","searching","on_way","arrived","waiting_vip"])
+        .limit(1).get();
+
+      if (!activeSnap.empty) {
+        const ao      = activeSnap.docs[0].data();
+        const session0 = await getSession(from);
+        const L0 = CUSTOMER_LANGS[getCLang(session0)] || CUSTOMER_LANGS.ar;
+        const isInProgress = ["accepted","on_way","arrived"].includes(ao.status);
+        if (isInProgress) {
+          const tName = ao.techName
+            ? (typeof ao.techName==="object" ? ao.techName.ar||ao.techName.en||"" : ao.techName)
+            : "";
+          await sendMessage(from, L0.orderInProgress(tName, ao.techPhone||"—"));
+        } else {
+          await sendMessage(from, L0.activeOrder(ao.orderId, ao.status));
+        }
+        return;
+      }
+
+      await clearSession(from);
       await sendLanguageMenu(from);
       return;
     }
@@ -1744,20 +1781,19 @@ app.post("/webhook", async (req, res) => {
       return;
     }
 
-    // أي رسالة غير معروفة — تحقق من وجود طلب قيد التنفيذ
+    // أي رسالة غير معروفة — تحقق من وجود طلب نشط أو قيد التنفيذ
     const activeCheck = await db.collection("orders")
       .where("customer", "==", from)
-      .where("status", "in", ["accepted", "on_way", "arrived"])
+      .where("status", "in", ["pending","accepted","searching","on_way","arrived","waiting_vip"])
       .limit(1).get();
 
     if (!activeCheck.empty) {
-      const ao      = activeCheck.docs[0].data();
-      const session0 = await getSession(from);
-      const L0       = CUSTOMER_LANGS[getCLang(session0)] || CUSTOMER_LANGS.ar;
-      const tName    = ao.techName
+      const ao    = activeCheck.docs[0].data();
+      const L0    = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
+      const tName = ao.techName
         ? (typeof ao.techName === "object" ? ao.techName.ar || ao.techName.en || "" : ao.techName)
         : "";
-      await sendMessage(from, L0.orderInProgress(tName, ao.techPhone || "—"));
+      await sendMessage(from, L0.orderActiveBlock(ao.orderId || activeCheck.docs[0].id, ao.status, tName, ao.techPhone));
       return;
     }
 
@@ -1956,7 +1992,19 @@ async function handleDone(text, techPhone, tech) {
   unlockOrder(orderId);
 }
 
-// ─── Admin API — تعيين فني يدوياً من لوحة التحكم ────────────────────────────
+// ─── Admin API — إشعار العميل عند حذف الطلب ──────────────────────────────────
+app.post("/admin/notify-customer", async (req, res) => {
+  try {
+    const { phone, orderId, lang, adminKey } = req.body;
+    const expectedKey = process.env.ADMIN_KEY || "admin-secret-key";
+    if (adminKey !== expectedKey) return res.status(403).json({ error: "Unauthorized" });
+    const L2 = CUSTOMER_LANGS[lang || "ar"] || CUSTOMER_LANGS.ar;
+    await sendMessage(normalize(phone), L2.orderDeletedByAdmin(orderId));
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 app.post("/admin/assign", async (req, res) => {
   try {
     const { orderId, techId, adminKey } = req.body;
