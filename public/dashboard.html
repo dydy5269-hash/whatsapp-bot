@@ -1215,7 +1215,7 @@ function renderTechGrid(techs){
     const todayOrders=allOrders.filter(o=>o.technicianId===tc.id&&o.createdAt&&new Date(o.createdAt.seconds*1000).toLocaleDateString("en-CA")===today).length;
     return`<div class="tech-card">
       <div class="tech-avatar">${tc.vip?"⭐":"👨‍🔧"}</div>
-      <div class="tech-name" title="${tc.name||""}">${tc.vip?'<span style="color:var(--accent);font-size:.7rem">⭐ VIP</span> ':''}${tc.name||"-"}</div>
+      <div class="tech-name" title="${typeof tc.name==="object"?tc.name.ar||"":tc.name||""}">${tc.vip?'<span style="color:var(--accent);font-size:.7rem">⭐ VIP</span> ':''}${typeof tc.name==="object"?tc.name.ar||"-":tc.name||"-"}</div>
       <div class="tech-phone">📞 ${tc.phone||"-"}</div>
       <div class="tech-region">📍 ${(tc.regionName||tc.regionId||"غير محدد").substring(0,20)}</div>
       ${tc.services&&tc.services.length?`<div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px">${tc.services.map(s=>`<span style="background:rgba(59,130,246,.1);color:var(--accent2);padding:1px 7px;border-radius:10px;font-size:.62rem;font-weight:700">${s}</span>`).join("")}</div>`:""}
@@ -1457,11 +1457,12 @@ async function openTechModal(techId = null) {
     const snap = await db.collection("technicians").doc(techId).get();
     if (snap.exists) {
       const d = snap.data();
-      // أسماء متعددة اللغات
+      // أسماء متعددة اللغات — name كـ object أو names منفصل
       document.querySelectorAll(".tech-name-input").forEach(inp=>{
         const lang=inp.dataset.lang;
-        if(d.names&&typeof d.names==="object") inp.value=d.names[lang]||"";
-        else if(lang==="ar") inp.value=d.name||""; // fallback للهيكل القديم
+        if(d.name&&typeof d.name==="object") inp.value=d.name[lang]||"";
+        else if(d.names&&typeof d.names==="object") inp.value=d.names[lang]||"";
+        else if(lang==="ar") inp.value=d.name||"";
       });
       document.getElementById("tech-phone").value = d.phone || "";
       document.getElementById("tech-id").value    = techId;
@@ -1522,17 +1523,15 @@ async function saveTechnician() {
   if (!nameAr || !phone) { showToast("يرجى ملء الاسم العربي والهاتف","error"); return; }
   if (!svcs.length)       { showToast("يرجى اختيار خدمة واحدة على الأقل","error"); return; }
 
-  // تجميع الأسماء بجميع اللغات
-  const names = {};
+  // تجميع الأسماء بجميع اللغات كـ object مباشرة (name: {ar, en, hi, bn})
+  const name = {};
   document.querySelectorAll(".tech-name-input").forEach(inp=>{
-    if(inp.value.trim()) names[inp.dataset.lang]=inp.value.trim();
+    if(inp.value.trim()) name[inp.dataset.lang]=inp.value.trim();
   });
-  // الاسم الافتراضي = العربي (للتوافق مع الكود القديم)
-  const name = names.ar || nameAr;
+  if(!name.ar){showToast("يرجى إدخال الاسم العربي","error");return;}
 
   const data = {
-    name,   // للتوافق القديم
-    names,  // جميع اللغات
+    name,   // {ar, en, hi, bn} — نفس هيكل getLocalizedName في الكود
     phone, services: svcs, active: true,
     regionId: regionId||null, regionName: regionName||null,
     vip: isVip, vipRate: isVip ? vipRate : null,
