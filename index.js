@@ -1493,12 +1493,17 @@ app.post("/webhook", async (req, res) => {
         }
 
         await setSession(from, "qty", { ...session.data, pendingPart: part });
+        // ── الكمية المتاحة = المخزون أو 5 كحد أقصى ───────────────────────────
+        const maxQty = (part.stock !== undefined && part.stock !== null)
+          ? Math.min(part.stock, MAX_PARTS_PER_ORDER)
+          : MAX_PARTS_PER_ORDER;
+        const qtyRows = Array.from({length: maxQty}, (_, i) => i + 1).map(n => ({
+          id: "qty_" + n,
+          title: n + (lang === "ar" ? " قطع" : " pcs")
+        }));
+        qtyRows.push({ id: "back_parts", title: L2.backToParts });
         await sendList(from, L2.chooseQty(getPartName(part, lang), part.price), L2.qtyBtn, [{
-          title: L2.qtyTitle,
-          rows: [
-            ...[1,2,3,4,5].map(n => ({ id: "qty_" + n, title: n + (lang==="ar"?" قطع":" pcs") })),
-            { id: "back_parts", title: L2.backToParts }
-          ]
+          title: L2.qtyTitle, rows: qtyRows
         }]);
         return;
       }
