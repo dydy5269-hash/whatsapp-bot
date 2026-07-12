@@ -1201,9 +1201,19 @@ function renderMapMarkers(){
 
 // ══ Tech Search ══
 let allTechs = [];
+// ── دالة مساعدة لاسم الفني في اللوحة ────────────────────────────────────────
+function getTechDisplayName(tc){
+  if(!tc.name) return "-";
+  if(typeof tc.name==="object") return tc.name.ar||tc.name.en||Object.values(tc.name)[0]||"-";
+  return tc.name||"-";
+}
+
 function filterTechnicians(){
   const q=(document.getElementById("tech-search")?.value||"").toLowerCase();
-  const filtered=q?allTechs.filter(t=>(t.name||"").toLowerCase().includes(q)||(t.phone||"").includes(q)):allTechs;
+  const filtered=q?allTechs.filter(t=>{
+    const n=getTechDisplayName(t).toLowerCase();
+    return n.includes(q)||(t.phone||"").includes(q);
+  }):allTechs;
   renderTechGrid(filtered);
 }
 function renderTechGrid(techs){
@@ -1211,11 +1221,12 @@ function renderTechGrid(techs){
   const today=new Date().toLocaleDateString("en-CA");
   document.getElementById("tech-grid").innerHTML=techs.map(tc=>{
     const bal=parseFloat(tc.balance||0),lowBal=bal<2;
-    // إحصائيات اليوم من allOrders إذا كانت محملة
+    const displayName=getTechDisplayName(tc);
+    const safeName=displayName.replace(/'/g,"");
     const todayOrders=allOrders.filter(o=>o.technicianId===tc.id&&o.createdAt&&new Date(o.createdAt.seconds*1000).toLocaleDateString("en-CA")===today).length;
     return`<div class="tech-card">
       <div class="tech-avatar">${tc.vip?"⭐":"👨‍🔧"}</div>
-      <div class="tech-name" title="${typeof tc.name==="object"?tc.name.ar||"":tc.name||""}">${tc.vip?'<span style="color:var(--accent);font-size:.7rem">⭐ VIP</span> ':''}${typeof tc.name==="object"?tc.name.ar||"-":tc.name||"-"}</div>
+      <div class="tech-name" title="${displayName}">${tc.vip?'<span style="color:var(--accent);font-size:.7rem">⭐ VIP</span> ':''}${displayName}</div>
       <div class="tech-phone">📞 ${tc.phone||"-"}</div>
       <div class="tech-region">📍 ${(tc.regionName||tc.regionId||"غير محدد").substring(0,20)}</div>
       ${tc.services&&tc.services.length?`<div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px">${tc.services.map(s=>`<span style="background:rgba(59,130,246,.1);color:var(--accent2);padding:1px 7px;border-radius:10px;font-size:.62rem;font-weight:700">${s}</span>`).join("")}</div>`:""}
@@ -1229,9 +1240,9 @@ function renderTechGrid(techs){
       <div class="tech-footer">
         <span class="active-pill ${tc.active?"on":"off"}">${tc.active?lowBal?"⚠️ رصيد":"متاح":"موقوف"}</span>
         <div style="display:flex;gap:4px">
-          <button class="btn btn-sm ${tc.active?"btn-danger":"btn-success"}" onclick="${tc.active?`openSuspendModal('${tc.id}','${(tc.name||"").replace(/'/g,"")}')`:`reactivateTech('${tc.id}','${(tc.name||"").replace(/'/g,"")}')`}">${tc.active?"⛔":"✅"}</button>
+          <button class="btn btn-sm ${tc.active?"btn-danger":"btn-success"}" onclick="${tc.active?`openSuspendModal('${tc.id}','${safeName}')`:`reactivateTech('${tc.id}','${safeName}')`}">${tc.active?"⛔":"✅"}</button>
           <button class="btn btn-sm btn-blue" onclick="openTechModal('${tc.id}')">✏️</button>
-          <button class="btn btn-sm" style="background:var(--surface);border:1px solid var(--border)" onclick="editTechBalance('${tc.id}','${(tc.name||"").replace(/'/g,"")}',${bal})">💰</button>
+          <button class="btn btn-sm" style="background:var(--surface);border:1px solid var(--border)" onclick="editTechBalance('${tc.id}','${safeName}',${bal})">💰</button>
           <button class="btn btn-sm btn-blue" data-tech-id="${tc.id}" onclick="openTechStats(this)">📊</button>
           <button class="btn btn-sm btn-danger" onclick="deleteTech('${tc.id}')">🗑</button>
         </div>
@@ -1511,7 +1522,6 @@ function toggleTechService(serviceId, el) {
 }
 
 async function saveTechnician() {
-  const nameAr  = getTechName("ar");
   const phone   = document.getElementById("tech-phone").value.trim();
   const techId  = document.getElementById("tech-id").value.trim();
   const regionId    = document.getElementById("tech-region").value;
@@ -1523,7 +1533,6 @@ async function saveTechnician() {
   if (!nameAr || !phone) { showToast("يرجى ملء الاسم العربي والهاتف","error"); return; }
   if (!svcs.length)       { showToast("يرجى اختيار خدمة واحدة على الأقل","error"); return; }
 
-  // تجميع الأسماء بجميع اللغات كـ object مباشرة (name: {ar, en, hi, bn})
   const name = {};
   document.querySelectorAll(".tech-name-input").forEach(inp=>{
     if(inp.value.trim()) name[inp.dataset.lang]=inp.value.trim();
