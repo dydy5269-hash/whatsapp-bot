@@ -895,9 +895,15 @@ async function checkAcceptTimeout(orderId, techId, myToken) {
 
 // ─── اسم الفني حسب لغته ──────────────────────────────────────────────────────
 function getTechNameByLang(tech, lang) {
-  if (tech.names && typeof tech.names === "object") {
-    return tech.names[lang] || tech.names.en || tech.names.ar || tech.name || "";
+  // هيكل جديد: name = { ar, en, hi, bn }
+  if (tech.name && typeof tech.name === "object") {
+    return tech.name[lang] || tech.name.en || tech.name.ar || Object.values(tech.name)[0] || "";
   }
+  // هيكل names منفصل
+  if (tech.names && typeof tech.names === "object") {
+    return tech.names[lang] || tech.names.en || tech.names.ar || "";
+  }
+  // هيكل قديم: name = string
   return tech.name || "";
 }
 function getPartName(part, lang) {
