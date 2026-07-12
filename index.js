@@ -1223,8 +1223,9 @@ app.post("/webhook", async (req, res) => {
         const chosenLang = text.replace("techlang_", "");
         if (TECH_LANGS[chosenLang]) {
           await db.collection("technicians").doc(tech.id).update({ lang: chosenLang });
-          const TL2 = TECH_LANGS[chosenLang];
-          await sendMessage(from, TL2.info(tech.name, tech.phone, tech.rating, tech.balance||0, tech.active));
+          const TL2   = TECH_LANGS[chosenLang];
+          const tName = getTechNameByLang(tech, chosenLang);
+          await sendMessage(from, TL2.info(tName, tech.phone, tech.rating, tech.balance||0, tech.active));
         }
         return;
       }
