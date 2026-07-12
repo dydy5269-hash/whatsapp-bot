@@ -1046,8 +1046,16 @@ async function sendPartsMenu(phone, service, selectedParts, lang) {
 async function showSummary(phone, session, lang) {
   const L2         = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
   const { service, selectedType, parts, vipTechId, vipRate } = session.data;
+
   const partsTotal  = (parts || []).reduce((s, p) => s + p.total, 0);
-  const laborPrice  = selectedType ? selectedType.price : 0;
+  const totalQty    = (parts || []).reduce((s, p) => s + p.qty, 0);
+
+  // ── الأجرة = سعر النوع × إجمالي عدد القطع ───────────────────────────────────
+  const laborUnitPrice = selectedType ? selectedType.price : 0;
+  const laborPrice     = totalQty > 0
+    ? Math.round(laborUnitPrice * totalQty * 100) / 100
+    : laborUnitPrice; // إذا بدون قطع → الأجرة الثابتة فقط
+
   const baseTotal   = Math.round((partsTotal + laborPrice) * 100) / 100;
   const afterVip    = vipTechId ? applyVipRate(baseTotal, vipRate || 0.20) : baseTotal;
 
@@ -1061,8 +1069,13 @@ async function showSummary(phone, session, lang) {
              || (lang === "ar" ? "بدون قطع" : "No parts");
   const vipNote = vipTechId ? L2.vipSummaryNote(20) : "";
 
-  await sendMessage(phone, L2.summary(lines, laborPrice, Math.round(partsTotal*100)/100, totalPrice, taxAmount, taxName) + vipNote);
-  await setSession(phone, "confirm", { ...session.data, totalPrice, taxAmount, taxRate });
+  // إضافة توضيح حساب الأجرة في الملخص
+  const laborNote = totalQty > 0
+    ? `${laborUnitPrice} ر.ع × ${totalQty} قطعة = ${laborPrice} ر.ع`
+    : `${laborPrice} ر.ع`;
+
+  await sendMessage(phone, L2.summary(lines, laborNote, Math.round(partsTotal*100)/100, totalPrice, taxAmount, taxName) + vipNote);
+  await setSession(phone, "confirm", { ...session.data, totalPrice, laborPrice, taxAmount, taxRate });
   await sendButtons(phone, lang === "ar" ? "هل تؤكد الطلب؟" : "Confirm order?", [
     { id: "confirm",    title: L2.confirmRow  },
     { id: "back_parts", title: L2.backToParts },
@@ -1635,12 +1648,16 @@ app.post("/webhook", async (req, res) => {
       if (isLocked(from)) return;
       lockOrder(from);
 
-      const partsTotal = (parts||[]).reduce((s,p) => s+p.total, 0);
-      const laborPrice = selectedType ? selectedType.price : 0;
-      const baseTotal  = Math.round((partsTotal + laborPrice)*100)/100;
+      const partsTotal     = (parts||[]).reduce((s,p) => s+p.total, 0);
+      const totalQty       = (parts||[]).reduce((s,p) => s+p.qty, 0);
+      const laborUnitPrice = selectedType ? selectedType.price : 0;
+      const laborPrice     = session.data.laborPrice !== undefined
+        ? session.data.laborPrice  // مأخوذة من showSummary مباشرة
+        : (totalQty > 0 ? Math.round(laborUnitPrice * totalQty * 100) / 100 : laborUnitPrice);
       const vipTechId  = session.data.vipTechId  || null;
       const vipRate    = session.data.vipRate     || 0.20;
-      const totalPrice = vipTechId ? applyVipRate(baseTotal, vipRate) : baseTotal;
+      const totalPrice = vipTechId ? applyVipRate(Math.round((partsTotal + laborPrice)*100)/100, vipRate)
+                       : session.data.totalPrice || Math.round((partsTotal + laborPrice)*100)/100;
       const orderId    = generateOrderId();
       const orderData  = {
         orderId, customer: from,
