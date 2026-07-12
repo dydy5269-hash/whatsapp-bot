@@ -488,7 +488,37 @@ async function sendMessage(to, text) {
       { messaging_product: "whatsapp", to, text: { body: text } },
       { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
     );
-  } catch(e) { console.error("sendMessage:", e.message); }
+  } catch(e) {
+    console.error("sendMessage:", e.message);
+    // ── إذا انتهت نافذة 24 ساعة → أرسل template ─────────────────────────────
+    if (e.response?.data?.error?.code === 131047 || e.response?.data?.error?.code === 60003) {
+      await sendTemplateMessage(to);
+    }
+  }
+}
+
+// ─── إرسال Template Message للفنيين غير النشطين ──────────────────────────────
+async function sendTemplateMessage(to) {
+  const templateName = process.env.WHATSAPP_TEMPLATE || "new_order_notification";
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to,
+        type: "template",
+        template: {
+          name: templateName,
+          language: { code: "ar" }
+        }
+      },
+      { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
+    );
+    console.log(`✅ Template sent to ${to}`);
+  } catch(e2) {
+    console.error("sendTemplate:", e2.message);
+    await logError("sendTemplate", e2, { to });
+  }
 }
 
 async function sendList(to, body, button, sections) {
