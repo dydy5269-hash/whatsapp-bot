@@ -893,7 +893,13 @@ async function checkAcceptTimeout(orderId, techId, myToken) {
   await dispatchToTech(orderId, { ...order, rejectedTechs, status: "searching", technicianId: null });
 }
 
-// ─── اسم القطعة حسب اللغة ────────────────────────────────────────────────────
+// ─── اسم الفني حسب لغته ──────────────────────────────────────────────────────
+function getTechNameByLang(tech, lang) {
+  if (tech.names && typeof tech.names === "object") {
+    return tech.names[lang] || tech.names.en || tech.names.ar || tech.name || "";
+  }
+  return tech.name || "";
+}
 function getPartName(part, lang) {
   // هيكل جديد: name.ar / name.en / name.hi / name.bn
   if (part.name && typeof part.name === "object") {
@@ -1169,9 +1175,9 @@ app.post("/webhook", async (req, res) => {
             onWayAt:   admin.firestore.FieldValue.serverTimestamp()
           });
           await addOrderHistory(orderId, "on_way", tech.id, "Tech on the way");
-
-          // إشعار العميل
-          await sendMessage(normalize(order.customer), CL2.techOnWay(tech.name));
+          // إشعار العميل باسمه بلغته
+          const tNameOnWay = getTechNameByLang(tech, order.lang||"ar");
+          await sendMessage(normalize(order.customer), CL2.techOnWay(tNameOnWay));
 
           // زر "وصلت" للفني
           await sendButtons(from, TL2.statusPrompt, [
@@ -1195,9 +1201,9 @@ app.post("/webhook", async (req, res) => {
             arrivedAt:  admin.firestore.FieldValue.serverTimestamp()
           });
           await addOrderHistory(orderId, "arrived", tech.id, "Tech arrived");
-
-          // إشعار العميل
-          await sendMessage(normalize(order.customer), CL2.techArrived(tech.name));
+          // إشعار العميل باسمه بلغته
+          const tNameArrived = getTechNameByLang(tech, order.lang||"ar");
+          await sendMessage(normalize(order.customer), CL2.techArrived(tNameArrived));
 
           // زر "إنهاء الطلب" للفني
           await sendButtons(from, TL2.doneLabel(orderId), [
@@ -1218,8 +1224,10 @@ app.post("/webhook", async (req, res) => {
       }
 
       if (["info","معلومات","जानकारी","তথ্য"].includes(text)) {
-        const TL2 = TECH_LANGS[getTLang(tech)] || TECH_LANGS.ar;
-        await sendMessage(from, TL2.info(tech.name, tech.phone, tech.rating, tech.balance||0, tech.active));
+        const TL2    = TECH_LANGS[getTLang(tech)] || TECH_LANGS.ar;
+        const tLang  = getTLang(tech);
+        const tName  = getTechNameByLang(tech, tLang);
+        await sendMessage(from, TL2.info(tName, tech.phone, tech.rating, tech.balance||0, tech.active));
         return;
       }
 
@@ -1689,16 +1697,17 @@ async function handleAccept(text, techPhone, tech) {
   await addOrderHistory(orderId, "accepted", tech.id, `Tech: ${tech.name}`);
 
   const customerPhone = normalize(order.customer);
-  const CL2 = CUSTOMER_LANGS[order.lang||"ar"] || CUSTOMER_LANGS.ar;
+  const CL2     = CUSTOMER_LANGS[order.lang||"ar"] || CUSTOMER_LANGS.ar;
+  const custLang = order.lang || "ar";
+  const techDisplayName = getTechNameByLang(tech, custLang); // اسم الفني بلغة العميل
 
   await sendMessage(techPhone, TL2.customerPhone(customerPhone));
   if (order.location) await sendLocation(techPhone, order.location.latitude, order.location.longitude);
 
-  // ── زر "في الطريق" فقط — "وصلت" يظهر بعد الضغط عليه ───────────────────────
   await sendButtons(techPhone, TL2.statusPrompt, [
     { id: `onway_${orderId}`, title: TL2.onMyWayLabel }
   ]);
-  await sendMessage(customerPhone, CL2.accepted(tech.name, tech.phone));
+  await sendMessage(customerPhone, CL2.accepted(techDisplayName, tech.phone));
 
   // إشعار تأخر الفني بعد LATE_TECH_MINUTES
   setTimeout(async () => {
