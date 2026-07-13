@@ -965,7 +965,48 @@ function getPartName(part, lang) {
   return part.name || "قطعة";
 }
 
-// ─── التحقق من وجود تقييم معلق ──────────────────────────────────────────────
+// ─── حساب سعر القطعة حسب الشرائح من Firestore ────────────────────────────────
+function calcPartPrice(part, qty) {
+  if (part.tiers && Array.isArray(part.tiers) && part.tiers.length > 0) {
+    const tier = part.tiers.find(t => qty >= t.from && qty <= t.to);
+    if (tier) return Math.round(tier.price * 100) / 100;
+    // تجاوز آخر شريحة → احسب بنسبة
+    const last = part.tiers[part.tiers.length - 1];
+    const unitFromLast = last.price / last.to;
+    return Math.round((last.price + (qty - last.to) * unitFromLast) * 100) / 100;
+  }
+  // لا توجد شرائح → سعر الوحدة × الكمية
+  return Math.round((part.price || 0) * qty * 100) / 100;
+}
+
+// ─── نص توضيحي للشريحة في قائمة الكمية ──────────────────────────────────────
+function getTierInfo(part, n, lang) {
+  if (!part.tiers || !part.tiers.length) return "";
+  const tier = part.tiers.find(t => n >= t.from && n <= t.to);
+  if (!tier) return "";
+  return lang === "ar" ? ` ← ${tier.price} ر.ع` : ` ← ${tier.price} OMR`;
+}
+  }
+  // ابحث عن الشريحة المناسبة للكمية
+  const tier = part.tiers.find(t => qty >= t.from && qty <= t.to);
+  if (tier) return tier.price; // السعر الإجمالي للشريحة
+  // إذا تجاوز آخر شريحة → احسب بنسبة من آخر شريحة
+  const lastTier = part.tiers[part.tiers.length - 1];
+  const unitPrice = Math.round(lastTier.price / lastTier.to * 100) / 100;
+  return Math.round(unitPrice * qty * 100) / 100;
+}
+
+// ─── وصف سعر القطعة للعرض ────────────────────────────────────────────────────
+function getPartPriceDisplay(part, lang) {
+  if (!part.tiers || !part.tiers.length) {
+    return `${part.price || 0} ر.ع`;
+  }
+  // عرض أول شريحة كسعر افتراضي مع إشارة التدرج
+  const first = part.tiers[0];
+  return lang === "ar"
+    ? `${first.price} ر.ع (${first.from}-${first.to} قطعة)`
+    : `${first.price} OMR (${first.from}-${first.to} pcs)`;
+}
 async function getPendingRatingOrder(phone) {
   try {
     const snap = await db.collection("orders")
@@ -1097,9 +1138,10 @@ async function showSummary(phone, session, lang) {
   const partsTotal     = (parts || []).reduce((s, p) => s + p.total, 0);
   const totalQty       = (parts || []).reduce((s, p) => s + p.qty, 0);
   const laborUnitPrice = selectedType ? selectedType.price : 0;
-  const laborPrice     = totalQty > 0
-    ? Math.round(laborUnitPrice * totalQty * 100) / 100
-    : laborUnitPrice;
+
+  // ── الأجرة ثابتة مرة واحدة بغض النظر عن عدد القطع ──────────────────────
+  const laborPrice = laborUnitPrice;
+  const laborNote  = `${laborPrice} ر.ع`;
 
   const subTotal  = Math.round((partsTotal + laborPrice) * 100) / 100;
 
@@ -1595,10 +1637,13 @@ app.post("/webhook", async (req, res) => {
         const maxQty = (part.stock !== undefined && part.stock !== null)
           ? Math.min(part.stock, MAX_PARTS_PER_ORDER)
           : MAX_PARTS_PER_ORDER;
-        const qtyRows = Array.from({length: maxQty}, (_, i) => i + 1).map(n => ({
-          id: "qty_" + n,
-          title: n + (lang === "ar" ? " قطع" : " pcs")
-        }));
+        const qtyRows = Array.from({length: maxQty}, (_, i) => i + 1).map(n => {
+          const tierInfo = getTierInfo(part, n, lang);
+          return {
+            id:    "qty_" + n,
+            title: n + (lang === "ar" ? " قطع" : " pcs") + tierInfo
+          };
+        });
         qtyRows.push({ id: "back_parts", title: L2.backToParts });
         await sendList(from, L2.chooseQty(getPartName(part, lang), part.price), L2.qtyBtn, [{
           title: L2.qtyTitle, rows: qtyRows
@@ -1620,10 +1665,14 @@ app.post("/webhook", async (req, res) => {
         const part     = session.data.pendingPart;
         const parts    = session.data.parts || [];
         const partName = getPartName(part, lang);
-        const total    = Math.round(part.price * qty * 100) / 100;
+        // ── استخدام الشرائح من Firestore إذا وُجدت ───────────────────────────
+        const total    = calcPartPrice(part, qty);
         const idx      = parts.findIndex(p => p.id === part.id);
-        if (idx >= 0) { parts[idx].qty += qty; parts[idx].total += total; }
-        else parts.push({ id: part.id, name: partName, qty, unitPrice: part.price, total });
+        if (idx >= 0) {
+          parts[idx].qty   = qty; // استبدال الكمية (لا تجميع)
+          parts[idx].total = total;
+        }
+        else parts.push({ id: part.id, name: partName, qty, unitPrice: part.price, total, tiers: part.tiers || null });
         await sendMessage(from, L2.addedPart(partName, qty, total));
         await setSession(from, "parts", { ...session.data, parts, pendingPart: null });
         await sendMenu(from, L2.addMore, L2.addMoreBtn, [
@@ -1741,11 +1790,11 @@ app.post("/webhook", async (req, res) => {
       lockOrder(from);
 
       const partsTotal     = (parts||[]).reduce((s,p) => s+p.total, 0);
-      const totalQty       = (parts||[]).reduce((s,p) => s+p.qty, 0);
       const laborUnitPrice = selectedType ? selectedType.price : 0;
+      // الأجرة ثابتة مرة واحدة
       const laborPrice     = session.data.laborPrice !== undefined
-        ? session.data.laborPrice  // مأخوذة من showSummary مباشرة
-        : (totalQty > 0 ? Math.round(laborUnitPrice * totalQty * 100) / 100 : laborUnitPrice);
+        ? session.data.laborPrice
+        : laborUnitPrice;
       const vipTechId  = session.data.vipTechId  || null;
       const vipRate    = session.data.vipRate     || 0.20;
       const totalPrice = vipTechId ? applyVipRate(Math.round((partsTotal + laborPrice)*100)/100, vipRate)
