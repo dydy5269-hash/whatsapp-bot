@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>TAQA — لوحة التحكم</title>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+<title>هُوك | HOK — لوحة التحكم</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Figtree:wght@300;400;600;700;900&display=swap" rel="stylesheet"/>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -13,28 +13,45 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
-:root{--bg:#0a0e1a;--surface:#111827;--surface2:#1a2235;--border:#1e2d45;--accent:#f59e0b;--accent2:#3b82f6;--accent3:#10b981;--danger:#ef4444;--text:#f1f5f9;--muted:#64748b;--font-ar:'Cairo',sans-serif;--font-en:'Outfit',sans-serif;}
+/* ── ألوان هُوك البصرية ── */
+:root{
+  --bg:#1a1a18;
+  --surface:#232320;
+  --surface2:#2c2c28;
+  --border:#3a3a34;
+  --accent:#C4622D;        /* برتقالي هُوك */
+  --accent-light:#d4733e;
+  --accent2:#2D6A4F;       /* أخضر هُوك */
+  --accent3:#52B788;       /* أخضر فاتح */
+  --accent-sand:#F2E8DC;   /* رملي فاتح */
+  --danger:#e05c3a;
+  --text:#F2E8DC;
+  --muted:#9a9a8a;
+  --font-ar:'Cairo',sans-serif;
+  --font-en:'Figtree',sans-serif;
+}
 *{margin:0;padding:0;box-sizing:border-box;}
 html[dir="rtl"] body{font-family:var(--font-ar);}
 html[dir="ltr"] body{font-family:var(--font-en);}
 body{background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
-#login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;background-image:radial-gradient(ellipse at 20% 50%,rgba(245,158,11,.1),transparent 60%),radial-gradient(ellipse at 80% 20%,rgba(59,130,246,.08),transparent 60%);}
+#login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;background-image:radial-gradient(ellipse at 20% 50%,rgba(196,98,45,.15),transparent 60%),radial-gradient(ellipse at 80% 20%,rgba(45,106,79,.1),transparent 60%);}
 .login-box{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:48px 40px;width:100%;max-width:420px;text-align:center;}
-.login-logo{font-size:3rem;font-weight:900;color:var(--accent);margin-bottom:4px;letter-spacing:-2px;}
+.login-logo{font-size:2.4rem;font-weight:900;color:var(--accent);margin-bottom:4px;letter-spacing:2px;font-family:'Figtree',sans-serif;}
+.login-logo span{color:var(--accent2);font-size:1rem;display:block;font-weight:600;letter-spacing:1px;margin-top:2px;}
 .login-sub{color:var(--muted);font-size:.9rem;margin-bottom:36px;}
 .login-field{text-align:right;margin-bottom:16px;}
 html[dir="ltr"] .login-field{text-align:left;}
 .login-field label{font-size:.8rem;font-weight:700;color:var(--muted);display:block;margin-bottom:6px;}
 .login-field input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:13px 16px;color:var(--text);font-size:.95rem;font-family:inherit;transition:border-color .2s;}
 .login-field input:focus{outline:none;border-color:var(--accent);}
-.login-btn{width:100%;background:var(--accent);color:#000;border:none;border-radius:10px;padding:14px;font-size:1rem;font-weight:800;cursor:pointer;margin-top:8px;font-family:inherit;}
-.login-btn:hover{background:#d97706;}
+.login-btn{width:100%;background:var(--accent);color:#fff;border:none;border-radius:10px;padding:14px;font-size:1rem;font-weight:800;cursor:pointer;margin-top:8px;font-family:inherit;transition:background .2s;}
+.login-btn:hover{background:var(--accent-light);}
 .login-btn:disabled{opacity:.5;cursor:not-allowed;}
 .login-error{color:var(--danger);font-size:.83rem;margin-top:12px;min-height:20px;}
 #app{display:none;}
 .sidebar{position:fixed;top:0;right:0;width:230px;height:100vh;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;z-index:100;overflow-y:auto;}
 html[dir="ltr"] .sidebar{right:auto;left:0;border-left:none;border-right:1px solid var(--border);}
-.logo{padding:20px 20px 14px;font-size:1.4rem;font-weight:900;color:var(--accent);letter-spacing:-1px;border-bottom:1px solid var(--border);}
+.logo{padding:20px 20px 14px;font-size:1.4rem;font-weight:900;color:var(--accent);letter-spacing:2px;border-bottom:1px solid var(--border);font-family:'Figtree',sans-serif;}
 .logo span{color:var(--muted);font-weight:400;font-size:.72rem;display:block;margin-top:2px;}
 .nav{flex:1;padding:12px 10px;display:flex;flex-direction:column;gap:2px;}
 .nav-item{display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:.83rem;font-weight:600;color:var(--muted);transition:all .2s;border:none;background:none;width:100%;text-align:right;}
@@ -232,7 +249,7 @@ html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
 <!-- Login -->
 <div id="login-screen">
   <div class="login-box">
-    <div class="login-logo">TAQA</div>
+    <div class="login-logo">HOK <span>هُوك | خدمات منزلية</span></div>
     <div class="login-sub">لوحة تحكم الإدارة</div>
     <div class="login-field"><label>البريد الإلكتروني</label><input type="email" id="login-email" placeholder="admin@taqa.com"/></div>
     <div class="login-field"><label>كلمة المرور</label><input type="password" id="login-pass" placeholder="••••••••"/></div>
@@ -244,7 +261,7 @@ html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
 <!-- App -->
 <div id="app">
   <aside class="sidebar">
-    <div class="logo">TAQA <span>لوحة التحكم</span></div>
+    <div class="logo">HOK <span>هُوك | لوحة التحكم</span></div>
     <nav class="nav">
       <div class="nav-section">الرئيسية</div>
       <button class="nav-item active" onclick="showPage('overview',this)"><span class="icon">📊</span>نظرة عامة</button>
@@ -276,7 +293,7 @@ html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
       <h1 id="page-title">نظرة عامة</h1>
       <div class="topbar-right">
         <button class="notif-bell" onclick="toggleNotifPanel()" id="notif-bell">🔔<span class="notif-count" id="notif-count" style="display:none">0</span></button>
-        <div style="display:flex;align-items:center;gap:7px"><div class="status-dot"></div><span style="font-size:.73rem;color:var(--muted)">Firebase</span></div>
+        <div style="display:flex;align-items:center;gap:7px"><div class="status-dot"></div><span style="font-size:.73rem;color:var(--muted);font-family:'Figtree',sans-serif;font-weight:700">HOK</span></div>
       </div>
     </div>
 
@@ -560,6 +577,21 @@ html[dir="ltr"] .live-notif-close{left:auto;right:10px;}
       <div class="form-group"><label>المخزون (فارغ = غير محدود)</label><input type="number" id="part-stock" placeholder="" min="0"/></div>
       <div class="form-group" style="grid-column:1/-1"><label>وصف (اختياري)</label><input type="text" id="part-desc"/></div>
       <div class="form-group" style="grid-column:1/-1"><label>🔑 Document ID (اختياري)</label><input type="text" id="part-id" placeholder="part_switch" style="direction:ltr;font-family:monospace"/></div>
+    </div>
+
+    <!-- ── الأسعار المتدرجة ── -->
+    <div style="padding:0 18px 14px">
+      <label style="font-size:.73rem;font-weight:700;color:var(--muted);display:block;margin-bottom:6px">
+        📊 الأسعار المتدرجة (اختياري)
+        <span style="font-weight:400;color:var(--muted)"> — اتركها فارغة لاستخدام السعر الثابت</span>
+      </label>
+      <div id="tiers-builder" style="display:flex;flex-direction:column;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;font-size:.65rem;font-weight:700;color:var(--muted);padding:0 2px">
+          <span>من (قطعة)</span><span>إلى (قطعة)</span><span>السعر الإجمالي (ر.ع)</span><span></span>
+        </div>
+      </div>
+      <button onclick="addTierRow()" style="width:100%;margin-top:6px;background:rgba(245,158,11,.1);color:var(--accent);border:1px dashed var(--accent);border-radius:6px;padding:6px;font-size:.75rem;cursor:pointer;font-family:inherit">+ إضافة شريحة</button>
+      <p style="font-size:.65rem;color:var(--muted);margin-top:4px">مثال: 1-3 قطع = 1.5 ر.ع · 4-6 قطع = 3 ر.ع</p>
     </div>
     <div class="form-actions">
       <button class="btn btn-primary" onclick="savePart()">💾 حفظ</button>
@@ -1701,11 +1733,57 @@ function renderFilteredParts(){
     return`<div class="item-row"><div class="item-icon">🔩</div><div class="item-info"><div class="item-name">${displayName}</div><div class="lang-chips" style="margin:4px 0">${nameLangChips(names)}</div><div class="item-meta"><span class="region-pill">${svcMap[p.serviceId]||p.serviceId||"-"}</span>${p.unit||""} · ${p.price||0} ر.ع${p.desc?` · ${p.desc}`:""}</div></div><div style="display:flex;gap:5px"><button class="btn btn-sm btn-success" onclick="editPart('${p.id}')">✏️</button><button class="btn btn-sm btn-danger" onclick="deletePart('${p.id}')">🗑</button></div></div>`;
   }).join("");
 }
-function openAddPartModal(){editingPartId=null;document.getElementById("part-modal-title").textContent="إضافة قطعة";document.querySelectorAll(".part-name-input").forEach(i=>i.value="");["part-unit","part-price","part-desc","part-id","part-stock"].forEach(id=>document.getElementById(id).value="");document.getElementById("part-service").value="";openModal("part-modal");}
+// ══ Tiers Builder ══
+let tierCount=0;
+function addTierRow(prefill=null){
+  tierCount++;const id=`tier-${tierCount}`;const row=document.createElement("div");row.id=id;
+  row.style.cssText="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;align-items:center;margin-bottom:4px";
+  row.innerHTML=`
+    <input type="number" placeholder="1" min="1" value="${prefill?.from||""}" data-tier="${id}" data-field="from" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:.82rem;width:100%"/>
+    <input type="number" placeholder="3" min="1" value="${prefill?.to||""}" data-tier="${id}" data-field="to" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:.82rem;width:100%"/>
+    <input type="number" placeholder="1.5" min="0" step="0.01" value="${prefill?.price||""}" data-tier="${id}" data-field="price" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:.82rem;direction:ltr;width:100%"/>
+    <button onclick="document.getElementById('${id}').remove()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:1.1rem">✕</button>`;
+  document.getElementById("tiers-builder").appendChild(row);
+}
+function getTiersFromForm(){
+  const ids=new Set();
+  document.querySelectorAll("#tiers-builder [data-field='from']").forEach(i=>ids.add(i.dataset.tier));
+  const tiers=[];
+  ids.forEach(id=>{
+    const from=parseInt(document.querySelector(`[data-tier="${id}"][data-field="from"]`)?.value);
+    const to  =parseInt(document.querySelector(`[data-tier="${id}"][data-field="to"]`)?.value);
+    const price=parseFloat(document.querySelector(`[data-tier="${id}"][data-field="price"]`)?.value);
+    if(!isNaN(from)&&!isNaN(to)&&!isNaN(price))tiers.push({from,to,price});
+  });
+  return tiers.sort((a,b)=>a.from-b.from);
+}
+function loadTiersToForm(tiers){
+  document.querySelectorAll("#tiers-builder [data-tier]").forEach(el=>{
+    const r=document.getElementById(el.dataset.tier);if(r)r.remove();
+  });
+  tierCount=0;(tiers||[]).forEach(t=>addTierRow(t));
+}
+
+function openAddPartModal(){
+  editingPartId=null;
+  document.getElementById("part-modal-title").textContent="إضافة قطعة";
+  document.querySelectorAll(".part-name-input").forEach(i=>i.value="");
+  ["part-unit","part-price","part-desc","part-id","part-stock"].forEach(id=>document.getElementById(id).value="");
+  document.getElementById("part-service").value="";
+  loadTiersToForm([]);
+  openModal("part-modal");
+}
 function editPart(id){
-  const p=allParts.find(x=>x.id===id);if(!p)return;editingPartId=id;document.getElementById("part-modal-title").textContent="تعديل القطعة";
+  const p=allParts.find(x=>x.id===id);if(!p)return;editingPartId=id;
+  document.getElementById("part-modal-title").textContent="تعديل القطعة";
   document.querySelectorAll(".part-name-input").forEach(inp=>{inp.value=getLocalizedName(p,inp.dataset.lang)||"";});
-  document.getElementById("part-unit").value=p.unit||"";document.getElementById("part-price").value=p.price||0;document.getElementById("part-desc").value=p.desc||"";document.getElementById("part-service").value=p.serviceId||"";document.getElementById("part-stock").value=p.stock!==undefined?p.stock:"";document.getElementById("part-id").value="";
+  document.getElementById("part-unit").value=p.unit||"";
+  document.getElementById("part-price").value=p.price||0;
+  document.getElementById("part-desc").value=p.desc||"";
+  document.getElementById("part-service").value=p.serviceId||"";
+  document.getElementById("part-stock").value=p.stock!==undefined?p.stock:"";
+  document.getElementById("part-id").value="";
+  loadTiersToForm(p.tiers||[]);
   openModal("part-modal");
 }
 async function savePart(){
@@ -1717,7 +1795,10 @@ async function savePart(){
   const desc=document.getElementById("part-desc").value.trim();
   const stockInput=document.getElementById("part-stock").value;const stockVal=stockInput!==""?parseInt(stockInput):undefined;
   if(!serviceId){showToast("يرجى اختيار الخدمة","error");return;}
-  const data={name,unit,price,serviceId,desc:desc||null};if(stockVal!==undefined)data.stock=stockVal;
+  const tiers = getTiersFromForm();
+  const data={name,unit,price,serviceId,desc:desc||null};
+  if(tiers.length) data.tiers = tiers;
+  if(stockVal!==undefined)data.stock=stockVal;
   try{
     if(editingPartId){await db.collection("parts").doc(editingPartId).update(data);showToast("✅ تم التحديث");}
     else{const cId=document.getElementById("part-id").value.trim().toLowerCase().replace(/\s+/g,"_");if(cId)await db.collection("parts").doc(cId).set(data);else await db.collection("parts").add(data);showToast("✅ تمت الإضافة");}
