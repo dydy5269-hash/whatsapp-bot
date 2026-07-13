@@ -1130,9 +1130,8 @@ async function showSummary(phone, session, lang) {
   const totalQty       = (parts || []).reduce((s, p) => s + p.qty, 0);
   const laborUnitPrice = selectedType ? selectedType.price : 0;
 
-  // ── الأجرة ثابتة مرة واحدة بغض النظر عن عدد القطع ──────────────────────
+  // ── الأجرة ثابتة مرة واحدة ───────────────────────────────────────────────
   const laborPrice = laborUnitPrice;
-  const laborNote  = `${laborPrice} ر.ع`;
 
   const subTotal  = Math.round((partsTotal + laborPrice) * 100) / 100;
 
