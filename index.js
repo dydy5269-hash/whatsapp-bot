@@ -726,7 +726,7 @@ th{background:#f59e0b;padding:10px;text-align:right}td{padding:10px;border-botto
 .total{font-size:1.3rem;font-weight:bold;color:#f59e0b;margin-top:14px}
 .footer{color:#888;font-size:.82rem;text-align:center;margin-top:32px}</style></head>
 <body>
-<h1>TAQA 🔧</h1>
+<h1>HOK 🔧</h1>
 <div class="box">
   <p><strong>رقم الطلب:</strong> ${o.orderId}</p>
   <p><strong>الخدمة:</strong> ${o.serviceName} — ${o.type||""}</p>
@@ -739,7 +739,7 @@ th{background:#f59e0b;padding:10px;text-align:right}td{padding:10px;border-botto
 <p>🔩 إجمالي القطع: <strong>${o.partsTotal||0} ريال</strong></p>
 <div class="total">💰 الإجمالي الكلي: ${o.totalPrice||0} ريال</div>
 <br><button onclick="window.print()" style="padding:10px 22px;background:#f59e0b;border:none;border-radius:8px;font-size:1rem;cursor:pointer">🖨️ طباعة / PDF</button>
-<div class="footer">TAQA © ${new Date().getFullYear()}</div>
+<div class="footer">HOK © ${new Date().getFullYear()}</div>
 </body></html>`);
   } catch(e) { res.status(500).send("Error"); }
 });
@@ -985,15 +985,6 @@ function getTierInfo(part, n, lang) {
   const tier = part.tiers.find(t => n >= t.from && n <= t.to);
   if (!tier) return "";
   return lang === "ar" ? ` ← ${tier.price} ر.ع` : ` ← ${tier.price} OMR`;
-}
-  }
-  // ابحث عن الشريحة المناسبة للكمية
-  const tier = part.tiers.find(t => qty >= t.from && qty <= t.to);
-  if (tier) return tier.price; // السعر الإجمالي للشريحة
-  // إذا تجاوز آخر شريحة → احسب بنسبة من آخر شريحة
-  const lastTier = part.tiers[part.tiers.length - 1];
-  const unitPrice = Math.round(lastTier.price / lastTier.to * 100) / 100;
-  return Math.round(unitPrice * qty * 100) / 100;
 }
 
 // ─── وصف سعر القطعة للعرض ────────────────────────────────────────────────────
@@ -2219,4 +2210,4 @@ function scheduleDailyReport() {
 }
 scheduleDailyReport();
 
-app.listen(process.env.PORT || 3000, () => console.log("✅ TAQA Server running"));
+app.listen(process.env.PORT || 3000, () => console.log("✅ HOK Server running"));
