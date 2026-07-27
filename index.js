@@ -661,15 +661,36 @@ async function getTechByPhone(phone) {
   if (snap.empty) return null;
   return { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
+// ─── حالة نشاط الفني بناءً على lastSeen ─────────────────────────────────────
+function getTechPresence(tech) {
+  if (!tech.lastSeen) return "unknown";  // لم يرسل أي رسالة للنظام قط
+  const diffHours = (Date.now() - tech.lastSeen.toDate().getTime()) / 3600000;
+  if (diffHours <= 24) return "active";   // 🟢 نشط
+  if (diffHours <= 48) return "inactive"; // 🟡 غير نشط
+  return "away";                          // 🔴 غائب
+}
+
 async function getAvailableTech(serviceId, excludeIds = []) {
   const snap = await db.collection("technicians")
     .where("active", "==", true)
     .where("services", "array-contains", serviceId).get();
   const techs = snap.docs
     .map(d => ({ id: d.id, ...d.data() }))
-    .filter(t => !excludeIds.includes(t.id) && (t.balance || 0) >= getMinBalance())
-    // ── الترتيب حسب التقييم (الأعلى أولاً) ─────────────────────────────────
-    .sort((a, b) => (b.rating || 0) - (a.rating || 0));
+    .filter(t => {
+      if (excludeIds.includes(t.id)) return false;
+      if ((t.balance || 0) < getMinBalance()) return false;
+      // استثناء الفنيين الغائبين (لم يرسلوا منذ أكثر من 48 ساعة)
+      const presence = getTechPresence(t);
+      return presence !== "away";
+    })
+    .sort((a, b) => {
+      // ترتيب: نشط أولاً، ثم غير نشط، ثم حسب التقييم
+      const presenceOrder = { active: 0, inactive: 1, unknown: 2 };
+      const pa = presenceOrder[getTechPresence(a)] ?? 2;
+      const pb = presenceOrder[getTechPresence(b)] ?? 2;
+      if (pa !== pb) return pa - pb;
+      return (b.rating || 0) - (a.rating || 0);
+    });
   return techs.length > 0 ? techs[0] : null;
 }
 async function getActiveOrder(phone) {
@@ -1270,6 +1291,11 @@ app.post("/webhook", async (req, res) => {
     // ── فني ───────────────────────────────────────────────────────────────────
     const tech = await getTechByPhone(from);
     if (tech) {
+      // ── تحديث آخر نشاط للفني ─────────────────────────────────────────────────
+      await db.collection("technicians").doc(tech.id).update({
+        lastSeen: admin.firestore.FieldValue.serverTimestamp()
+      }).catch(()=>{});
+
       if (text.startsWith("accept_"))  { await handleAccept(text, from, tech);  return; }
       if (text.startsWith("reject_"))  { await handleReject(text, from, tech);  return; }
       if (text.startsWith("done_"))    { await handleDone(text, from, tech);    return; }
