@@ -194,6 +194,12 @@ const CUSTOMER_LANGS = {
     sendLocation:  "📍 أرسل موقعك لإتمام الطلب.",
     locationOnly:  "يرجى إرسال موقعك عبر واتساب.",
     sessionExp:    "انتهت الجلسة. أرسل *مرحبا*.",
+    sessionReminder1: "⏰ لا تزال في منتصف طلبك! أرسل أي رسالة للمتابعة.",
+    sessionReminder2: "⏰ تذكير أخير! سيتم إغلاق المحادثة تلقائياً إذا لم تستجب.",
+    sessionTimeout:  "سيتم إنهاء المحادثة بشكل تلقائي لعدم الرد. يمكنك بدأ محادثة جديدة في أي وقت تشاء. شكراً على تواصلك مع هُوك للخدمات 🌟",
+    ratingReminder1: "⭐ لا تنسَ تقييم الخدمة! رأيك يساعدنا على التحسين.",
+    ratingReminder2: "⭐ تذكير أخير للتقييم! سيتم إغلاق المحادثة إذا لم تقيّم.",
+    ratingTimeout:   "سيتم إنهاء المحادثة بشكل تلقائي لعدم التقييم. يمكنك بدأ محادثة جديدة في أي وقت تشاء. شكراً على تواصلك مع هُوك للخدمات 🌟",
     noTech:        "⚠️ لا يوجد فني متاح. سنبحث 15 دقيقة وسيتم إشعارك.",
     noTechFinal:   (id) => `⚠️ لم نجد فنياً خلال 15 دقيقة.\n🆔 ${id}`,
     noTechOptions: "اختر:",
@@ -276,6 +282,12 @@ const CUSTOMER_LANGS = {
     sendLocation:  "📍 Send your location to complete the order.",
     locationOnly:  "Please send your location via WhatsApp.",
     sessionExp:    "Session expired. Send *hi*.",
+    sessionReminder1: "⏰ You're still in the middle of your order! Send any message to continue.",
+    sessionReminder2: "⏰ Last reminder! The conversation will close automatically if you don't respond.",
+    sessionTimeout:  "The conversation has been closed due to inactivity. You can start a new conversation anytime. Thank you for contacting Hok Services 🌟",
+    ratingReminder1: "⭐ Don't forget to rate the service! Your feedback helps us improve.",
+    ratingReminder2: "⭐ Last rating reminder! The conversation will close if you don't rate.",
+    ratingTimeout:   "The conversation has been closed due to no rating. You can start a new conversation anytime. Thank you for contacting Hok Services 🌟",
     noTech:        "⚠️ No technician available. Searching for 15 min.",
     noTechFinal:   (id) => `⚠️ No tech found in 15 min.\n🆔 ${id}`,
     noTechOptions: "Choose:",
@@ -1072,7 +1084,61 @@ async function incrementCustomerOrders(phone) {
   }
 }
 
-// ─── VIP: جلب الفنيين VIP للخدمة (مرتبين حسب التقييم) ────────────────────────
+// ─── نظام التذكير والإنهاء التلقائي ─────────────────────────────────────────
+// type: "session" (جلسة غير مكتملة) أو "rating" (تقييم معلق)
+async function scheduleReminders(phone, lang, type, orderId = null) {
+  const L2 = CUSTOMER_LANGS[lang] || CUSTOMER_LANGS.ar;
+  const r1  = type === "rating" ? L2.ratingReminder1 : L2.sessionReminder1;
+  const r2  = type === "rating" ? L2.ratingReminder2 : L2.sessionReminder2;
+  const end = type === "rating" ? L2.ratingTimeout   : L2.sessionTimeout;
+
+  // تذكير أول بعد 5 دقائق
+  const t1 = setTimeout(async () => {
+    try {
+      // تحقق أن الحالة لا تزال تستوجب التذكير
+      if (type === "session") {
+        const session = await getSession(phone);
+        if (!session.state) return; // أكمل الطلب
+      } else {
+        const pending = await getPendingRatingOrder(phone);
+        if (!pending) return; // قيّم بالفعل
+      }
+      await sendMessage(phone, r1);
+    } catch(e) {}
+  }, 5 * 60 * 1000);
+
+  // تذكير ثانٍ بعد 10 دقائق
+  const t2 = setTimeout(async () => {
+    try {
+      if (type === "session") {
+        const session = await getSession(phone);
+        if (!session.state) return;
+      } else {
+        const pending = await getPendingRatingOrder(phone);
+        if (!pending) return;
+      }
+      await sendMessage(phone, r2);
+    } catch(e) {}
+  }, 10 * 60 * 1000);
+
+  // إنهاء تلقائي بعد 15 دقيقة
+  setTimeout(async () => {
+    try {
+      if (type === "session") {
+        const session = await getSession(phone);
+        if (!session.state) return;
+        await clearSession(phone);
+      } else {
+        const pending = await getPendingRatingOrder(phone);
+        if (!pending) return;
+      }
+      await sendMessage(phone, end);
+      await logInfo("auto_close", `${type} closed for ${phone}`);
+    } catch(e) {}
+    clearTimeout(t1);
+    clearTimeout(t2);
+  }, 15 * 60 * 1000);
+}
 async function getVipTechs(serviceId) {
   const snap = await db.collection("technicians")
     .where("vip", "==", true)
@@ -1468,6 +1534,7 @@ app.post("/webhook", async (req, res) => {
 
       await clearSession(from);
       await sendLanguageMenu(from);
+      scheduleReminders(from, "ar", "session"); // بدء مؤقت التذكير
       return;
     }
 
@@ -2054,6 +2121,8 @@ async function handleDone(text, techPhone, tech) {
 
   if (newBalance < MIN_BALANCE) await sendMessage(techPhone, TL2.lowBalance(newBalance, MIN_BALANCE));
   await sendRatingPrompt(customerPhone, orderId, order.lang || "ar");
+  // بدء مؤقت تذكير التقييم
+  scheduleReminders(customerPhone, order.lang || "ar", "rating", orderId);
   unlockOrder(orderId);
 }
 
