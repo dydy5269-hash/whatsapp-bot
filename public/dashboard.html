@@ -923,13 +923,15 @@ async function loadOverview(){
     const done=orders.filter(o=>o.status==="done").length;
     const revenue=orders.filter(o=>o.status==="done").reduce((s,o)=>s+(o.totalPrice||0),0);
     const activeTechs=techs.filter(t=>t.active).length;
+    const awayTechs=techs.filter(t=>{if(!t.lastSeen)return true;return(Date.now()-t.lastSeen.toDate().getTime())/3600000>48;}).length;
     const badge=document.getElementById("pending-badge");badge.style.display=pending>0?"inline":"none";badge.textContent=pending;
     document.getElementById("stats-grid").innerHTML=`
       <div class="stat-card yellow"><div class="stat-icon">📋</div><div class="stat-val">${orders.length}</div><div class="stat-label">إجمالي الطلبات</div></div>
       <div class="stat-card blue"><div class="stat-icon">⏳</div><div class="stat-val">${pending}</div><div class="stat-label">قيد الانتظار</div></div>
       <div class="stat-card green"><div class="stat-icon">✅</div><div class="stat-val">${done}</div><div class="stat-label">مكتملة</div></div>
       <div class="stat-card yellow"><div class="stat-icon">💰</div><div class="stat-val">${revenue.toFixed(2)}</div><div class="stat-label">الإيرادات (ر.ع)</div></div>
-      <div class="stat-card green"><div class="stat-icon">👨‍🔧</div><div class="stat-val">${activeTechs}/${techs.length}</div><div class="stat-label">فنيون متاحون</div></div>`;
+      <div class="stat-card green"><div class="stat-icon">👨‍🔧</div><div class="stat-val">${activeTechs}/${techs.length}</div><div class="stat-label">فنيون متاحون</div></div>
+      <div class="stat-card red"><div class="stat-icon">🔴</div><div class="stat-val">${awayTechs}</div><div class="stat-label">فنيون غائبون (+48س)</div></div>`;
     buildOrdersChart(orders);buildStatusChart(orders);renderOrdersTable(orders.slice(-8).reverse(),"recent-orders-table",false);
   }catch(e){console.error(e);}
 }
@@ -1290,10 +1292,19 @@ function renderTechGrid(techs){
     const displayName=getTechDisplayName(tc);
     const safeName=displayName.replace(/'/g,"");
     const todayOrders=allOrders.filter(o=>o.technicianId===tc.id&&o.createdAt&&new Date(o.createdAt.seconds*1000).toLocaleDateString("en-CA")===today).length;
+    // ── حالة النشاط من lastSeen ───────────────────────────────────────────────
+    const presence=(()=>{
+      if(!tc.lastSeen) return {icon:"⚫",label:"لم يتواصل",color:"var(--muted)"};
+      const h=(Date.now()-tc.lastSeen.toDate().getTime())/3600000;
+      if(h<=24) return {icon:"🟢",label:`نشط (${Math.floor(h)}س)`,color:"var(--accent3)"};
+      if(h<=48) return {icon:"🟡",label:`غير نشط (${Math.floor(h)}س)`,color:"#f59e0b"};
+      return {icon:"🔴",label:`غائب (${Math.floor(h/24)}ي)`,color:"var(--danger)"};
+    })();
     return`<div class="tech-card">
       <div class="tech-avatar">${tc.vip?"⭐":"👨‍🔧"}</div>
       <div class="tech-name" title="${displayName}">${tc.vip?'<span style="color:var(--accent);font-size:.7rem">⭐ VIP</span> ':''}${displayName}</div>
       <div class="tech-phone">📞 ${tc.phone||"-"}</div>
+      <div style="font-size:.7rem;margin-bottom:4px"><span style="color:${presence.color}">${presence.icon} ${presence.label}</span></div>
       <div class="tech-region">📍 ${(tc.regionName||tc.regionId||"غير محدد").substring(0,20)}</div>
       ${tc.services&&tc.services.length?`<div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px">${tc.services.map(s=>`<span style="background:rgba(59,130,246,.1);color:var(--accent2);padding:1px 7px;border-radius:10px;font-size:.62rem;font-weight:700">${s}</span>`).join("")}</div>`:""}
       ${tc.suspendReason?`<div style="font-size:.65rem;color:var(--danger);margin-bottom:5px;padding:3px 8px;background:rgba(239,68,68,.1);border-radius:4px">⛔ ${tc.suspendReason.substring(0,40)}</div>`:""}
